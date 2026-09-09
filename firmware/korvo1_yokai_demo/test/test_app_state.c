@@ -63,11 +63,37 @@ static void test_app_entries_open_their_scenes(void)
     }
 }
 
+static void test_second_page_entries_open_their_scenes(void)
+{
+    const app_event_t events[] = {
+        APP_EVENT_OPEN_LIGHTING,
+        APP_EVENT_OPEN_CLOCK_TIMER,
+        APP_EVENT_OPEN_CALCULATOR,
+        APP_EVENT_OPEN_FOOD,
+    };
+    const app_screen_t screens[] = {
+        APP_SCREEN_LIGHTING,
+        APP_SCREEN_CLOCK_TIMER,
+        APP_SCREEN_CALCULATOR,
+        APP_SCREEN_FOOD,
+    };
+
+    for (unsigned int i = 0; i < sizeof(events) / sizeof(events[0]); ++i) {
+        app_state_t state;
+        app_state_init(&state);
+        app_state_dispatch(&state, events[i]);
+        assert(state.screen == screens[i]);
+        app_state_dispatch(&state, APP_EVENT_HOME);
+        assert(state.screen == APP_SCREEN_HOME);
+    }
+}
+
 int main(void)
 {
     test_home_resets_navigation();
     test_wake_closes_quick_settings_and_listens();
     test_voice_results_are_visible();
     test_app_entries_open_their_scenes();
+    test_second_page_entries_open_their_scenes();
     return 0;
 }

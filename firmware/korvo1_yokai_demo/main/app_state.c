@@ -54,6 +54,22 @@ void app_state_dispatch(app_state_t *state, app_event_t event)
         state->screen = APP_SCREEN_OBJECT_RECOGNITION;
         state->quick_settings_open = false;
         break;
+    case APP_EVENT_OPEN_LIGHTING:
+        state->screen = APP_SCREEN_LIGHTING;
+        state->quick_settings_open = false;
+        break;
+    case APP_EVENT_OPEN_CLOCK_TIMER:
+        state->screen = APP_SCREEN_CLOCK_TIMER;
+        state->quick_settings_open = false;
+        break;
+    case APP_EVENT_OPEN_CALCULATOR:
+        state->screen = APP_SCREEN_CALCULATOR;
+        state->quick_settings_open = false;
+        break;
+    case APP_EVENT_OPEN_FOOD:
+        state->screen = APP_SCREEN_FOOD;
+        state->quick_settings_open = false;
+        break;
     case APP_EVENT_WAKE_DETECTED:
         state->screen = APP_SCREEN_VOICE;
         state->quick_settings_open = false;

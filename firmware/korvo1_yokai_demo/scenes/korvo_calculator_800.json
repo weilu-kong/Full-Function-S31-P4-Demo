@@ -2,6 +2,7 @@
   "screen": "korvo_calculator",
   "w": 800,
   "h": 480,
+  "swipe": false,
   "screen_bg": "#2D1F3C",
   "font": "../assets/fonts/NotoSansCJKjp-Regular.otf",
   "default_font_size": 20,

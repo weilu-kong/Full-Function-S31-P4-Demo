@@ -2,6 +2,7 @@
   "screen": "korvo_lighting",
   "w": 800,
   "h": 480,
+  "swipe": false,
   "screen_bg": "#171331",
   "font": "../assets/fonts/NotoSansCJKjp-Regular.otf",
   "default_font_size": 20,

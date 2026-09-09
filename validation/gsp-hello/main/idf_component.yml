@@ -1,0 +1,4 @@
+dependencies:
+  espressif/esp-gsp:
+    version: ==1.2.0
+  idf: '>=6.0'

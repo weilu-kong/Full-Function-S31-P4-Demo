@@ -1,0 +1,20 @@
+idf_component_register(
+    SRCS "app_main.c" "app_state.c" "board_ui.c"
+    INCLUDE_DIRS "."
+    PRIV_REQUIRES esp-gsp espressif__esp-sr espressif__esp32_s31_korvo_1_noglib)
+
+# esp-dl 3.3.11 uses C-style typedefs for C++ structs with member
+# initializers. GCC 16 diagnoses this as -Wnon-c-typedef-for-linkage; ESP-IDF
+# promotes warnings to errors. Keep the compatibility exception local to the
+# third-party target, without modifying its managed source.
+idf_component_get_property(esp_dl_target espressif__esp-dl COMPONENT_LIB)
+target_compile_options(${esp_dl_target} PRIVATE
+    -Wno-error=non-c-typedef-for-linkage)
+
+gsp_add_bundle(${COMPONENT_LIB}
+    SCENES ../scenes/korvo_home_800.json
+           ../scenes/korvo_synth_800.json
+           ../scenes/korvo_weather_800.json
+           ../scenes/korvo_voice_800.json
+           ../scenes/korvo_object_800.json
+    PIXEL_FORMAT rgb565)

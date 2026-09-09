@@ -17,4 +17,8 @@ gsp_add_bundle(${COMPONENT_LIB}
            ../scenes/korvo_weather_800.json
            ../scenes/korvo_voice_800.json
            ../scenes/korvo_object_800.json
+           ../scenes/korvo_lighting_800.json
+           ../scenes/korvo_clock_timer_800.json
+           ../scenes/korvo_calculator_800.json
+           ../scenes/korvo_food_800.json
     PIXEL_FORMAT rgb565)

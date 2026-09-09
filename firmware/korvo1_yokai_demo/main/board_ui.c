@@ -50,6 +50,22 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
             board_ui_open_scene(ui, state, APP_EVENT_OPEN_OBJECT_RECOGNITION,
                                 GSP_BUNDLE_SCENE_KORVO_OBJECT);
             break;
+        case GSP_KORVO_HOME_ACTION_OPEN_LIGHTING:
+            board_ui_open_scene(ui, state, APP_EVENT_OPEN_LIGHTING,
+                                GSP_BUNDLE_SCENE_KORVO_LIGHTING);
+            break;
+        case GSP_KORVO_HOME_ACTION_OPEN_CLOCK_TIMER:
+            board_ui_open_scene(ui, state, APP_EVENT_OPEN_CLOCK_TIMER,
+                                GSP_BUNDLE_SCENE_KORVO_CLOCK_TIMER);
+            break;
+        case GSP_KORVO_HOME_ACTION_OPEN_CALCULATOR:
+            board_ui_open_scene(ui, state, APP_EVENT_OPEN_CALCULATOR,
+                                GSP_BUNDLE_SCENE_KORVO_CALCULATOR);
+            break;
+        case GSP_KORVO_HOME_ACTION_OPEN_FOOD:
+            board_ui_open_scene(ui, state, APP_EVENT_OPEN_FOOD,
+                                GSP_BUNDLE_SCENE_KORVO_FOOD);
+            break;
         default:
             break;
         }
@@ -59,7 +75,11 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     if (event->action_id == GSP_KORVO_SYNTH_ACTION_HOME ||
         event->action_id == GSP_KORVO_WEATHER_ACTION_HOME ||
         event->action_id == GSP_KORVO_VOICE_ACTION_HOME ||
-        event->action_id == GSP_KORVO_OBJECT_ACTION_HOME) {
+        event->action_id == GSP_KORVO_OBJECT_ACTION_HOME ||
+        event->action_id == GSP_KORVO_LIGHTING_ACTION_HOME ||
+        event->action_id == GSP_KORVO_CLOCK_TIMER_ACTION_HOME ||
+        event->action_id == GSP_KORVO_CALCULATOR_ACTION_HOME ||
+        event->action_id == GSP_KORVO_FOOD_ACTION_HOME) {
         board_ui_open_scene(ui, state, APP_EVENT_HOME, GSP_BUNDLE_SCENE_KORVO_HOME);
     }
 }

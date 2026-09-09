@@ -1,9 +1,8 @@
 {
-  "screen": "korvo_synth",
+  "screen": "korvo_clock_timer",
   "w": 800,
   "h": 480,
-  "swipe": false,
-  "screen_bg": "#17133B",
+  "screen_bg": "#163541",
   "font": "../assets/fonts/NotoSansCJKjp-Regular.otf",
   "default_font_size": 20,
   "objects": [
@@ -127,93 +126,13 @@
       "fg_color": "#FFFFFF"
     },
     {
-      "type": "container",
+      "type": "layer",
       "parent": -1,
-      "x": 44,
-      "y": 300,
-      "w": 712,
-      "h": 4,
-      "bg_color": "#5B3B9A"
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 76,
-      "y": 326,
-      "w": 34,
-      "h": 22,
-      "bg_color": "#D7A347",
-      "radius": 3
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 122,
-      "y": 314,
-      "w": 34,
-      "h": 46,
-      "bg_color": "#8E6BD8",
-      "radius": 3
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 168,
-      "y": 336,
-      "w": 34,
-      "h": 16,
-      "bg_color": "#D7A347",
-      "radius": 3
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 214,
-      "y": 306,
-      "w": 34,
-      "h": 58,
-      "bg_color": "#8E6BD8",
-      "radius": 3
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 260,
-      "y": 326,
-      "w": 34,
-      "h": 24,
-      "bg_color": "#D7A347",
-      "radius": 3
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 306,
-      "y": 316,
-      "w": 34,
-      "h": 42,
-      "bg_color": "#8E6BD8",
-      "radius": 3
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 352,
-      "y": 334,
-      "w": 34,
-      "h": 18,
-      "bg_color": "#D7A347",
-      "radius": 3
-    },
-    {
-      "type": "container",
-      "parent": -1,
-      "x": 398,
-      "y": 304,
-      "w": 34,
-      "h": 60,
-      "bg_color": "#8E6BD8",
-      "radius": 3
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "name": "font_palette"
     },
     {
       "type": "label",
@@ -222,44 +141,57 @@
       "y": 38,
       "w": 700,
       "h": 48,
-      "text": "シンセ　雷神の太鼓",
+      "text": "時計・タイマー　狸の時計屋",
       "font_size": 24,
-      "fg_color": "#FFE09A"
-    },
-    {
-      "type": "label",
-      "parent": -1,
-      "x": 42,
-      "y": 104,
-      "w": 700,
-      "h": 30,
-      "text": "波形と雷紋が、音に合わせて揺れる。",
-      "font_size": 18,
-      "fg_color": "#BBD4FF"
+      "fg_color": "#D9F4ED"
     },
     {
       "type": "container",
       "parent": -1,
-      "x": 42,
-      "y": 162,
-      "w": 716,
-      "h": 130,
-      "bg_color": "#32255C",
-      "radius": 16,
-      "border_color": "#D7A347",
-      "border_width": 2
+      "x": 64,
+      "y": 110,
+      "w": 672,
+      "h": 190,
+      "bg_color": "#1C5060",
+      "radius": 18,
+      "border_color": "#91D9D6",
+      "border_width": 3
     },
     {
       "type": "label",
-      "parent": 22,
-      "x": 50,
-      "y": 43,
+      "parent": -1,
+      "x": 90,
+      "y": 132,
       "w": 620,
-      "h": 40,
-      "text": "♩　♩　♩　♩　♩　♩",
+      "h": 66,
+      "text": "09:41",
       "font_size": 24,
       "text_align": "center",
-      "fg_color": "#FFE09A"
+      "fg_color": "#FFF0B7"
+    },
+    {
+      "type": "label",
+      "parent": -1,
+      "x": 90,
+      "y": 212,
+      "w": 620,
+      "h": 30,
+      "text": "残り 12:00　　次の知らせ　10:00",
+      "font_size": 18,
+      "text_align": "center",
+      "fg_color": "#D9F4ED"
+    },
+    {
+      "type": "label",
+      "parent": -1,
+      "x": 90,
+      "y": 258,
+      "w": 620,
+      "h": 26,
+      "text": "狸が時計を見守っています",
+      "font_size": 18,
+      "text_align": "center",
+      "fg_color": "#B5D8D5"
     },
     {
       "type": "button",

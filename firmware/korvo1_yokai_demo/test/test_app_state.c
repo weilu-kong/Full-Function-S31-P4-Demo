@@ -11,18 +11,6 @@ static void test_home_resets_navigation(void)
     app_state_dispatch(&state, APP_EVENT_HOME);
     assert(state.screen == APP_SCREEN_HOME);
     assert(state.home_page == 0);
-    assert(!state.quick_settings_open);
-}
-
-static void test_wake_closes_quick_settings_and_listens(void)
-{
-    app_state_t state;
-    app_state_init(&state);
-    app_state_dispatch(&state, APP_EVENT_TOGGLE_QUICK_SETTINGS);
-    app_state_dispatch(&state, APP_EVENT_WAKE_DETECTED);
-    assert(!state.quick_settings_open);
-    assert(state.screen == APP_SCREEN_VOICE);
-    assert(state.voice == APP_VOICE_LISTENING);
 }
 
 static void test_voice_results_are_visible(void)
@@ -88,12 +76,22 @@ static void test_second_page_entries_open_their_scenes(void)
     }
 }
 
+static void test_wireless_settings_open_their_scenes(void)
+{
+    app_state_t state;
+    app_state_init(&state);
+    app_state_dispatch(&state, APP_EVENT_OPEN_WIFI_SETTINGS);
+    assert(state.screen == APP_SCREEN_WIFI_SETTINGS);
+    app_state_dispatch(&state, APP_EVENT_OPEN_BLUETOOTH_SETTINGS);
+    assert(state.screen == APP_SCREEN_BLUETOOTH_SETTINGS);
+}
+
 int main(void)
 {
     test_home_resets_navigation();
-    test_wake_closes_quick_settings_and_listens();
     test_voice_results_are_visible();
     test_app_entries_open_their_scenes();
     test_second_page_entries_open_their_scenes();
+    test_wireless_settings_open_their_scenes();
     return 0;
 }

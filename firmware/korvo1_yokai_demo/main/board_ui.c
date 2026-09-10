@@ -1,17 +1,164 @@
 #include "board_ui.h"
 
+#include <stdio.h>
+
 #include "esp_check.h"
 #include "esp_gsp_esp_lcd.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "bsp/display.h"
 #include "bsp/esp32_s31_korvo_1.h"
 #include "bsp/touch.h"
 
+#define GSP_BUNDLE_ENABLE_RAW_IDS 1
 #include "bundle_gsp.h"
 
 static const char *TAG = "board_ui";
+static bool s_wifi_ready;
+static bool s_wifi_scan_running;
+
+static void wifi_set_rows(esp_gsp_handle_t ui, const char *status,
+                          const wifi_ap_record_t *aps, uint16_t count)
+{
+    const uint16_t binds[] = {
+        GSP_KORVO_WIFI_BIND_WIFI_AP_0, GSP_KORVO_WIFI_BIND_WIFI_AP_1,
+        GSP_KORVO_WIFI_BIND_WIFI_AP_2, GSP_KORVO_WIFI_BIND_WIFI_AP_3,
+        GSP_KORVO_WIFI_BIND_WIFI_AP_4,
+    };
+    char row[72];
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WIFI_BIND_WIFI_SCAN_STATUS, status);
+    for (size_t i = 0; i < 5; ++i) {
+        if (i < count) {
+            snprintf(row, sizeof(row), "%s    %d dBm",
+                     (const char *)aps[i].ssid, aps[i].rssi);
+            (void)esp_gsp_set_text(ui, binds[i], row);
+        } else {
+            (void)esp_gsp_set_text(ui, binds[i], "--");
+        }
+    }
+}
+
+static esp_err_t wifi_start_once(void)
+{
+    if (s_wifi_ready) {
+        return ESP_OK;
+    }
+    esp_err_t err = esp_netif_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        return err;
+    }
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        return err;
+    }
+    if (esp_netif_create_default_wifi_sta() == NULL) {
+        return ESP_FAIL;
+    }
+    wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
+    if ((err = esp_wifi_init(&config)) != ESP_OK ||
+        (err = esp_wifi_set_mode(WIFI_MODE_STA)) != ESP_OK ||
+        (err = esp_wifi_start()) != ESP_OK) {
+        return err;
+    }
+    s_wifi_ready = true;
+    return ESP_OK;
+}
+
+static void wifi_scan_task(void *arg)
+{
+    esp_gsp_handle_t ui = arg;
+    wifi_ap_record_t aps[5] = {0};
+    uint16_t count = 5;
+    vTaskDelay(pdMS_TO_TICKS(250));
+    wifi_set_rows(ui, "Wi-Fi...", NULL, 0);
+    esp_err_t err = wifi_start_once();
+    if (err == ESP_OK) {
+        err = esp_wifi_scan_start(NULL, true);
+    }
+    if (err == ESP_OK) {
+        err = esp_wifi_scan_get_ap_records(&count, aps);
+    }
+    if (err == ESP_OK) {
+        char status[48];
+        snprintf(status, sizeof(status), "Wi-Fi %u", (unsigned)count);
+        wifi_set_rows(ui, status, aps, count);
+    } else {
+        ESP_LOGE(TAG, "Wi-Fi scan failed: %s", esp_err_to_name(err));
+        wifi_set_rows(ui, "Wi-Fi ERROR", NULL, 0);
+    }
+    s_wifi_scan_running = false;
+    vTaskDelete(NULL);
+}
+
+static void wifi_scan_async(esp_gsp_handle_t ui)
+{
+    if (s_wifi_scan_running) {
+        return;
+    }
+    s_wifi_scan_running = true;
+    if (xTaskCreate(wifi_scan_task, "wifi_scan", 6144, ui, 5, NULL) != pdPASS) {
+        s_wifi_scan_running = false;
+        wifi_set_rows(ui, "Wi-Fi ERROR", NULL, 0);
+    }
+}
+
+static bool is_wifi_details_event(const esp_gsp_event_t *event)
+{
+    switch (event->scene_id) {
+    case GSP_BUNDLE_SCENE_KORVO_HOME:
+        return event->action_id == GSP_KORVO_HOME_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_SYNTH:
+        return event->action_id == GSP_KORVO_SYNTH_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_WEATHER:
+        return event->action_id == GSP_KORVO_WEATHER_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_VOICE:
+        return event->action_id == GSP_KORVO_VOICE_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_OBJECT:
+        return event->action_id == GSP_KORVO_OBJECT_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_LIGHTING:
+        return event->action_id == GSP_KORVO_LIGHTING_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_CLOCK_TIMER:
+        return event->action_id == GSP_KORVO_CLOCK_TIMER_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_CALCULATOR:
+        return event->action_id == GSP_KORVO_CALCULATOR_ACT_ID_WIFI_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_FOOD:
+        return event->action_id == GSP_KORVO_FOOD_ACT_ID_WIFI_DETAILS;
+    default:
+        return false;
+    }
+}
+
+static bool is_bluetooth_details_event(const esp_gsp_event_t *event)
+{
+    switch (event->scene_id) {
+    case GSP_BUNDLE_SCENE_KORVO_HOME:
+        return event->action_id == GSP_KORVO_HOME_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_SYNTH:
+        return event->action_id == GSP_KORVO_SYNTH_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_WEATHER:
+        return event->action_id == GSP_KORVO_WEATHER_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_VOICE:
+        return event->action_id == GSP_KORVO_VOICE_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_OBJECT:
+        return event->action_id == GSP_KORVO_OBJECT_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_LIGHTING:
+        return event->action_id == GSP_KORVO_LIGHTING_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_CLOCK_TIMER:
+        return event->action_id == GSP_KORVO_CLOCK_TIMER_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_CALCULATOR:
+        return event->action_id == GSP_KORVO_CALCULATOR_ACT_ID_BLUETOOTH_DETAILS;
+    case GSP_BUNDLE_SCENE_KORVO_FOOD:
+        return event->action_id == GSP_KORVO_FOOD_ACT_ID_BLUETOOTH_DETAILS;
+    default:
+        return false;
+    }
+}
 
 static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,
                                 app_event_t app_event, uint16_t scene_id)
@@ -29,6 +176,38 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
 {
     app_state_t *state = user_ctx;
     if (event == NULL || state == NULL || event->type != ESP_GSP_EVENT_CALL) {
+        return;
+    }
+
+    if (is_wifi_details_event(event)) {
+        board_ui_open_scene(ui, state, APP_EVENT_OPEN_WIFI_SETTINGS,
+                            GSP_BUNDLE_SCENE_KORVO_WIFI);
+        wifi_scan_async(ui);
+        return;
+    }
+
+    if (is_bluetooth_details_event(event)) {
+        board_ui_open_scene(ui, state, APP_EVENT_OPEN_BLUETOOTH_SETTINGS,
+                            GSP_BUNDLE_SCENE_KORVO_BLUETOOTH);
+        return;
+    }
+
+    if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI) {
+        if (event->action_id == GSP_KORVO_WIFI_ACT_ID_RESCAN) {
+            wifi_scan_async(ui);
+        } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_HOME) {
+            board_ui_open_scene(ui, state, APP_EVENT_HOME,
+                                GSP_BUNDLE_SCENE_KORVO_HOME);
+        }
+        return;
+    }
+
+
+    if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_BLUETOOTH) {
+        if (event->action_id == GSP_KORVO_BLUETOOTH_ACT_ID_HOME) {
+            board_ui_open_scene(ui, state, APP_EVENT_HOME,
+                                GSP_BUNDLE_SCENE_KORVO_HOME);
+        }
         return;
     }
 

@@ -13,6 +13,8 @@ typedef enum {
     APP_SCREEN_CLOCK_TIMER,
     APP_SCREEN_CALCULATOR,
     APP_SCREEN_FOOD,
+    APP_SCREEN_WIFI_SETTINGS,
+    APP_SCREEN_BLUETOOTH_SETTINGS,
 } app_screen_t;
 
 typedef enum {
@@ -27,7 +29,6 @@ typedef enum {
     APP_EVENT_HOME,
     APP_EVENT_NEXT_PAGE,
     APP_EVENT_PREVIOUS_PAGE,
-    APP_EVENT_TOGGLE_QUICK_SETTINGS,
     APP_EVENT_OPEN_SYNTH,
     APP_EVENT_OPEN_WEATHER,
     APP_EVENT_OPEN_VOICE,
@@ -36,6 +37,8 @@ typedef enum {
     APP_EVENT_OPEN_CLOCK_TIMER,
     APP_EVENT_OPEN_CALCULATOR,
     APP_EVENT_OPEN_FOOD,
+    APP_EVENT_OPEN_WIFI_SETTINGS,
+    APP_EVENT_OPEN_BLUETOOTH_SETTINGS,
     APP_EVENT_WAKE_DETECTED,
     APP_EVENT_COMMAND_ACCEPTED,
     APP_EVENT_COMMAND_REJECTED,
@@ -45,7 +48,6 @@ typedef struct {
     app_screen_t screen;
     app_voice_state_t voice;
     uint8_t home_page;
-    bool quick_settings_open;
 } app_state_t;
 
 void app_state_init(app_state_t *state);

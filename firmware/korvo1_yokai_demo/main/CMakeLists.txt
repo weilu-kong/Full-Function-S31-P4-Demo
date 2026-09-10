@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "app_main.c" "app_state.c" "board_ui.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES esp-gsp espressif__esp-sr espressif__esp32_s31_korvo_1_noglib)
+    PRIV_REQUIRES esp-gsp esp_wifi esp_netif nvs_flash espressif__esp-sr espressif__esp32_s31_korvo_1_noglib)
 
 # esp-dl 3.3.11 uses C-style typedefs for C++ structs with member
 # initializers. GCC 16 diagnoses this as -Wnon-c-typedef-for-linkage; ESP-IDF
@@ -21,4 +21,6 @@ gsp_add_bundle(${COMPONENT_LIB}
            ../scenes/korvo_clock_timer_800.json
            ../scenes/korvo_calculator_800.json
            ../scenes/korvo_food_800.json
+           ../scenes/korvo_wifi_800.json
+           ../scenes/korvo_bluetooth_800.json
     PIXEL_FORMAT rgb565)

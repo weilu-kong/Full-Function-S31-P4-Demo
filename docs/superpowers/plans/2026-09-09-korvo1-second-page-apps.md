@@ -1,6 +1,6 @@
 # Korvo-1 第二页应用场景 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 让桌面第二页的照明、时钟／计时器、电卓和食材管理入口进入各自的 GSP 页面，并能返回桌面。
 
@@ -17,7 +17,7 @@
 - Modify: `firmware/korvo1_yokai_demo/main/app_state.c`
 - Modify: `firmware/korvo1_yokai_demo/test/test_app_state.c`
 
-- [ ] **Step 1: 写入失败用例**
+- [x] **Step 1: 写入失败用例**
 
 ```c
 const app_event_t events[] = {
@@ -32,23 +32,23 @@ const app_screen_t screens[] = {
 
 循环 dispatch 每个 event，断言 screen 与 screens 对应；再 dispatch `APP_EVENT_HOME`，断言 `APP_SCREEN_HOME`。
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `cc -std=c11 -Wall -Wextra -Werror -I firmware/korvo1_yokai_demo/main firmware/korvo1_yokai_demo/test/test_app_state.c firmware/korvo1_yokai_demo/main/app_state.c -o /tmp/korvo1_app_state_test && /tmp/korvo1_app_state_test`
 
 Expected: 因四个 `APP_EVENT_OPEN_*` 尚未定义而失败。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 在 `app_event_t` 追加 `APP_EVENT_OPEN_LIGHTING`、`APP_EVENT_OPEN_CLOCK_TIMER`、`APP_EVENT_OPEN_CALCULATOR`、`APP_EVENT_OPEN_FOOD`。在 `app_state_dispatch()` 分别设为对应 `APP_SCREEN_*` 并关闭 `quick_settings_open`。
 
-- [ ] **Step 4: 运行通过测试**
+- [x] **Step 4: 运行通过测试**
 
 Run: 同 Step 2。
 
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add firmware/korvo1_yokai_demo/main/app_state.c firmware/korvo1_yokai_demo/main/app_state.h firmware/korvo1_yokai_demo/test/test_app_state.c
@@ -64,11 +64,11 @@ git commit -m "feat: add second-page app state events"
 - Create: `firmware/korvo1_yokai_demo/scenes/korvo_food_800.json`
 - Modify: `firmware/korvo1_yokai_demo/main/CMakeLists.txt`
 
-- [ ] **Step 1: 建立公共场景骨架**
+- [x] **Step 1: 建立公共场景骨架**
 
 每个文件使用 800×480、已有 font palette、24px 标题、18px `ホーム` 按钮、深靛蓝背景和黑场淡入淡出所需的既有导航 callback。
 
-- [ ] **Step 2: 写入特有内容**
+- [x] **Step 2: 写入特有内容**
 
 | 文件 | 标题 | 可见内容 |
 | --- | --- | --- |
@@ -79,7 +79,7 @@ git commit -m "feat: add second-page app state events"
 
 优先使用 label、container 边框、渐变和已有 `●` 字形；不加入全屏 JPEG/PNG。
 
-- [ ] **Step 3: 注册场景**
+- [x] **Step 3: 注册场景**
 
 在 `gsp_add_bundle` 追加：
 
@@ -90,13 +90,13 @@ git commit -m "feat: add second-page app state events"
 ../scenes/korvo_food_800.json
 ```
 
-- [ ] **Step 4: 校验**
+- [x] **Step 4: 校验**
 
 Run: `python3 -m json.tool firmware/korvo1_yokai_demo/scenes/korvo_lighting_800.json >/dev/null`，对四个文件重复。
 
 Expected: 四个 JSON 均有效。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add firmware/korvo1_yokai_demo/main/CMakeLists.txt firmware/korvo1_yokai_demo/scenes
@@ -109,11 +109,11 @@ git commit -m "feat: add four Yokai second-page scenes"
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_home_800.json`
 - Modify: `firmware/korvo1_yokai_demo/main/board_ui.c`
 
-- [ ] **Step 1: 添加桌面 callback**
+- [x] **Step 1: 添加桌面 callback**
 
 按四个第二页按钮顺序添加 `open_lighting`、`open_clock_timer`、`open_calculator`、`open_food` callback。
 
-- [ ] **Step 2: 添加场景映射**
+- [x] **Step 2: 添加场景映射**
 
 在 `board_ui_event()` 的 home switch 中添加四个 case，模式为：
 
@@ -124,37 +124,37 @@ board_ui_open_scene(ui, state, APP_EVENT_OPEN_LIGHTING,
 
 其余三项替换事件和生成的 GSP scene enum。
 
-- [ ] **Step 3: 添加返回映射**
+- [x] **Step 3: 添加返回映射**
 
 将四个新场景生成的 `GSP_KORVO_*_ACTION_HOME` 纳入现有 Home 条件，目标为 `GSP_BUNDLE_SCENE_KORVO_HOME`。
 
-- [ ] **Step 4: 构建**
+- [x] **Step 4: 构建**
 
 Run: `source /Users/kongweilu/esp/esp-idf-master/export.sh >/dev/null && idf.py --preview -C firmware/korvo1_yokai_demo -B build-korvo1-s31 build`
 
 Expected: 生成 `korvo1_yokai_demo.bin`，无 action/scene 未定义错误。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add firmware/korvo1_yokai_demo/main/board_ui.c firmware/korvo1_yokai_demo/scenes/korvo_home_800.json
 git commit -m "feat: connect second-page app navigation"
 ```
 
-### Task 4: 真机验证与同步
+### Task 4: 真机验证与同步（已完成）
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-09-09-korvo1-second-page-apps.md`
 
-- [ ] **Step 1: 烧录**
+- [x] **Step 1: 烧录**
 
 使用已验证的 921600 波特率 Stub 烧录方式写入 `build-korvo1-s31/korvo1_yokai_demo.bin`，并确认主镜像输出 `Hash of data verified`。
 
-- [ ] **Step 2: 真机检查**
+- [x] **Step 2: 真机检查**
 
 从桌面滑至第二页，依次进入四页，确认标题、主题区域、日文文本和 `ホーム` 返回。照明页只显示屏幕烟花，不驱动外设。
 
-- [ ] **Step 3: 同步**
+- [x] **Step 3: 同步**
 
 将完成的 checkbox 标记为 `[x]`，然后执行：
 

@@ -37,7 +37,7 @@ static const char *const s_bt_devs[MAX_BT_DEVS] = {
     "周辺機器",
     "接続済み　なし",
     "新しい機器を確認中…",
-    "雷神音響",
+    "雷神太鼓",
     "妖怪通信",
     "狸屋道具",
     "河童音具",
@@ -171,6 +171,11 @@ static void wifi_scan_task(void *arg)
         snprintf(status, sizeof(status), "Wi-Fi %u", (unsigned)fetch_count);
         wifi_set_status(ui, status);
 
+        if (s_wifi_list == ESP_GSP_LIST_NONE) {
+            s_wifi_list = esp_gsp_list_bind_component(
+                ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_LIST, wifi_list_bind_cb, NULL);
+            ESP_LOGI(TAG, "Bound s_wifi_list in scan task: %u", (unsigned)s_wifi_list);
+        }
         if (s_wifi_list != ESP_GSP_LIST_NONE) {
             (void)esp_gsp_list_set_total(ui, s_wifi_list, MAX_WIFI_APS);
             (void)esp_gsp_list_refresh(ui, s_wifi_list);
@@ -264,15 +269,6 @@ static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,
     if (err != ESP_GSP_OK) {
         ESP_LOGE(TAG, "change scene %u failed: %d", (unsigned)scene_id, (int)err);
     }
-    if (scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI && s_wifi_list == ESP_GSP_LIST_NONE) {
-        s_wifi_list = esp_gsp_list_bind_component(
-            ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_LIST, wifi_list_bind_cb, NULL);
-        ESP_LOGI(TAG, "Bound s_wifi_list = %u", (unsigned)s_wifi_list);
-    } else if (scene_id == GSP_BUNDLE_SCENE_KORVO_BLUETOOTH && s_bt_list == ESP_GSP_LIST_NONE) {
-        s_bt_list = esp_gsp_list_bind_component(
-            ui, GSP_KORVO_BLUETOOTH_OBJ_KEY_BLUETOOTH_LIST, bt_list_bind_cb, NULL);
-        ESP_LOGI(TAG, "Bound s_bt_list = %u", (unsigned)s_bt_list);
-    }
 }
 
 static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
@@ -284,6 +280,33 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     }
     ESP_LOGI(TAG, "board_ui_event: scene=%d, action=%d, type=%d",
              event->scene_id, event->action_id, event->type);
+
+    if (event->type == ESP_GSP_EVENT_SCENE_CHANGED) {
+        ESP_LOGI(TAG, "Scene changed settled to %d", event->scene_id);
+        if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI) {
+            if (s_wifi_list == ESP_GSP_LIST_NONE) {
+                s_wifi_list = esp_gsp_list_bind_component(
+                    ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_LIST, wifi_list_bind_cb, NULL);
+                ESP_LOGI(TAG, "Bound s_wifi_list in SCENE_CHANGED: %u", (unsigned)s_wifi_list);
+            }
+            if (s_wifi_list != ESP_GSP_LIST_NONE) {
+                (void)esp_gsp_list_set_total(ui, s_wifi_list, MAX_WIFI_APS);
+                (void)esp_gsp_list_refresh(ui, s_wifi_list);
+            }
+        } else if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_BLUETOOTH) {
+            if (s_bt_list == ESP_GSP_LIST_NONE) {
+                s_bt_list = esp_gsp_list_bind_component(
+                    ui, GSP_KORVO_BLUETOOTH_OBJ_KEY_BLUETOOTH_LIST, bt_list_bind_cb, NULL);
+                ESP_LOGI(TAG, "Bound s_bt_list in SCENE_CHANGED: %u", (unsigned)s_bt_list);
+            }
+            if (s_bt_list != ESP_GSP_LIST_NONE) {
+                (void)esp_gsp_list_set_total(ui, s_bt_list, MAX_BT_DEVS);
+                (void)esp_gsp_list_refresh(ui, s_bt_list);
+            }
+        }
+        return;
+    }
+
     if (event->type != ESP_GSP_EVENT_CALL) {
         return;
     }

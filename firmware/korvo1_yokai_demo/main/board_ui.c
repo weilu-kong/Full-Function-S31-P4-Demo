@@ -264,13 +264,27 @@ static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,
     if (err != ESP_GSP_OK) {
         ESP_LOGE(TAG, "change scene %u failed: %d", (unsigned)scene_id, (int)err);
     }
+    if (scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI && s_wifi_list == ESP_GSP_LIST_NONE) {
+        s_wifi_list = esp_gsp_list_bind_component(
+            ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_LIST, wifi_list_bind_cb, NULL);
+        ESP_LOGI(TAG, "Bound s_wifi_list = %u", (unsigned)s_wifi_list);
+    } else if (scene_id == GSP_BUNDLE_SCENE_KORVO_BLUETOOTH && s_bt_list == ESP_GSP_LIST_NONE) {
+        s_bt_list = esp_gsp_list_bind_component(
+            ui, GSP_KORVO_BLUETOOTH_OBJ_KEY_BLUETOOTH_LIST, bt_list_bind_cb, NULL);
+        ESP_LOGI(TAG, "Bound s_bt_list = %u", (unsigned)s_bt_list);
+    }
 }
 
 static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
-                           void *user_ctx)
+                           void *ctx)
 {
-    app_state_t *state = user_ctx;
-    if (event == NULL || state == NULL || event->type != ESP_GSP_EVENT_CALL) {
+    app_state_t *state = (app_state_t *)ctx;
+    if (event == NULL || state == NULL) {
+        return;
+    }
+    ESP_LOGI(TAG, "board_ui_event: scene=%d, action=%d, type=%d",
+             event->scene_id, event->action_id, event->type);
+    if (event->type != ESP_GSP_EVENT_CALL) {
         return;
     }
 
@@ -412,13 +426,6 @@ esp_err_t board_ui_start(app_state_t *state)
                         "start ESP-GSP bundle");
     ESP_RETURN_ON_ERROR(esp_gsp_on_event(ui, board_ui_event, state), TAG,
                         "register GSP UI events");
-
-    s_wifi_list = esp_gsp_list_bind_component(
-        ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_LIST, wifi_list_bind_cb, NULL);
-    s_bt_list = esp_gsp_list_bind_component(
-        ui, GSP_KORVO_BLUETOOTH_OBJ_KEY_BLUETOOTH_LIST, bt_list_bind_cb, NULL);
-
-    (void)wifi_start_once();
 
     ESP_LOGI(TAG, "Korvo-1 GSP UI started: %dx%d, touch=%s",
              BSP_LCD_H_RES, BSP_LCD_V_RES, touch ? "ready" : "unavailable");

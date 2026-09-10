@@ -34,16 +34,16 @@ static uint16_t s_wifi_ap_count;
 
 #define MAX_BT_DEVS 10
 static const char *const s_bt_devs[MAX_BT_DEVS] = {
-    "周辺機器",
-    "接続済み　なし",
-    "新しい機器を確認中…",
-    "雷神太鼓",
-    "妖怪通信",
-    "狸屋道具",
-    "河童音具",
-    "言霊マイク",
-    "--",
-    "--",
+    "   周辺機器",
+    "   接続済み　なし",
+    "   新しい機器を確認中…",
+    "   雷神太鼓",
+    "   妖怪通信",
+    "   狸屋道具",
+    "   河童音具",
+    "   言霊マイク",
+    "   --",
+    "   --",
 };
 
 static gsp_err_t wifi_list_bind_cb(esp_gsp_handle_t gsp, esp_gsp_row_t row,
@@ -52,11 +52,11 @@ static gsp_err_t wifi_list_bind_cb(esp_gsp_handle_t gsp, esp_gsp_row_t row,
     (void)ctx;
     if (index < s_wifi_ap_count) {
         char buf[72];
-        snprintf(buf, sizeof(buf), "%s    %d dBm",
+        snprintf(buf, sizeof(buf), "   %s    %d dBm",
                  (const char *)s_wifi_aps[index].ssid, s_wifi_aps[index].rssi);
         (void)esp_gsp_row_text(gsp, row, buf);
     } else {
-        (void)esp_gsp_row_text(gsp, row, "--");
+        (void)esp_gsp_row_text(gsp, row, "   --");
     }
     return GSP_OK;
 }
@@ -68,7 +68,7 @@ static gsp_err_t bt_list_bind_cb(esp_gsp_handle_t gsp, esp_gsp_row_t row,
     if (index < MAX_BT_DEVS) {
         (void)esp_gsp_row_text(gsp, row, s_bt_devs[index]);
     } else {
-        (void)esp_gsp_row_text(gsp, row, "--");
+        (void)esp_gsp_row_text(gsp, row, "   --");
     }
     return GSP_OK;
 }
@@ -111,14 +111,16 @@ static void wifi_scan_task(void *arg)
     esp_gsp_handle_t ui = s_wifi_scan_ui;
     app_state_t *state = s_wifi_scan_state;
 
-    vTaskDelay(pdMS_TO_TICKS(350));
+    vTaskDelay(pdMS_TO_TICKS(200));
     if (generation != s_wifi_scan_generation || state->screen != APP_SCREEN_WIFI_SETTINGS) {
         s_wifi_scan_running = false;
         vTaskDelete(NULL);
         return;
     }
 
-    wifi_set_status(ui, "Wi-Fi 確認中…");
+    if (s_wifi_ap_count == 0) {
+        wifi_set_status(ui, "Wi-Fi 確認中…");
+    }
 
     esp_err_t err = wifi_start_once();
     if (err != ESP_OK) {
@@ -131,17 +133,22 @@ static void wifi_scan_task(void *arg)
         return;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(150));
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     uint16_t ap_count = 0;
     int retries = 3;
+    wifi_scan_config_t scan_cfg = {
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time.active.min = 100,
+        .scan_time.active.max = 150,
+    };
     while (retries > 0) {
         if (generation != s_wifi_scan_generation || state->screen != APP_SCREEN_WIFI_SETTINGS) {
             s_wifi_scan_running = false;
             vTaskDelete(NULL);
             return;
         }
-        err = esp_wifi_scan_start(NULL, true);
+        err = esp_wifi_scan_start(&scan_cfg, true);
         if (err == ESP_OK) {
             esp_wifi_scan_get_ap_num(&ap_count);
             if (ap_count > 0 || retries == 1) {
@@ -149,7 +156,7 @@ static void wifi_scan_task(void *arg)
             }
         }
         ESP_LOGW(TAG, "Wi-Fi scan retry (err=%s, ap_count=%u)", esp_err_to_name(err), (unsigned)ap_count);
-        vTaskDelay(pdMS_TO_TICKS(300));
+        vTaskDelay(pdMS_TO_TICKS(200));
         retries--;
     }
 
@@ -185,6 +192,48 @@ static void wifi_scan_task(void *arg)
         wifi_set_status(ui, "Wi-Fi ERROR");
     }
 
+    s_wifi_scan_running = false;
+    vTaskDelete(NULL);
+}
+
+static void wifi_bg_warmup_task(void *arg)
+{
+    esp_gsp_handle_t ui = (esp_gsp_handle_t)arg;
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    if (s_wifi_scan_running) {
+        vTaskDelete(NULL);
+        return;
+    }
+    s_wifi_scan_running = true;
+    ESP_LOGI(TAG, "Wi-Fi background warm-up started");
+    esp_err_t err = wifi_start_once();
+    if (err == ESP_OK) {
+        wifi_scan_config_t scan_cfg = {
+            .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+            .scan_time.active.min = 100,
+            .scan_time.active.max = 150,
+        };
+        err = esp_wifi_scan_start(&scan_cfg, true);
+        if (err == ESP_OK) {
+            uint16_t ap_count = 0;
+            esp_wifi_scan_get_ap_num(&ap_count);
+            uint16_t fetch = ap_count > MAX_WIFI_APS ? MAX_WIFI_APS : ap_count;
+            if (fetch > 0) {
+                memset(s_wifi_aps, 0, sizeof(s_wifi_aps));
+                esp_wifi_scan_get_ap_records(&fetch, s_wifi_aps);
+            }
+            s_wifi_ap_count = fetch;
+            ESP_LOGI(TAG, "Wi-Fi background warm-up finished: found %u APs", (unsigned)fetch);
+            if (s_wifi_list != ESP_GSP_LIST_NONE) {
+                char status[48];
+                snprintf(status, sizeof(status), "Wi-Fi %u", (unsigned)fetch);
+                wifi_set_status(ui, status);
+                (void)esp_gsp_list_refresh(ui, s_wifi_list);
+            }
+        } else {
+            ESP_LOGW(TAG, "Wi-Fi background scan returned %s", esp_err_to_name(err));
+        }
+    }
     s_wifi_scan_running = false;
     vTaskDelete(NULL);
 }
@@ -292,6 +341,11 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
             if (s_wifi_list != ESP_GSP_LIST_NONE) {
                 (void)esp_gsp_list_set_total(ui, s_wifi_list, MAX_WIFI_APS);
                 (void)esp_gsp_list_refresh(ui, s_wifi_list);
+            }
+            if (s_wifi_ap_count > 0) {
+                char status[48];
+                snprintf(status, sizeof(status), "Wi-Fi %u", (unsigned)s_wifi_ap_count);
+                wifi_set_status(ui, status);
             }
         } else if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_BLUETOOTH) {
             if (s_bt_list == ESP_GSP_LIST_NONE) {
@@ -449,6 +503,8 @@ esp_err_t board_ui_start(app_state_t *state)
                         "start ESP-GSP bundle");
     ESP_RETURN_ON_ERROR(esp_gsp_on_event(ui, board_ui_event, state), TAG,
                         "register GSP UI events");
+
+    xTaskCreate(wifi_bg_warmup_task, "wifi_warmup", 6144, ui, 2, NULL);
 
     ESP_LOGI(TAG, "Korvo-1 GSP UI started: %dx%d, touch=%s",
              BSP_LCD_H_RES, BSP_LCD_V_RES, touch ? "ready" : "unavailable");

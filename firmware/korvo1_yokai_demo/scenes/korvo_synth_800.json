@@ -455,7 +455,7 @@
       "radius": 10
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 16,
       "y": 228,
@@ -464,11 +464,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_f3"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 98,
       "y": 228,
@@ -477,11 +476,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_g3"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 162,
       "y": 228,
@@ -490,11 +488,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_a3"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 226,
       "y": 228,
@@ -503,11 +500,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_b3"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 272,
       "y": 228,
@@ -516,11 +512,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_c4"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 354,
       "y": 228,
@@ -529,11 +524,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_d4"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 418,
       "y": 228,
@@ -542,11 +536,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_e4"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 464,
       "y": 228,
@@ -555,11 +548,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_f4"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 546,
       "y": 228,
@@ -568,11 +560,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_g4"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 610,
       "y": 228,
@@ -581,11 +572,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_a4"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 674,
       "y": 228,
@@ -594,11 +584,10 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_b4"
+      "radius": 3
     },
     {
-      "type": "button",
+      "type": "container",
       "parent": -1,
       "x": 720,
       "y": 228,
@@ -607,8 +596,7 @@
       "bg_color": "#F6EBCB",
       "border_color": "#C5B892",
       "border_width": 1,
-      "radius": 3,
-      "callback": "synth_c5"
+      "radius": 3
     },
     {
       "type": "button",

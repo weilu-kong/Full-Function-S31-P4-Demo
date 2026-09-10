@@ -144,77 +144,85 @@
       "w": 34,
       "h": 22,
       "bg_color": "#D7A347",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_c4"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": -1,
       "x": 122,
       "y": 314,
       "w": 34,
       "h": 46,
       "bg_color": "#8E6BD8",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_d4"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": -1,
       "x": 168,
       "y": 336,
       "w": 34,
       "h": 16,
       "bg_color": "#D7A347",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_e4"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": -1,
       "x": 214,
       "y": 306,
       "w": 34,
       "h": 58,
       "bg_color": "#8E6BD8",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_f4"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": -1,
       "x": 260,
       "y": 326,
       "w": 34,
       "h": 24,
       "bg_color": "#D7A347",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_g4"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": -1,
       "x": 306,
       "y": 316,
       "w": 34,
       "h": 42,
       "bg_color": "#8E6BD8",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_a4"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": -1,
       "x": 352,
       "y": 334,
       "w": 34,
       "h": 18,
       "bg_color": "#D7A347",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_b4"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": -1,
       "x": 398,
       "y": 304,
       "w": 34,
       "h": 60,
       "bg_color": "#8E6BD8",
-      "radius": 3
+      "radius": 3,
+      "callback": "synth_c5"
     },
     {
       "type": "label",

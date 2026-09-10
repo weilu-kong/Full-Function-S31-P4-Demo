@@ -72,6 +72,12 @@ App 场景语义：シンセ为雷神太鼓；天気为妖怪村落；音声操�
 - 屏幕烟花、时钟/计时器、计算器和食材管理主要是静态演示页面。
 - 待机轮播尚未进入固件；只有一张设计效果图。
 - Mosaico 与 P4X 尚未适配。
+
+## 2026-09-10 Synthesizer 进展
+
+- `korvo_synth_800.json` 的 8 个可见琴键已从静态容器改为 `synth_c4` 至 `synth_c5` 的真实按钮 callback。
+- ESP-IDF 6.2 完整构建通过，镜像已烧录至 `/dev/cu.usbserial-1140`，写入 Hash 校验通过；复位后未观察到立即 panic。
+- 当前只完成琴键输入事件层，尚未在 `board_ui.c` 分发这些 action，也尚未接入 `bsp_audio_codec_speaker_init()` / `esp_codec_dev_write()`，因此本版琴键还不会发声。
 - Korvo-1 当前缺少可用的软件背光调节路径，亮度滑条禁用并显示「明るさ　固定」。音量滑条也尚未连接 codec。
 
 ## 关键代码地图

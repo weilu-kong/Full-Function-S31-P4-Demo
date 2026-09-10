@@ -58,6 +58,13 @@ App 场景语义：シンセ为雷神太鼓；天気为妖怪村落；音声操�
 - Wi-Fi 与 Bluetooth 在快捷设置中各有独立小框：左侧 36×36 圆点单击切换，小框其余区域单击进入对应详情页。长按方案已经取消。
 - Wi-Fi 和 Bluetooth 详情页都可进入；这一版已于 2026-09-10 编译、烧录并由用户确认交互符合需求。
 
+## 2026-09-10 追加状态
+
+- 用户确认当前板上固件已经烧录，后续开发无需重复烧录；Korvo-1 已连接。
+- 曾出现数次 crash，但最近一次串口抓取未复现，未取得 Guru Meditation、panic 或 backtrace，因此暂不确认根因，也未提交猜测性修复。
+- 当前最可疑路径是 `board_ui.c` 的 Wi-Fi 扫描任务：后台 task 直接调用 `esp_gsp_set_text()`，并可能在页面切换后继续更新 UI；必须等真实 backtrace 或稳定复现后再改。
+- 实际可复现构建工作树为 `/Users/kongweilu/Development/Full Demo/.worktrees/second-page-apps`，其中包含 `managed_components` 与 `build-korvo1-s31-second-page`。本交接副本不包含这些生成目录，不能据此宣称固件构建已验证。
+
 ## 已编译但仍需专项真机验证
 
 - `board_ui.c` 使用 `esp_wifi` 异步扫描附近热点，在 Wi-Fi 详情页最多显示五条 SSID 与 RSSI，并支持“更新”。

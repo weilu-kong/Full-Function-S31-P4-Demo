@@ -80,6 +80,13 @@ App 场景语义：シンセ为雷神太鼓；天気为妖怪村落；音声操�
 - 当前只完成琴键输入事件层，尚未在 `board_ui.c` 分发这些 action，也尚未接入 `bsp_audio_codec_speaker_init()` / `esp_codec_dev_write()`，因此本版琴键还不会发声。
 - Korvo-1 当前缺少可用的软件背光调节路径，亮度滑条禁用并显示「明るさ　固定」。音量滑条也尚未连接 codec。
 
+## 2026-09-10 Wi-Fi 页面切换 crash 修复
+
+- 复现路径：从下拉菜单进入 Wi-Fi，返回ホーム后再次进入 Wi-Fi，随后切换 Bluetooth；曾出现 Core 0 `Instruction access fault`（`MEPC/RA=0x0000000a`），同时历史日志出现 `canvas begin failed: -15`。
+- 原因：Wi-Fi 扫描运行在异步任务中；离开 Wi-Fi 场景后任务仍可能更新已经切换的 UI，和场景渲染并发，破坏 UI 状态。
+- 修复：为 Wi-Fi 扫描增加 generation；离开 Wi-Fi 场景即使当前扫描失效，扫描任务在启动扫描及写回 UI 前检查 generation 和当前页面，过期任务只退出、不再更新 UI。
+- 验证：ESP-IDF 6.2 完整构建通过，镜像约 2.71 MiB、app partition 剩余约 55%；已烧录 `/dev/cu.usbserial-1140` 且 Hash 校验通过。真机连续密集切换 Wi-Fi、Bluetooth、ホーム约 70 秒，未再出现 panic 或 `canvas begin failed: -15`。
+
 ## 关键代码地图
 
 | 路径 | 职责 |

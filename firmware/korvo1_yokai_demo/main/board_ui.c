@@ -22,6 +22,9 @@
 static const char *TAG = "board_ui";
 static bool s_wifi_ready;
 static bool s_wifi_scan_running;
+static volatile uint32_t s_wifi_scan_generation;
+static app_state_t *s_wifi_scan_state;
+static esp_gsp_handle_t s_wifi_scan_ui;
 
 static void wifi_set_rows(esp_gsp_handle_t ui, const char *status,
                           const wifi_ap_record_t *aps, uint16_t count)
@@ -72,10 +75,17 @@ static esp_err_t wifi_start_once(void)
 
 static void wifi_scan_task(void *arg)
 {
-    esp_gsp_handle_t ui = arg;
+    const uint32_t generation = (uint32_t)(uintptr_t)arg;
+    esp_gsp_handle_t ui = s_wifi_scan_ui;
+    app_state_t *state = s_wifi_scan_state;
     wifi_ap_record_t aps[5] = {0};
     uint16_t count = 5;
-    vTaskDelay(pdMS_TO_TICKS(250));
+    vTaskDelay(pdMS_TO_TICKS(600));
+    if (generation != s_wifi_scan_generation || state->screen != APP_SCREEN_WIFI_SETTINGS) {
+        s_wifi_scan_running = false;
+        vTaskDelete(NULL);
+        return;
+    }
     wifi_set_rows(ui, "Wi-Fi...", NULL, 0);
     esp_err_t err = wifi_start_once();
     if (err == ESP_OK) {
@@ -84,7 +94,9 @@ static void wifi_scan_task(void *arg)
     if (err == ESP_OK) {
         err = esp_wifi_scan_get_ap_records(&count, aps);
     }
-    if (err == ESP_OK) {
+    if (generation != s_wifi_scan_generation || state->screen != APP_SCREEN_WIFI_SETTINGS) {
+        /* ponytail: let the blocking radio scan finish, but never update a stale scene. */
+    } else if (err == ESP_OK) {
         char status[48];
         snprintf(status, sizeof(status), "Wi-Fi %u", (unsigned)count);
         wifi_set_rows(ui, status, aps, count);
@@ -96,13 +108,17 @@ static void wifi_scan_task(void *arg)
     vTaskDelete(NULL);
 }
 
-static void wifi_scan_async(esp_gsp_handle_t ui)
+static void wifi_scan_async(esp_gsp_handle_t ui, app_state_t *state)
 {
     if (s_wifi_scan_running) {
         return;
     }
     s_wifi_scan_running = true;
-    if (xTaskCreate(wifi_scan_task, "wifi_scan", 6144, ui, 5, NULL) != pdPASS) {
+    s_wifi_scan_ui = ui;
+    s_wifi_scan_state = state;
+    uint32_t generation = ++s_wifi_scan_generation;
+    if (xTaskCreate(wifi_scan_task, "wifi_scan", 6144,
+                    (void *)(uintptr_t)generation, 5, NULL) != pdPASS) {
         s_wifi_scan_running = false;
         wifi_set_rows(ui, "Wi-Fi ERROR", NULL, 0);
     }
@@ -163,6 +179,9 @@ static bool is_bluetooth_details_event(const esp_gsp_event_t *event)
 static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,
                                 app_event_t app_event, uint16_t scene_id)
 {
+    if (scene_id != GSP_BUNDLE_SCENE_KORVO_WIFI) {
+        ++s_wifi_scan_generation;
+    }
     app_state_dispatch(state, app_event);
     esp_gsp_err_t err = esp_gsp_goto_scene(ui, scene_id,
                                            ESP_GSP_FADE_THROUGH_BLACK);
@@ -182,7 +201,7 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     if (is_wifi_details_event(event)) {
         board_ui_open_scene(ui, state, APP_EVENT_OPEN_WIFI_SETTINGS,
                             GSP_BUNDLE_SCENE_KORVO_WIFI);
-        wifi_scan_async(ui);
+        wifi_scan_async(ui, state);
         return;
     }
 
@@ -194,7 +213,7 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
 
     if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI) {
         if (event->action_id == GSP_KORVO_WIFI_ACT_ID_RESCAN) {
-            wifi_scan_async(ui);
+            wifi_scan_async(ui, state);
         } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_HOME) {
             board_ui_open_scene(ui, state, APP_EVENT_HOME,
                                 GSP_BUNDLE_SCENE_KORVO_HOME);

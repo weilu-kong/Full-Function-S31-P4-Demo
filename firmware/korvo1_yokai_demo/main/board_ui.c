@@ -370,16 +370,10 @@ static bool is_bluetooth_toggle_event(const esp_gsp_event_t *event)
 
 static void update_drawer_quick_controls(esp_gsp_handle_t ui)
 {
+    (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_ENABLED, s_wifi_enabled);
     (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
-    (void)esp_gsp_component_set_text(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_ENABLED,
-                                    s_wifi_enabled ? "ON" : "OFF");
-    (void)esp_gsp_component_set_text(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_CARD,
-                                    s_wifi_enabled ? "Wi-Fi　通信" : "Wi-Fi (OFF)");
+    (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_ENABLED, s_bluetooth_enabled);
     (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
-    (void)esp_gsp_component_set_text(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_ENABLED,
-                                    s_bluetooth_enabled ? "ON" : "OFF");
-    (void)esp_gsp_component_set_text(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_CARD,
-                                    s_bluetooth_enabled ? "Bluetooth" : "Bluetooth (OFF)");
 }
 
 static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,

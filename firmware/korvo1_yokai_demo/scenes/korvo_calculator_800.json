@@ -336,6 +336,7 @@
       "border_color": "#58D0DE",
       "border_width": 2,
       "radius": 12,
+      "enabled": true,
       "events": [
         {
           "event": "click",
@@ -349,11 +350,12 @@
       "parent": 19,
       "name": "wifi_enabled",
       "x": 44,
-      "y": 224,
-      "w": 36,
-      "h": 36,
+      "y": 220,
+      "w": 44,
+      "h": 44,
       "checked": true,
-      "fg_color": "#58D0DE"
+      "fg_color": "#58D0DE",
+      "callback": "wifi_toggle"
     },
     {
       "type": "container",
@@ -371,6 +373,7 @@
       "border_color": "#E0A5C5",
       "border_width": 2,
       "radius": 12,
+      "enabled": false,
       "events": [
         {
           "event": "click",
@@ -383,12 +386,13 @@
       "type": "checkbox",
       "parent": 19,
       "name": "bluetooth_enabled",
-      "x": 340,
-      "y": 224,
-      "w": 36,
-      "h": 36,
+      "x": 336,
+      "y": 220,
+      "w": 44,
+      "h": 44,
       "checked": false,
-      "fg_color": "#E0A5C5"
+      "fg_color": "#E0A5C5",
+      "callback": "bluetooth_toggle"
     },
     {
       "type": "label",

@@ -17,6 +17,7 @@
 #include "bsp/touch.h"
 
 #define GSP_BUNDLE_ENABLE_RAW_IDS 1
+#define GSP_BUNDLE_ENABLE_LEGACY_NAMES 1
 #include "bundle_gsp.h"
 
 static const char *TAG = "board_ui";
@@ -254,8 +255,14 @@ static void wifi_scan_async(esp_gsp_handle_t ui, app_state_t *state)
     }
 }
 
+static bool s_wifi_enabled = true;
+static bool s_bluetooth_enabled = false;
+
 static bool is_wifi_details_event(const esp_gsp_event_t *event)
 {
+    if (!s_wifi_enabled) {
+        return false;
+    }
     switch (event->scene_id) {
     case GSP_BUNDLE_SCENE_KORVO_HOME:
         return event->action_id == GSP_KORVO_HOME_ACT_ID_WIFI_DETAILS;
@@ -282,6 +289,9 @@ static bool is_wifi_details_event(const esp_gsp_event_t *event)
 
 static bool is_bluetooth_details_event(const esp_gsp_event_t *event)
 {
+    if (!s_bluetooth_enabled) {
+        return false;
+    }
     switch (event->scene_id) {
     case GSP_BUNDLE_SCENE_KORVO_HOME:
         return event->action_id == GSP_KORVO_HOME_ACT_ID_BLUETOOTH_DETAILS;
@@ -301,6 +311,58 @@ static bool is_bluetooth_details_event(const esp_gsp_event_t *event)
         return event->action_id == GSP_KORVO_CALCULATOR_ACT_ID_BLUETOOTH_DETAILS;
     case GSP_BUNDLE_SCENE_KORVO_FOOD:
         return event->action_id == GSP_KORVO_FOOD_ACT_ID_BLUETOOTH_DETAILS;
+    default:
+        return false;
+    }
+}
+
+static bool is_wifi_toggle_event(const esp_gsp_event_t *event)
+{
+    switch (event->scene_id) {
+    case GSP_BUNDLE_SCENE_KORVO_HOME:
+        return event->action_id == GSP_KORVO_HOME_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_SYNTH:
+        return event->action_id == GSP_KORVO_SYNTH_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_WEATHER:
+        return event->action_id == GSP_KORVO_WEATHER_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_VOICE:
+        return event->action_id == GSP_KORVO_VOICE_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_OBJECT:
+        return event->action_id == GSP_KORVO_OBJECT_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_LIGHTING:
+        return event->action_id == GSP_KORVO_LIGHTING_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_CLOCK_TIMER:
+        return event->action_id == GSP_KORVO_CLOCK_TIMER_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_CALCULATOR:
+        return event->action_id == GSP_KORVO_CALCULATOR_ACT_ID_WIFI_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_FOOD:
+        return event->action_id == GSP_KORVO_FOOD_ACT_ID_WIFI_TOGGLE;
+    default:
+        return false;
+    }
+}
+
+static bool is_bluetooth_toggle_event(const esp_gsp_event_t *event)
+{
+    switch (event->scene_id) {
+    case GSP_BUNDLE_SCENE_KORVO_HOME:
+        return event->action_id == GSP_KORVO_HOME_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_SYNTH:
+        return event->action_id == GSP_KORVO_SYNTH_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_WEATHER:
+        return event->action_id == GSP_KORVO_WEATHER_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_VOICE:
+        return event->action_id == GSP_KORVO_VOICE_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_OBJECT:
+        return event->action_id == GSP_KORVO_OBJECT_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_LIGHTING:
+        return event->action_id == GSP_KORVO_LIGHTING_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_CLOCK_TIMER:
+        return event->action_id == GSP_KORVO_CLOCK_TIMER_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_CALCULATOR:
+        return event->action_id == GSP_KORVO_CALCULATOR_ACT_ID_BLUETOOTH_TOGGLE;
+    case GSP_BUNDLE_SCENE_KORVO_FOOD:
+        return event->action_id == GSP_KORVO_FOOD_ACT_ID_BLUETOOTH_TOGGLE;
     default:
         return false;
     }
@@ -357,11 +419,32 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
                 (void)esp_gsp_list_set_total(ui, s_bt_list, MAX_BT_DEVS);
                 (void)esp_gsp_list_refresh(ui, s_bt_list);
             }
+        } else {
+            (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
+            (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_ENABLED, s_wifi_enabled);
+            (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
+            (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_ENABLED, s_bluetooth_enabled);
         }
         return;
     }
 
     if (event->type != ESP_GSP_EVENT_CALL) {
+        return;
+    }
+
+    if (is_wifi_toggle_event(event)) {
+        s_wifi_enabled = !s_wifi_enabled;
+        ESP_LOGI(TAG, "Wi-Fi toggled: %s", s_wifi_enabled ? "ON" : "OFF");
+        (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
+        (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_ENABLED, s_wifi_enabled);
+        return;
+    }
+
+    if (is_bluetooth_toggle_event(event)) {
+        s_bluetooth_enabled = !s_bluetooth_enabled;
+        ESP_LOGI(TAG, "Bluetooth toggled: %s", s_bluetooth_enabled ? "ON" : "OFF");
+        (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
+        (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_ENABLED, s_bluetooth_enabled);
         return;
     }
 

@@ -1260,7 +1260,7 @@
     },
     {
       "type": "rect",
-      "parent": 52,
+      "parent": 90,
       "x": 0,
       "y": 0,
       "w": 800,
@@ -1270,7 +1270,7 @@
     },
     {
       "type": "container",
-      "parent": 52,
+      "parent": 90,
       "x": 80,
       "y": 54,
       "w": 640,
@@ -1282,7 +1282,7 @@
     },
     {
       "type": "label",
-      "parent": 54,
+      "parent": 92,
       "x": 32,
       "y": 24,
       "w": 400,
@@ -1293,7 +1293,7 @@
     },
     {
       "type": "button",
-      "parent": 54,
+      "parent": 92,
       "x": 490,
       "y": 18,
       "w": 112,
@@ -1314,7 +1314,7 @@
     },
     {
       "type": "label",
-      "parent": 54,
+      "parent": 92,
       "x": 32,
       "y": 86,
       "w": 140,
@@ -1325,7 +1325,7 @@
     },
     {
       "type": "slider",
-      "parent": 54,
+      "parent": 92,
       "name": "brightness",
       "x": 170,
       "y": 84,
@@ -1343,7 +1343,7 @@
     },
     {
       "type": "label",
-      "parent": 54,
+      "parent": 92,
       "x": 32,
       "y": 148,
       "w": 120,
@@ -1354,7 +1354,7 @@
     },
     {
       "type": "slider",
-      "parent": 54,
+      "parent": 92,
       "name": "volume",
       "x": 170,
       "y": 146,
@@ -1371,7 +1371,7 @@
     },
     {
       "type": "container",
-      "parent": 54,
+      "parent": 92,
       "name": "wifi_card",
       "x": 32,
       "y": 210,
@@ -1395,7 +1395,7 @@
     },
     {
       "type": "checkbox",
-      "parent": 54,
+      "parent": 92,
       "name": "wifi_enabled",
       "x": 44,
       "y": 224,
@@ -1406,7 +1406,7 @@
     },
     {
       "type": "container",
-      "parent": 54,
+      "parent": 92,
       "name": "bluetooth_card",
       "x": 324,
       "y": 210,
@@ -1430,7 +1430,7 @@
     },
     {
       "type": "checkbox",
-      "parent": 54,
+      "parent": 92,
       "name": "bluetooth_enabled",
       "x": 340,
       "y": 224,
@@ -1441,7 +1441,7 @@
     },
     {
       "type": "label",
-      "parent": 54,
+      "parent": 92,
       "x": 32,
       "y": 296,
       "w": 560,

@@ -321,90 +321,76 @@
       "knob_color": "#F6EBCB"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": 19,
-      "name": "wifi_card",
+      "name": "wifi_enabled",
       "x": 32,
       "y": 210,
-      "w": 270,
+      "w": 56,
+      "h": 64,
+      "text": "●",
+      "font_size": 22,
+      "bg_color": "#253B75",
+      "fg_color": "#58D0DE",
+      "border_color": "#58D0DE",
+      "border_width": 2,
+      "radius": 12,
+      "callback": "wifi_toggle",
+      "enabled": true
+    },
+    {
+      "type": "button",
+      "parent": 19,
+      "name": "wifi_card",
+      "x": 94,
+      "y": 210,
+      "w": 208,
       "h": 64,
       "text": "Wi-Fi　通信",
-      "text_align": "center",
       "font_size": 20,
-      "fg_color": "#E5F8FF",
       "bg_color": "#22345F",
+      "fg_color": "#E5F8FF",
       "border_color": "#58D0DE",
       "border_width": 2,
       "radius": 12,
       "enabled": true,
-      "events": [
-        {
-          "event": "click",
-          "action": "call",
-          "target_name": "wifi_details"
-        }
-      ]
+      "callback": "wifi_details"
     },
     {
-      "type": "checkbox",
+      "type": "button",
       "parent": 19,
-      "name": "wifi_enabled",
-      "x": 42,
-      "y": 220,
-      "w": 44,
-      "h": 44,
-      "checked": true,
-      "fg_color": "#58D0DE",
-      "events": [
-        {
-          "event": "click",
-          "action": "call",
-          "target_name": "wifi_toggle"
-        }
-      ]
-    },
-    {
-      "type": "container",
-      "parent": 19,
-      "name": "bluetooth_card",
+      "name": "bluetooth_enabled",
       "x": 324,
       "y": 210,
-      "w": 284,
+      "w": 56,
+      "h": 64,
+      "text": "○",
+      "font_size": 22,
+      "bg_color": "#251D33",
+      "fg_color": "#7E6E8A",
+      "border_color": "#5E4D6E",
+      "border_width": 2,
+      "radius": 12,
+      "callback": "bluetooth_toggle",
+      "enabled": true
+    },
+    {
+      "type": "button",
+      "parent": 19,
+      "name": "bluetooth_card",
+      "x": 386,
+      "y": 210,
+      "w": 222,
       "h": 64,
       "text": "Bluetooth",
-      "text_align": "center",
       "font_size": 20,
-      "fg_color": "#FFE0F0",
-      "bg_color": "#35294F",
-      "border_color": "#E0A5C5",
+      "bg_color": "#251D33",
+      "fg_color": "#7E6E8A",
+      "border_color": "#5E4D6E",
       "border_width": 2,
       "radius": 12,
       "enabled": false,
-      "events": [
-        {
-          "event": "click",
-          "action": "call",
-          "target_name": "bluetooth_details"
-        }
-      ]
-    },
-    {
-      "type": "checkbox",
-      "parent": 19,
-      "name": "bluetooth_enabled",
-      "x": 334,
-      "y": 220,
-      "w": 44,
-      "h": 44,
-      "checked": false,
-      "fg_color": "#E0A5C5",
-      "events": [
-        {
-          "event": "click",
-          "action": "call",
-          "target_name": "bluetooth_toggle"
-        }
-      ]
+      "callback": "bluetooth_details"
     },
     {
       "type": "label",

@@ -368,6 +368,16 @@ static bool is_bluetooth_toggle_event(const esp_gsp_event_t *event)
     }
 }
 
+static void update_drawer_quick_controls(esp_gsp_handle_t ui)
+{
+    (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
+    (void)esp_gsp_component_set_text(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_ENABLED,
+                                    s_wifi_enabled ? "●" : "○");
+    (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
+    (void)esp_gsp_component_set_text(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_ENABLED,
+                                    s_bluetooth_enabled ? "●" : "○");
+}
+
 static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,
                                 app_event_t app_event, uint16_t scene_id)
 {
@@ -420,10 +430,7 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
                 (void)esp_gsp_list_refresh(ui, s_bt_list);
             }
         } else {
-            (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
-            (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_ENABLED, s_wifi_enabled);
-            (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
-            (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_ENABLED, s_bluetooth_enabled);
+            update_drawer_quick_controls(ui);
         }
         return;
     }
@@ -435,16 +442,14 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     if (is_wifi_toggle_event(event)) {
         s_wifi_enabled = !s_wifi_enabled;
         ESP_LOGI(TAG, "Wi-Fi toggled: %s", s_wifi_enabled ? "ON" : "OFF");
-        (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
-        (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_WIFI_ENABLED, s_wifi_enabled);
+        update_drawer_quick_controls(ui);
         return;
     }
 
     if (is_bluetooth_toggle_event(event)) {
         s_bluetooth_enabled = !s_bluetooth_enabled;
         ESP_LOGI(TAG, "Bluetooth toggled: %s", s_bluetooth_enabled ? "ON" : "OFF");
-        (void)esp_gsp_component_set_enabled(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
-        (void)esp_gsp_component_set_checked(ui, GSP_KORVO_HOME_OBJ_KEY_BLUETOOTH_ENABLED, s_bluetooth_enabled);
+        update_drawer_quick_controls(ui);
         return;
     }
 

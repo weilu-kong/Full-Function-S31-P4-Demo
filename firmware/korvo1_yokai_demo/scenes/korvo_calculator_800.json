@@ -349,13 +349,19 @@
       "type": "checkbox",
       "parent": 19,
       "name": "wifi_enabled",
-      "x": 44,
+      "x": 42,
       "y": 220,
       "w": 44,
       "h": 44,
       "checked": true,
       "fg_color": "#58D0DE",
-      "callback": "wifi_toggle"
+      "events": [
+        {
+          "event": "click",
+          "action": "call",
+          "target_name": "wifi_toggle"
+        }
+      ]
     },
     {
       "type": "container",
@@ -386,13 +392,19 @@
       "type": "checkbox",
       "parent": 19,
       "name": "bluetooth_enabled",
-      "x": 336,
+      "x": 334,
       "y": 220,
       "w": 44,
       "h": 44,
       "checked": false,
       "fg_color": "#E0A5C5",
-      "callback": "bluetooth_toggle"
+      "events": [
+        {
+          "event": "click",
+          "action": "call",
+          "target_name": "bluetooth_toggle"
+        }
+      ]
     },
     {
       "type": "label",

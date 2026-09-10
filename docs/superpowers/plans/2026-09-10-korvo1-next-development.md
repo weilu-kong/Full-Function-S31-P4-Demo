@@ -31,10 +31,11 @@
 - Create: `firmware/korvo1_yokai_demo/main/synth_service.h`
 - Modify: `firmware/korvo1_yokai_demo/main/CMakeLists.txt`
 
-- [ ] **Task 2.1 (UI 重构)**：
+- [x] **Task 2.1 (UI 重构)**：
   - 彻底规整 800×480 界面：8 个白键（C4~C5）等高等宽水平居中排列，5 个黑键（C#4, D#4, F#4, G#4, A#4）严格按乐理悬浮于对应白键接缝处，解决散乱色块缺陷。
   - 增加 OSC 波形选择区（SIN / SQR / SAW / 雷神太鼓）与模式选择（KEY 演奏 / BT 蓝牙伴奏 / WEB 网络音乐）。
   - 增加 DSP 参数视窗（波形/频谱、Cutoff/Reso/Decay 指示）。
+  - 固件全量构建成功并已烧录至 Korvo-1（Hash of data verified）。
 - [ ] **Task 2.2 (实时合成与发声引擎)**：
   - 接入 `bsp_audio_codec_speaker_init()` 与 `esp_codec_dev_write()`。
   - 实现低延迟波形生成器与太鼓打击音，支持按键即时发声，离开页面停止发声。

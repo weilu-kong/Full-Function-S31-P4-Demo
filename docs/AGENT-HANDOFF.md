@@ -4,7 +4,7 @@
 
 当前硬件：ESP32-S31-Korvo-1，800×480 触摸屏
 
-当前工作分支：`feature/second-page-apps`
+当前工作分支：`feature/synth-groovebox` (基于 `feature/second-page-apps` 新建，用于 Synthesizer 重构)
 
 ## 接手时先做什么
 

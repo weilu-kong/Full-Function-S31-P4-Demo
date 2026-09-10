@@ -270,8 +270,16 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
         return;
     }
 
-    if (event->action_id == GSP_KORVO_SYNTH_ACTION_HOME ||
-        event->action_id == GSP_KORVO_WEATHER_ACTION_HOME ||
+    if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_SYNTH) {
+        if (event->action_id == GSP_KORVO_SYNTH_ACTION_HOME) {
+            board_ui_open_scene(ui, state, APP_EVENT_HOME, GSP_BUNDLE_SCENE_KORVO_HOME);
+        } else {
+            ESP_LOGI(TAG, "Synth action: %d", (int)event->action_id);
+        }
+        return;
+    }
+
+    if (event->action_id == GSP_KORVO_WEATHER_ACTION_HOME ||
         event->action_id == GSP_KORVO_VOICE_ACTION_HOME ||
         event->action_id == GSP_KORVO_OBJECT_ACTION_HOME ||
         event->action_id == GSP_KORVO_LIGHTING_ACTION_HOME ||

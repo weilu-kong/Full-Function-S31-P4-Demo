@@ -22,18 +22,25 @@
 - [x] 验证 Wi-Fi/Bluetooth 左侧圆点切换，单击小框其余区域进入详情页。
 - [x] 用 ESP-IDF master 完整构建，并在 Korvo-1 烧录验证。
 
-### Task 2: 完成 Synthesizer
+### Task 2: 完成 Synthesizer / 音乐工作站 (Korg / Roland / Yamaha 风格重构)
 
 **Files:**
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_synth_800.json`
-- Modify/Create: `firmware/korvo1_yokai_demo/main/synth_service.c`
-- Modify/Create: `firmware/korvo1_yokai_demo/main/synth_service.h`
+- Modify: `firmware/korvo1_yokai_demo/main/board_ui.c`
+- Create: `firmware/korvo1_yokai_demo/main/synth_service.c`
+- Create: `firmware/korvo1_yokai_demo/main/synth_service.h`
 - Modify: `firmware/korvo1_yokai_demo/main/CMakeLists.txt`
 
-- [ ] 为白键和 C#、D#、F#、G#、A# 黑键加入独立 press/release callback。
-- [ ] 用板载音频 codec 输出低延迟音符，离开页面时释放全部音符。
-- [ ] 将琴键按压、波形、节拍和雷纹动画绑定到实际播放状态。
-- [ ] 测量首次发声延迟、连续按键和返回 Home 后资源释放；真机验收后提交。
+- [ ] **Task 2.1 (UI 重构)**：
+  - 彻底规整 800×480 界面：8 个白键（C4~C5）等高等宽水平居中排列，5 个黑键（C#4, D#4, F#4, G#4, A#4）严格按乐理悬浮于对应白键接缝处，解决散乱色块缺陷。
+  - 增加 OSC 波形选择区（SIN / SQR / SAW / 雷神太鼓）与模式选择（KEY 演奏 / BT 蓝牙伴奏 / WEB 网络音乐）。
+  - 增加 DSP 参数视窗（波形/频谱、Cutoff/Reso/Decay 指示）。
+- [ ] **Task 2.2 (实时合成与发声引擎)**：
+  - 接入 `bsp_audio_codec_speaker_init()` 与 `esp_codec_dev_write()`。
+  - 实现低延迟波形生成器与太鼓打击音，支持按键即时发声，离开页面停止发声。
+- [ ] **Task 2.3 (Groovebox 伴奏与 DSP 混音扩展)**：
+  - 利用 ESP32-S31 经典蓝牙硬件能力接入 A2DP Sink 接收手机音乐作为伴奏。
+  - 伴奏与琴键实时混音，并实现简易 DSP 滤波效果（Cutoff 频扫）。
 
 ### Task 3: 完成天气
 

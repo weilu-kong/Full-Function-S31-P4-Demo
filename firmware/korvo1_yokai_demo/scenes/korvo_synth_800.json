@@ -1362,15 +1362,20 @@
       "parent": 92,
       "name": "wifi_enabled",
       "x": 32,
-      "y": 222,
-      "w": 72,
-      "h": 40,
-      "track_size": 36,
+      "y": 223,
+      "w": 76,
+      "h": 38,
       "checked": true,
       "bg_color": "#283446",
       "fg_color": "#22C55E",
       "knob_color": "#FFFFFF",
-      "callback": "wifi_toggle"
+      "events": [
+        {
+          "event": "click",
+          "action": "call",
+          "target_name": "wifi_toggle"
+        }
+      ]
     },
     {
       "type": "button",
@@ -1397,15 +1402,20 @@
       "parent": 92,
       "name": "bluetooth_enabled",
       "x": 336,
-      "y": 222,
-      "w": 72,
-      "h": 40,
-      "track_size": 36,
+      "y": 223,
+      "w": 76,
+      "h": 38,
       "checked": false,
       "bg_color": "#283446",
       "fg_color": "#22C55E",
       "knob_color": "#FFFFFF",
-      "callback": "bluetooth_toggle"
+      "events": [
+        {
+          "event": "click",
+          "action": "call",
+          "target_name": "bluetooth_toggle"
+        }
+      ]
     },
     {
       "type": "button",

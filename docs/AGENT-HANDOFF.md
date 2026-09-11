@@ -149,3 +149,8 @@ build-korvo1-s31-second-page/korvo1_yokai_demo.bin
 - RGB panel 初始化参数改动曾导致黑屏；保留当前 BSP 初始化路径。
 - 桌面底部 Home 被删除后必须同时回收布局高度，不能留下空白条。
 - Wi-Fi/Bluetooth 长按事件在真机无法可靠进入详情页；当前确认方案是小框单击。
+- **2026-09-12 快捷设置 Wi-Fi/Bluetooth UI 专项问题（待解决）**：
+  - 详情与完整排查复盘见：[`docs/HANDOVER_KORVO1_WIFI_BT_UI_BUG.md`](file:///Users/kongweilu/Development/Full%20Demo/.worktrees/synth-groovebox/docs/HANDOVER_KORVO1_WIFI_BT_UI_BUG.md)
+  - 现象：Wi-Fi / 蓝牙选择方框常亮（关闭时未变暗且仍可点）；点击方框无法进入详细设置页；开关偶发切左仍为绿色。
+  - 核心根因：JSON 中写死边框颜色 `#3B82F6` 导致未正确使用 GSP 原生 disabled 态；C 端状态变量门禁阻断与 toggle 动画时序未解耦。
+

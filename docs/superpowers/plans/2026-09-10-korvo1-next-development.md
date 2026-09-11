@@ -36,12 +36,17 @@
   - 增加 OSC 波形选择区（SIN / SQR / SAW / 雷神太鼓）与模式选择（KEY 演奏 / BT 蓝牙伴奏 / WEB 网络音乐）。
   - 增加 DSP 参数视窗（波形/频谱、Cutoff/Reso/Decay 指示）。
   - 固件全量构建成功并已烧录至 Korvo-1（Hash of data verified）。
-- [ ] **Task 2.2 (实时合成与发声引擎)**：
+- [x] **Task 2.2 (实时合成与发声引擎)**：
   - 接入 `bsp_audio_codec_speaker_init()` 与 `esp_codec_dev_write()`。
-  - 实现低延迟波形生成器与太鼓打击音，支持按键即时发声，离开页面停止发声。
-- [ ] **Task 2.3 (Groovebox 伴奏与 DSP 混音扩展)**：
-  - 利用 ESP32-S31 经典蓝牙硬件能力接入 A2DP Sink 接收手机音乐作为伴奏。
-  - 伴奏与琴键实时混音，并实现简易 DSP 滤波效果（Cutoff 频扫）。
+  - 集成官方 `esp_audio_effects` 组件（EQ 动态低通滤波 Cutoff/共振峰 Resonance、Freeverb 空间混响、ALC 动态电平控制）。
+  - 实现 4 复音低延迟多波形生成器（SIN / SQR / SAW）与妖怪太鼓（打击瞬态 + 指数音高下滑 Taiko punch）。
+  - 在 `board_ui.c` 中全面映射 20 个音符键（F3~C5，包括半音黑键）与波形切换，场景切入自启动、离开静音。
+  - 固件全量构建成功（`korvo1_yokai_demo.bin` 生成，暂未烧录）。
+- [x] **Task 2.3 (Groovebox 伴奏与 DSP 混音扩展)**：
+  - 利用 ESP32-S31 经典蓝牙硬件能力开启 A2DP Sink 接入（广播设备名 `Yokai-Groovebox`），支持手机/电脑连接并推流伴奏音乐。
+  - 集成 `esp_audio_effects` 的 `esp_ae_mixer` 模块，配置 44.1 kHz 立体声多路加权混音（琴键实时发声 + 蓝牙音乐伴奏）。
+  - 混合音频统一流经 EQ 动态低通滤波 Cutoff/共振峰 Resonance、Freeverb 混响和 ALC 动态限幅，避免削波失真。
+  - 全量编译构建成功，生成最终固件二进制 `korvo1_yokai_demo.bin`。
 
 ### Task 3: 完成天气
 

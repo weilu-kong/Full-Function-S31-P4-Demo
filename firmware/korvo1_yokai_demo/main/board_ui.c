@@ -1,6 +1,7 @@
 #include "board_ui.h"
 
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "esp_check.h"
 #include "esp_gsp_esp_lcd.h"
@@ -9,12 +10,14 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "bsp/display.h"
 #include "bsp/esp32_s31_korvo_1.h"
 #include "bsp/touch.h"
+#include "synth_service.h"
 
 #define GSP_BUNDLE_ENABLE_RAW_IDS 1
 #define GSP_BUNDLE_ENABLE_LEGACY_NAMES 1
@@ -92,12 +95,16 @@ static esp_err_t wifi_start_once(void)
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         return err;
     }
-    if (esp_netif_create_default_wifi_sta() == NULL) {
-        return ESP_FAIL;
+    if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == NULL) {
+        if (esp_netif_create_default_wifi_sta() == NULL) {
+            return ESP_FAIL;
+        }
     }
     wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
+    config.sta_disconnected_pm = false;
     if ((err = esp_wifi_init(&config)) != ESP_OK ||
         (err = esp_wifi_set_mode(WIFI_MODE_STA)) != ESP_OK ||
+        (err = esp_wifi_set_ps(WIFI_PS_NONE)) != ESP_OK ||
         (err = esp_wifi_start()) != ESP_OK) {
         return err;
     }
@@ -197,48 +204,6 @@ static void wifi_scan_task(void *arg)
     vTaskDelete(NULL);
 }
 
-static void wifi_bg_warmup_task(void *arg)
-{
-    esp_gsp_handle_t ui = (esp_gsp_handle_t)arg;
-    vTaskDelay(pdMS_TO_TICKS(1500));
-    if (s_wifi_scan_running) {
-        vTaskDelete(NULL);
-        return;
-    }
-    s_wifi_scan_running = true;
-    ESP_LOGI(TAG, "Wi-Fi background warm-up started");
-    esp_err_t err = wifi_start_once();
-    if (err == ESP_OK) {
-        wifi_scan_config_t scan_cfg = {
-            .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-            .scan_time.active.min = 100,
-            .scan_time.active.max = 150,
-        };
-        err = esp_wifi_scan_start(&scan_cfg, true);
-        if (err == ESP_OK) {
-            uint16_t ap_count = 0;
-            esp_wifi_scan_get_ap_num(&ap_count);
-            uint16_t fetch = ap_count > MAX_WIFI_APS ? MAX_WIFI_APS : ap_count;
-            if (fetch > 0) {
-                memset(s_wifi_aps, 0, sizeof(s_wifi_aps));
-                esp_wifi_scan_get_ap_records(&fetch, s_wifi_aps);
-            }
-            s_wifi_ap_count = fetch;
-            ESP_LOGI(TAG, "Wi-Fi background warm-up finished: found %u APs", (unsigned)fetch);
-            if (s_wifi_list != ESP_GSP_LIST_NONE) {
-                char status[48];
-                snprintf(status, sizeof(status), "Wi-Fi %u", (unsigned)fetch);
-                wifi_set_status(ui, status);
-                (void)esp_gsp_list_refresh(ui, s_wifi_list);
-            }
-        } else {
-            ESP_LOGW(TAG, "Wi-Fi background scan returned %s", esp_err_to_name(err));
-        }
-    }
-    s_wifi_scan_running = false;
-    vTaskDelete(NULL);
-}
-
 static void wifi_scan_async(esp_gsp_handle_t ui, app_state_t *state)
 {
     if (s_wifi_scan_running) {
@@ -255,13 +220,13 @@ static void wifi_scan_async(esp_gsp_handle_t ui, app_state_t *state)
     }
 }
 
-static bool s_wifi_enabled = true;
+static bool s_wifi_enabled = false;
 static bool s_bluetooth_enabled = false;
 
 static bool is_wifi_details_event(const esp_gsp_event_t *event)
 {
     if (!s_wifi_enabled) {
-        return false;
+        return false;  /* OFF: card tap is a no-op */
     }
     switch (event->scene_id) {
     case GSP_BUNDLE_SCENE_KORVO_HOME:
@@ -290,7 +255,7 @@ static bool is_wifi_details_event(const esp_gsp_event_t *event)
 static bool is_bluetooth_details_event(const esp_gsp_event_t *event)
 {
     if (!s_bluetooth_enabled) {
-        return false;
+        return false;  /* OFF: card tap is a no-op */
     }
     switch (event->scene_id) {
     case GSP_BUNDLE_SCENE_KORVO_HOME:
@@ -368,20 +333,52 @@ static bool is_bluetooth_toggle_event(const esp_gsp_event_t *event)
     }
 }
 
+/* GSP pipeline is rgb565: bind-based set_color takes native 16-bit value.
+ * wifi_card / bluetooth_card use bind_target:"color", so the bind slot
+ * overwrites any direct component_set_color every frame — we MUST use
+ * esp_gsp_set_color(ui, bind_index, color) to drive the card appearance. */
+#define GSP_CARD_COLOR_ON  0x231Du  /* #2563EB in RGB565 */
+#define GSP_CARD_COLOR_OFF 0x10E5u  /* #141C2B in RGB565 */
+
+/* Bind indices are identical across all scenes (verified in bundle_gsp.h).
+ * The bind variable is named "wifi_card_bg" / "bluetooth_card_bg" in JSON. */
+#define GSP_BIND_WIFI_CARD_IDX  GSP_KORVO_HOME_BIND_WIFI_CARD_BG       /* 8 */
+#define GSP_BIND_BT_CARD_IDX    GSP_KORVO_HOME_BIND_BLUETOOTH_CARD_BG  /* 7 */
+
+static void sync_wifi_controls(esp_gsp_handle_t ui)
+{
+    esp_gsp_err_t err = esp_gsp_set_color(ui, GSP_BIND_WIFI_CARD_IDX,
+                                          s_wifi_enabled ? GSP_CARD_COLOR_ON : GSP_CARD_COLOR_OFF);
+    if (err != ESP_GSP_OK) {
+        ESP_LOGE(TAG, "set wifi_card bind color failed: %d", (int)err);
+    }
+}
+
+static void sync_bluetooth_controls(esp_gsp_handle_t ui)
+{
+    esp_gsp_err_t err = esp_gsp_set_color(ui, GSP_BIND_BT_CARD_IDX,
+                                          s_bluetooth_enabled ? GSP_CARD_COLOR_ON : GSP_CARD_COLOR_OFF);
+    if (err != ESP_GSP_OK) {
+        ESP_LOGE(TAG, "set bt_card bind color failed: %d", (int)err);
+    }
+}
+
 static void update_drawer_quick_controls(esp_gsp_handle_t ui)
 {
-    (void)esp_gsp_component_set_checked(ui, GSP_OBJ_KEY_WIFI_ENABLED, s_wifi_enabled);
-    (void)esp_gsp_component_set_enabled(ui, GSP_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
-    (void)esp_gsp_component_set_checked(ui, GSP_OBJ_KEY_BLUETOOTH_ENABLED, s_bluetooth_enabled);
-    (void)esp_gsp_component_set_enabled(ui, GSP_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
+    /* Do NOT call set_checked here — that may fire a spurious TOGGLE callback
+     * that immediately re-flips s_wifi/bluetooth_enabled. Just sync colors. */
+    sync_wifi_controls(ui);
+    sync_bluetooth_controls(ui);
 }
 
 static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,
                                 app_event_t app_event, uint16_t scene_id)
 {
+    (void)esp_gsp_drawer_close(ui, GSP_OBJ_KEY_QUICK_SETTINGS_DRAWER, false);
     if (scene_id != GSP_BUNDLE_SCENE_KORVO_WIFI) {
         ++s_wifi_scan_generation;
     }
+    synth_service_set_active(scene_id == GSP_BUNDLE_SCENE_KORVO_SYNTH);
     app_state_dispatch(state, app_event);
     esp_gsp_err_t err = esp_gsp_goto_scene(ui, scene_id,
                                            ESP_GSP_FADE_THROUGH_BLACK);
@@ -397,11 +394,12 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     if (event == NULL || state == NULL) {
         return;
     }
-    ESP_LOGI(TAG, "board_ui_event: scene=%d, action=%d, type=%d",
-             event->scene_id, event->action_id, event->type);
+    ESP_LOGI(TAG, "EVT: scene=%d, action=%d, type=%d, arg=%u",
+             event->scene_id, event->action_id, event->type, (unsigned)event->arg);
 
     if (event->type == ESP_GSP_EVENT_SCENE_CHANGED) {
         ESP_LOGI(TAG, "Scene changed settled to %d", event->scene_id);
+        (void)esp_gsp_drawer_close(ui, GSP_OBJ_KEY_QUICK_SETTINGS_DRAWER, false);
         if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI) {
             if (s_wifi_list == ESP_GSP_LIST_NONE) {
                 s_wifi_list = esp_gsp_list_bind_component(
@@ -430,6 +428,7 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
         } else {
             update_drawer_quick_controls(ui);
         }
+        synth_service_set_active(event->scene_id == GSP_BUNDLE_SCENE_KORVO_SYNTH);
         return;
     }
 
@@ -438,32 +437,26 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     }
 
     if (is_wifi_toggle_event(event)) {
-        bool checked = s_wifi_enabled;
-        if (esp_gsp_component_get_checked(ui, GSP_OBJ_KEY_WIFI_ENABLED, &checked) == ESP_GSP_OK) {
-            s_wifi_enabled = checked;
-        } else {
-            s_wifi_enabled = !s_wifi_enabled;
-            (void)esp_gsp_component_set_checked(ui, GSP_OBJ_KEY_WIFI_ENABLED, s_wifi_enabled);
-        }
-        ESP_LOGI(TAG, "Wi-Fi toggled: %s", s_wifi_enabled ? "ON" : "OFF");
-        (void)esp_gsp_component_set_enabled(ui, GSP_OBJ_KEY_WIFI_CARD, s_wifi_enabled);
+        /* GSP toggle manages its own visual animation. event->arg carries
+         * animation progress (always ~100 when complete), NOT the new toggle
+         * state. Use a simple boolean flip — one event fires per user tap. */
+        s_wifi_enabled = !s_wifi_enabled;
+        ESP_LOGI(TAG, "Wi-Fi toggled: %s (raw arg=%u)",
+                 s_wifi_enabled ? "ON" : "OFF", (unsigned)event->arg);
+        sync_wifi_controls(ui);
         return;
     }
 
     if (is_bluetooth_toggle_event(event)) {
-        bool checked = s_bluetooth_enabled;
-        if (esp_gsp_component_get_checked(ui, GSP_OBJ_KEY_BLUETOOTH_ENABLED, &checked) == ESP_GSP_OK) {
-            s_bluetooth_enabled = checked;
-        } else {
-            s_bluetooth_enabled = !s_bluetooth_enabled;
-            (void)esp_gsp_component_set_checked(ui, GSP_OBJ_KEY_BLUETOOTH_ENABLED, s_bluetooth_enabled);
-        }
-        ESP_LOGI(TAG, "Bluetooth toggled: %s", s_bluetooth_enabled ? "ON" : "OFF");
-        (void)esp_gsp_component_set_enabled(ui, GSP_OBJ_KEY_BLUETOOTH_CARD, s_bluetooth_enabled);
+        s_bluetooth_enabled = !s_bluetooth_enabled;
+        ESP_LOGI(TAG, "Bluetooth toggled: %s (raw arg=%u)",
+                 s_bluetooth_enabled ? "ON" : "OFF", (unsigned)event->arg);
+        sync_bluetooth_controls(ui);
         return;
     }
 
     if (is_wifi_details_event(event)) {
+        ESP_LOGI(TAG, "Opening Wi-Fi settings");
         board_ui_open_scene(ui, state, APP_EVENT_OPEN_WIFI_SETTINGS,
                             GSP_BUNDLE_SCENE_KORVO_WIFI);
         wifi_scan_async(ui, state);
@@ -471,6 +464,7 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     }
 
     if (is_bluetooth_details_event(event)) {
+        ESP_LOGI(TAG, "is_bluetooth_details_event matched! s_bluetooth_enabled=%d", s_bluetooth_enabled);
         board_ui_open_scene(ui, state, APP_EVENT_OPEN_BLUETOOTH_SETTINGS,
                             GSP_BUNDLE_SCENE_KORVO_BLUETOOTH);
         return;
@@ -539,10 +533,102 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     }
 
     if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_SYNTH) {
-        if (event->action_id == GSP_KORVO_SYNTH_ACTION_HOME) {
+        if (event->action_id == GSP_KORVO_SYNTH_ACT_ID_HOME) {
+            synth_service_set_active(false);
             board_ui_open_scene(ui, state, APP_EVENT_HOME, GSP_BUNDLE_SCENE_KORVO_HOME);
-        } else {
+            return;
+        }
+
+        switch (event->action_id) {
+        /* Waveform selection */
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_WAVE_SIN:
+            synth_service_set_waveform(SYNTH_WAVE_SIN);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_WAVE_SQR:
+            synth_service_set_waveform(SYNTH_WAVE_SQR);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_WAVE_SAW:
+            synth_service_set_waveform(SYNTH_WAVE_SAW);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_WAVE_DRUM:
+            synth_service_set_waveform(SYNTH_WAVE_DRUM);
+            break;
+
+        /* Mode selection */
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_MODE_KEY:
+            synth_service_set_mode(SYNTH_MODE_KEY);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_MODE_BT:
+            synth_service_set_mode(SYNTH_MODE_BT);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_MODE_WEB:
+            synth_service_set_mode(SYNTH_MODE_WEB);
+            break;
+
+        /* Piano keys - equal temperament notes */
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_F3:
+            synth_service_note_on(174.61f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_FS3:
+            synth_service_note_on(185.00f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_G3:
+            synth_service_note_on(196.00f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_GS3:
+            synth_service_note_on(207.65f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_A3:
+            synth_service_note_on(220.00f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_AS3:
+            synth_service_note_on(233.08f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_B3:
+            synth_service_note_on(246.94f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_C4:
+            synth_service_note_on(261.63f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_CS4:
+            synth_service_note_on(277.18f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_D4:
+            synth_service_note_on(293.66f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_DS4:
+            synth_service_note_on(311.13f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_E4:
+            synth_service_note_on(329.63f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_F4:
+            synth_service_note_on(349.23f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_FS4:
+            synth_service_note_on(369.99f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_G4:
+            synth_service_note_on(392.00f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_GS4:
+            synth_service_note_on(415.30f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_A4:
+            synth_service_note_on(440.00f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_AS4:
+            synth_service_note_on(466.16f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_B4:
+            synth_service_note_on(493.88f, 1.0f);
+            break;
+        case GSP_KORVO_SYNTH_ACT_ID_SYNTH_C5:
+            synth_service_note_on(523.25f, 1.0f);
+            break;
+        default:
             ESP_LOGI(TAG, "Synth action: %d", (int)event->action_id);
+            break;
         }
         return;
     }
@@ -602,7 +688,8 @@ esp_err_t board_ui_start(app_state_t *state)
     ESP_RETURN_ON_ERROR(esp_gsp_on_event(ui, board_ui_event, state), TAG,
                         "register GSP UI events");
 
-    xTaskCreate(wifi_bg_warmup_task, "wifi_warmup", 6144, ui, 2, NULL);
+    (void)esp_gsp_drawer_close(ui, GSP_OBJ_KEY_QUICK_SETTINGS_DRAWER, false);
+    update_drawer_quick_controls(ui);
 
     ESP_LOGI(TAG, "Korvo-1 GSP UI started: %dx%d, touch=%s",
              BSP_LCD_H_RES, BSP_LCD_V_RES, touch ? "ready" : "unavailable");

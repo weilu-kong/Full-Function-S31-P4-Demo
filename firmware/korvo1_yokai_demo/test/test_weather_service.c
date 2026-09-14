@@ -65,6 +65,15 @@ static void test_wmo_code_mapping(void)
     assert(weather_map_wmo_code(99) == WEATHER_COND_THUNDER);
 }
 
+static void test_background_mapping(void)
+{
+    assert(weather_background_for_condition(WEATHER_COND_SUNNY) == WEATHER_BACKGROUND_SUNNY);
+    assert(weather_background_for_condition(WEATHER_COND_CLOUDY) == WEATHER_BACKGROUND_SUNNY);
+    assert(weather_background_for_condition(WEATHER_COND_RAINY) == WEATHER_BACKGROUND_RAIN);
+    assert(weather_background_for_condition(WEATHER_COND_SNOWY) == WEATHER_BACKGROUND_RAIN);
+    assert(weather_background_for_condition(WEATHER_COND_THUNDER) == WEATHER_BACKGROUND_RAIN);
+}
+
 static void test_json_parsing(void)
 {
     int temp = 0;
@@ -140,6 +149,7 @@ static void test_formatting_and_lore(void)
 int main(void)
 {
     test_wmo_code_mapping();
+    test_background_mapping();
     test_json_parsing();
     test_formatting_and_lore();
     printf("All weather service unit tests passed.\n");

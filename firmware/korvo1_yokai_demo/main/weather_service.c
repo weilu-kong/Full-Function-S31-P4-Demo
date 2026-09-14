@@ -49,6 +49,12 @@ weather_cond_t weather_map_wmo_code(int wmo)
     return WEATHER_COND_SUNNY;
 }
 
+weather_background_t weather_background_for_condition(weather_cond_t condition)
+{
+    return (condition == WEATHER_COND_RAINY || condition == WEATHER_COND_SNOWY ||
+            condition == WEATHER_COND_THUNDER) ? WEATHER_BACKGROUND_RAIN : WEATHER_BACKGROUND_SUNNY;
+}
+
 bool weather_parse_open_meteo_json(const char *json_str, int *out_temp_c, int *out_wmo_code, bool *out_is_day)
 {
     if (!json_str || !out_temp_c || !out_wmo_code) {

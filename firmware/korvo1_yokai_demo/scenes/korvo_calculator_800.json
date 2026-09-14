@@ -350,8 +350,9 @@
       "border_width": 2,
       "radius": 12,
       "callback": "wifi_details",
-      "bind": "wifi_card_bg",
-      "bind_target": "color"
+      "enabled": false,
+      "disabled_opacity": 90,
+      "disabled_color": "#1A2035"
     },
     {
       "type": "toggle",
@@ -383,8 +384,9 @@
       "border_width": 2,
       "radius": 12,
       "callback": "bluetooth_details",
-      "bind": "bluetooth_card_bg",
-      "bind_target": "color"
+      "enabled": false,
+      "disabled_opacity": 90,
+      "disabled_color": "#1A2035"
     },
     {
       "type": "label",

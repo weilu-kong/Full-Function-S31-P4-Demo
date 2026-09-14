@@ -16,7 +16,8 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    app_state_t state;
+    /* board_ui keeps this pointer after app_main returns. */
+    static app_state_t state;
     app_state_init(&state);
     ESP_ERROR_CHECK(board_ui_start(&state));
     ESP_LOGI(TAG, "Korvo-1 Yokai demo UI started");

@@ -47,6 +47,7 @@
   - 集成 `esp_audio_effects` 的 `esp_ae_mixer` 模块，配置 44.1 kHz 立体声多路加权混音（琴键实时发声 + 蓝牙音乐伴奏）。
   - 混合音频统一流经 EQ 动态低通滤波 Cutoff/共振峰 Resonance、Freeverb 混响和 ALC 动态限幅，避免削波失真。
   - 全量编译构建成功，生成最终固件二进制 `korvo1_yokai_demo.bin`。
+  - 2026-09-12：快捷设置 Wi-Fi/BT 卡片、扫描列表与详情「ホーム」已真机确认（见 `docs/AGENT-HANDOFF.md`）。Groovebox 发声请接手后复听一次。
 
 ### Task 3: 完成天气
 
@@ -95,10 +96,10 @@
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_wifi_800.json`
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_bluetooth_800.json`
 
-- [ ] 让两个圆点控制真实无线状态，并在所有场景间同步，而非仅切换当前页面外观。
-- [ ] 专项验证 Wi-Fi 详情页真实扫描、重复更新、关闭后再进入和非 UTF-8 SSID 的显示策略。
+- [ ] 让两个开关控制真实无线状态，并在所有场景间同步，而非仅切换当前页面外观。
+- [x] Wi-Fi 详情页真实扫描与列表刷新（2026-09-12 真机：SSID 无需拖动即显示；重复进入/更新可用）。非 UTF-8 SSID 策略仍待定。
 - [ ] 接入 BLE 扫描，将附近设备名、RSSI、连接中、连接失败和已连接状态显示在详情页。
-- [ ] 详情页返回时恢复进入前的页面；实体 Home 始终返回桌面第一页。
+- [x] 详情页「ホーム」恢复进入前的页面并立刻打开快捷设置（无淡出黑场、不闪空桌面）。实体 Home 仍应始终返回桌面第一页。
 
 ### Task 7: 第二页业务、待机和性能
 

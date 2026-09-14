@@ -10,3 +10,4 @@ build-*/
 # Local visual-brainstorming state
 .superpowers/
 .worktrees/
+.cursor/

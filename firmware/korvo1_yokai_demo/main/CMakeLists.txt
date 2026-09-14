@@ -1,7 +1,7 @@
 idf_component_register(
-    SRCS "app_main.c" "app_state.c" "board_ui.c" "synth_service.c"
+    SRCS "app_main.c" "app_state.c" "board_ui.c" "synth_service.c" "weather_service.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES esp-gsp esp_wifi esp_netif nvs_flash espressif__esp-sr espressif__esp32_s31_korvo_1_noglib espressif__esp_audio_effects espressif__esp_codec_dev bt esp_ringbuf)
+    PRIV_REQUIRES esp-gsp esp_wifi esp_netif nvs_flash espressif__esp-sr espressif__esp32_s31_korvo_1_noglib espressif__esp_audio_effects espressif__esp_codec_dev bt esp_ringbuf esp_http_client espressif__cjson mbedtls)
 
 # esp-dl 3.3.11 uses C-style typedefs for C++ structs with member
 # initializers. GCC 16 diagnoses this as -Wnon-c-typedef-for-linkage; ESP-IDF

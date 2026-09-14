@@ -17,6 +17,7 @@
 #include "bsp/esp32_s31_korvo_1.h"
 #include "bsp/touch.h"
 #include "synth_service.h"
+#include "weather_service.h"
 
 #define GSP_BUNDLE_ENABLE_RAW_IDS 1
 #define GSP_BUNDLE_ENABLE_LEGACY_NAMES 1
@@ -26,18 +27,31 @@ static const char *TAG = "board_ui";
 static bool s_wifi_ready;
 static bool s_wifi_scan_running;
 static volatile uint32_t s_wifi_scan_generation;
-static esp_gsp_list_t s_wifi_list = ESP_GSP_LIST_NONE;
 static esp_gsp_list_t s_bt_list = ESP_GSP_LIST_NONE;
 
-#define MAX_WIFI_APS 10
+#define MAX_WIFI_APS 14
 static wifi_ap_record_t s_wifi_aps[MAX_WIFI_APS];
 static uint16_t s_wifi_ap_count;
 static volatile bool s_wifi_results_dirty;
 static volatile bool s_wifi_scan_failed;
+static uint8_t s_wifi_page;
+static uint8_t s_wifi_last_disconnect_reason;
 static uint16_t s_live_scene;
 static uint16_t s_settings_return_scene = GSP_BUNDLE_SCENE_KORVO_HOME;
 static app_event_t s_settings_return_event = APP_EVENT_HOME;
 static bool s_reopen_drawer;
+
+typedef enum {
+    WIFI_CONN_STATE_DISCONNECTED,
+    WIFI_CONN_STATE_CONNECTING,
+    WIFI_CONN_STATE_CONNECTED,
+    WIFI_CONN_STATE_FAILED,
+} wifi_conn_state_t;
+
+static wifi_conn_state_t s_wifi_conn_state = WIFI_CONN_STATE_DISCONNECTED;
+static char s_connecting_ssid[33];
+static char s_connected_ip[20];
+static wifi_ap_record_t s_selected_ap;
 
 #define MAX_BT_DEVS 10
 static const char *const s_bt_devs[MAX_BT_DEVS] = {
@@ -53,20 +67,6 @@ static const char *const s_bt_devs[MAX_BT_DEVS] = {
     "   --",
 };
 
-static gsp_err_t wifi_list_bind_cb(esp_gsp_handle_t gsp, esp_gsp_row_t row,
-                                   uint32_t index, void *ctx)
-{
-    (void)ctx;
-    if (index < s_wifi_ap_count) {
-        char buf[72];
-        snprintf(buf, sizeof(buf), "   %s    %d dBm",
-                 (const char *)s_wifi_aps[index].ssid, s_wifi_aps[index].rssi);
-        (void)esp_gsp_row_text(gsp, row, buf);
-    } else {
-        (void)esp_gsp_row_text(gsp, row, "   --");
-    }
-    return GSP_OK;
-}
 
 static gsp_err_t bt_list_bind_cb(esp_gsp_handle_t gsp, esp_gsp_row_t row,
                                  uint32_t index, void *ctx)
@@ -85,7 +85,40 @@ static void wifi_set_status(esp_gsp_handle_t ui, const char *status)
     (void)esp_gsp_set_text(ui, GSP_KORVO_WIFI_BIND_WIFI_SCAN_STATUS, status);
 }
 
-static esp_err_t wifi_start_once(void)
+static void on_board_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    (void)arg;
+    if (base == WIFI_EVENT) {
+        if (id == WIFI_EVENT_STA_CONNECTED) {
+            ESP_LOGI(TAG, "Wi-Fi STA associated with AP");
+        } else if (id == WIFI_EVENT_STA_DISCONNECTED) {
+            wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)data;
+            uint8_t reason = disconn ? disconn->reason : 0;
+            ESP_LOGW(TAG, "Wi-Fi STA disconnected (reason=%d)", (int)reason);
+            if (s_wifi_conn_state == WIFI_CONN_STATE_CONNECTING) {
+                s_wifi_conn_state = WIFI_CONN_STATE_FAILED;
+                s_wifi_last_disconnect_reason = reason;
+            } else {
+                s_wifi_conn_state = WIFI_CONN_STATE_DISCONNECTED;
+            }
+            s_connected_ip[0] = '\0';
+            weather_service_set_offline();
+            s_wifi_results_dirty = true;
+        }
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+        s_wifi_conn_state = WIFI_CONN_STATE_CONNECTED;
+        snprintf(s_connected_ip, sizeof(s_connected_ip), IPSTR, IP2STR(&event->ip_info.ip));
+        wifi_config_t cfg;
+        if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
+            strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+        }
+        ESP_LOGI(TAG, "Wi-Fi STA got IP: %s (SSID: %s)", s_connected_ip, s_connecting_ssid);
+        s_wifi_results_dirty = true;
+    }
+}
+
+esp_err_t board_ui_wifi_ensure_started(void)
 {
     if (s_wifi_ready) {
         return ESP_OK;
@@ -106,6 +139,7 @@ static esp_err_t wifi_start_once(void)
     wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
     config.sta_disconnected_pm = false;
     if ((err = esp_wifi_init(&config)) != ESP_OK ||
+        (err = esp_wifi_set_storage(WIFI_STORAGE_FLASH)) != ESP_OK ||
         (err = esp_wifi_set_mode(WIFI_MODE_STA)) != ESP_OK ||
         (err = esp_wifi_set_ps(WIFI_PS_NONE)) != ESP_OK ||
         (err = esp_wifi_start()) != ESP_OK) {
@@ -113,7 +147,58 @@ static esp_err_t wifi_start_once(void)
     }
     s_wifi_ready = true;
     ESP_LOGI(TAG, "Wi-Fi STA started successfully");
+
+    static bool s_events_registered;
+    if (!s_events_registered) {
+        (void)esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                                  on_board_wifi_event, NULL, NULL);
+        (void)esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                                  on_board_wifi_event, NULL, NULL);
+        s_events_registered = true;
+    }
+
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ip_info;
+    if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
+        s_wifi_conn_state = WIFI_CONN_STATE_CONNECTED;
+        snprintf(s_connected_ip, sizeof(s_connected_ip), IPSTR, IP2STR(&ip_info.ip));
+        wifi_config_t cfg;
+        if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
+            strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+        }
+    }
+
     return ESP_OK;
+}
+
+static void wifi_connect_to_ap(const char *ssid, const char *password)
+{
+    if (ssid == NULL || strlen(ssid) == 0) {
+        return;
+    }
+    ESP_LOGI(TAG, "Connecting to Wi-Fi SSID '%s'...", ssid);
+    s_wifi_conn_state = WIFI_CONN_STATE_CONNECTING;
+    strncpy(s_connecting_ssid, ssid, sizeof(s_connecting_ssid) - 1);
+    s_connected_ip[0] = '\0';
+    s_wifi_results_dirty = true;
+
+    /* Cancel any ongoing scan */
+    ++s_wifi_scan_generation;
+    s_wifi_scan_running = false;
+
+    wifi_config_t wifi_cfg = {0};
+    strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
+    if (password != NULL && strlen(password) > 0) {
+        strncpy((char *)wifi_cfg.sta.password, password, sizeof(wifi_cfg.sta.password) - 1);
+    }
+    (void)esp_wifi_disconnect();
+    (void)esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    esp_err_t err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(err));
+        s_wifi_conn_state = WIFI_CONN_STATE_FAILED;
+        s_wifi_results_dirty = true;
+    }
 }
 
 static void wifi_scan_task(void *arg)
@@ -127,7 +212,7 @@ static void wifi_scan_task(void *arg)
         return;
     }
 
-    esp_err_t err = wifi_start_once();
+    esp_err_t err = board_ui_wifi_ensure_started();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "wifi_start_once failed: %s", esp_err_to_name(err));
         if (generation == s_wifi_scan_generation) {
@@ -367,6 +452,13 @@ static void apply_toggle_from_widget(esp_gsp_handle_t ui)
 
     if (wifi_err == ESP_GSP_OK && wifi_checked != s_wifi_enabled) {
         s_wifi_enabled = wifi_checked;
+        if (!s_wifi_enabled) {
+            (void)esp_wifi_disconnect();
+            s_wifi_conn_state = WIFI_CONN_STATE_DISCONNECTED;
+            s_connected_ip[0] = '\0';
+            weather_service_set_offline();
+            s_wifi_results_dirty = true;
+        }
         sync_wifi_controls(ui);
     }
     if (bt_err == ESP_GSP_OK && bt_checked != s_bluetooth_enabled) {
@@ -380,31 +472,123 @@ static void apply_wifi_scan_ui(esp_gsp_handle_t ui)
     if (s_live_scene != GSP_BUNDLE_SCENE_KORVO_WIFI) {
         return;
     }
-    if (s_wifi_list == ESP_GSP_LIST_NONE) {
-        s_wifi_list = esp_gsp_list_bind_component(
-            ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_LIST, wifi_list_bind_cb, NULL);
-    }
-    uint32_t total = s_wifi_scan_failed ? 0u : s_wifi_ap_count;
-    if (s_wifi_list != ESP_GSP_LIST_NONE) {
-        /* Same total as the authored 10 placeholders does not recycle
-         * visible rows; 0 then N forces bind_cb on the new slots. */
-        (void)esp_gsp_list_set_total(ui, s_wifi_list, 0);
-        if (total > 0) {
-            (void)esp_gsp_list_set_total(ui, s_wifi_list, total);
+    static const uint16_t s_ap_binds[7] = {
+        GSP_KORVO_WIFI_BIND_AP_TEXT_0,
+        GSP_KORVO_WIFI_BIND_AP_TEXT_1,
+        GSP_KORVO_WIFI_BIND_AP_TEXT_2,
+        GSP_KORVO_WIFI_BIND_AP_TEXT_3,
+        GSP_KORVO_WIFI_BIND_AP_TEXT_4,
+        GSP_KORVO_WIFI_BIND_AP_TEXT_5,
+        GSP_KORVO_WIFI_BIND_AP_TEXT_6,
+    };
+    for (int i = 0; i < 7; i++) {
+        int ap_idx = (int)s_wifi_page * 7 + i;
+        char ap_label[128];
+        if (ap_idx < s_wifi_ap_count && strlen((const char *)s_wifi_aps[ap_idx].ssid) > 0) {
+            const char *sec = (s_wifi_aps[ap_idx].authmode == WIFI_AUTH_OPEN) ? " [OPEN]" : " *";
+            const char *ssid = (const char *)s_wifi_aps[ap_idx].ssid;
+            bool is_connected = (s_wifi_conn_state == WIFI_CONN_STATE_CONNECTED &&
+                                 s_connecting_ssid[0] != '\0' &&
+                                 strcmp(ssid, s_connecting_ssid) == 0);
+            if (is_connected) {
+                snprintf(ap_label, sizeof(ap_label), "%d:%s %s  %d dBm  [接続済み]",
+                         ap_idx + 1, sec, ssid, s_wifi_aps[ap_idx].rssi);
+            } else {
+                snprintf(ap_label, sizeof(ap_label), "%d:%s %s  %d dBm",
+                         ap_idx + 1, sec, ssid, s_wifi_aps[ap_idx].rssi);
+            }
+        } else {
+            snprintf(ap_label, sizeof(ap_label), "%d: --", ap_idx + 1);
         }
-        (void)esp_gsp_list_refresh(ui, s_wifi_list);
+        (void)esp_gsp_set_text(ui, s_ap_binds[i], ap_label);
     }
-    if (s_wifi_scan_failed) {
-        wifi_set_status(ui, "Wi-Fi ERROR");
-    } else if (s_wifi_ap_count > 0) {
-        char status[48];
-        snprintf(status, sizeof(status), "Wi-Fi %u", (unsigned)s_wifi_ap_count);
+
+    char page_buf[32];
+    int total_pages = (s_wifi_ap_count > 7) ? 2 : 1;
+    snprintf(page_buf, sizeof(page_buf), "%d / %d ページ", (int)s_wifi_page + 1, total_pages);
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WIFI_BIND_WIFI_PAGE_INFO, page_buf);
+
+    if (s_wifi_conn_state == WIFI_CONN_STATE_CONNECTED) {
+        char status[96];
+        if (s_connected_ip[0] != '\0') {
+            snprintf(status, sizeof(status), "接続済み: %s", s_connected_ip);
+        } else {
+            snprintf(status, sizeof(status), "接続済み: %s", s_connecting_ssid);
+        }
         wifi_set_status(ui, status);
+    } else if (s_wifi_conn_state == WIFI_CONN_STATE_CONNECTING) {
+        char status[96];
+        snprintf(status, sizeof(status), "接続中… %s", s_connecting_ssid);
+        wifi_set_status(ui, status);
+    } else if (s_wifi_conn_state == WIFI_CONN_STATE_FAILED) {
+        char err_msg[96];
+        if (s_wifi_last_disconnect_reason == 15 ||
+            s_wifi_last_disconnect_reason == 202 ||
+            s_wifi_last_disconnect_reason == 204 ||
+            s_wifi_last_disconnect_reason == 2) {
+            snprintf(err_msg, sizeof(err_msg), "接続できません (PASS ERROR: %u)",
+                     (unsigned)s_wifi_last_disconnect_reason);
+        } else if (s_wifi_last_disconnect_reason == 201) {
+            snprintf(err_msg, sizeof(err_msg), "接続できません (NO AP: %u)",
+                     (unsigned)s_wifi_last_disconnect_reason);
+        } else {
+            snprintf(err_msg, sizeof(err_msg), "接続できません (ERR: %u)",
+                     (unsigned)s_wifi_last_disconnect_reason);
+        }
+        wifi_set_status(ui, err_msg);
+    } else if (s_wifi_scan_failed) {
+        wifi_set_status(ui, "Wi-Fi ERROR");
     } else if (s_wifi_scan_running) {
         wifi_set_status(ui, "Wi-Fi 確認中…");
+    } else if (s_wifi_ap_count > 0) {
+        char status[48];
+        snprintf(status, sizeof(status), "Wi-Fi %u  未接続", (unsigned)s_wifi_ap_count);
+        wifi_set_status(ui, status);
     } else {
-        wifi_set_status(ui, "Wi-Fi 0");
+        wifi_set_status(ui, "Wi-Fi 0  未接続");
     }
+}
+
+static void apply_weather_ui(esp_gsp_handle_t ui)
+{
+    if (s_live_scene != GSP_BUNDLE_SCENE_KORVO_WEATHER) {
+        return;
+    }
+    weather_info_t info;
+    weather_service_get_info(&info);
+
+#if defined(GSP_KORVO_WEATHER_BIND_WEATHER_TITLE)
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WEATHER_BIND_WEATHER_TITLE, info.location);
+#endif
+#if defined(GSP_KORVO_WEATHER_BIND_WEATHER_BADGE)
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WEATHER_BIND_WEATHER_BADGE, info.badge);
+#endif
+#if defined(GSP_KORVO_WEATHER_BIND_WEATHER_TEMP)
+    char temp_buf[16];
+    snprintf(temp_buf, sizeof(temp_buf), "%d℃", info.temp_c);
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WEATHER_BIND_WEATHER_TEMP, temp_buf);
+#endif
+#if defined(GSP_KORVO_WEATHER_BIND_WEATHER_COND)
+    const char *cond_name = "晴れ";
+    if (info.condition == WEATHER_COND_CLOUDY) cond_name = "雲";
+    else if (info.condition == WEATHER_COND_RAINY) cond_name = "雨";
+    else if (info.condition == WEATHER_COND_SNOWY) cond_name = "雪";
+    else if (info.condition == WEATHER_COND_THUNDER) cond_name = "雷";
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WEATHER_BIND_WEATHER_COND, cond_name);
+#endif
+#if defined(GSP_KORVO_WEATHER_BIND_WEATHER_TIME)
+    char time_buf[32];
+    snprintf(time_buf, sizeof(time_buf), "更新 %s", info.update_time);
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WEATHER_BIND_WEATHER_TIME, time_buf);
+#endif
+#if defined(GSP_KORVO_WEATHER_BIND_WEATHER_MAIN)
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WEATHER_BIND_WEATHER_MAIN, info.main_text);
+#endif
+#if defined(GSP_KORVO_WEATHER_BIND_WEATHER_LORE)
+    (void)esp_gsp_set_text(ui, GSP_KORVO_WEATHER_BIND_WEATHER_LORE, info.lore_text);
+#endif
+
+    weather_service_clear_dirty();
 }
 
 static void remember_settings_return(uint16_t scene_id)
@@ -453,21 +637,30 @@ static void toggle_sync_timer_cb(esp_gsp_handle_t ui, void *ctx)
         s_wifi_results_dirty = false;
         apply_wifi_scan_ui(ui);
     }
+    if (s_live_scene == GSP_BUNDLE_SCENE_KORVO_WEATHER && weather_service_is_dirty()) {
+        apply_weather_ui(ui);
+    }
 }
 
 static void board_ui_open_scene(esp_gsp_handle_t ui, app_state_t *state,
                                 app_event_t app_event, uint16_t scene_id)
 {
-    if (!s_reopen_drawer) {
+    const bool is_details_scene = (scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI ||
+                                   scene_id == GSP_BUNDLE_SCENE_KORVO_BLUETOOTH);
+
+    if (!s_reopen_drawer && !is_details_scene) {
         (void)esp_gsp_drawer_close(ui, GSP_OBJ_KEY_QUICK_SETTINGS_DRAWER, false);
     }
     if (scene_id != GSP_BUNDLE_SCENE_KORVO_WIFI) {
         ++s_wifi_scan_generation;
+        (void)esp_gsp_keyboard_attach(ui, ESP_GSP_KEYBOARD_NONE, 0);
+        (void)esp_gsp_drawer_close(ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_CONNECT_DRAWER, false);
     }
     synth_service_set_active(scene_id == GSP_BUNDLE_SCENE_KORVO_SYNTH);
     app_state_dispatch(state, app_event);
-    esp_gsp_transition_t trans = s_reopen_drawer ? ESP_GSP_NO_TRANSITION
-                                                 : ESP_GSP_FADE_THROUGH_BLACK;
+    esp_gsp_transition_t trans = (s_reopen_drawer || is_details_scene)
+                                     ? ESP_GSP_NO_TRANSITION
+                                     : ESP_GSP_FADE_THROUGH_BLACK;
     esp_gsp_err_t err = esp_gsp_goto_scene(ui, scene_id, trans);
     if (err != ESP_GSP_OK) {
         ESP_LOGE(TAG, "change scene %u failed: %d", (unsigned)scene_id, (int)err);
@@ -494,7 +687,12 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
             (void)esp_gsp_drawer_close(ui, GSP_OBJ_KEY_QUICK_SETTINGS_DRAWER, false);
         }
         if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI) {
+            (void)esp_gsp_drawer_close(ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_CONNECT_DRAWER, false);
+            (void)esp_gsp_keyboard_attach(ui, ESP_GSP_KEYBOARD_NONE, 0);
             apply_wifi_scan_ui(ui);
+        } else if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_WEATHER) {
+            weather_service_trigger_refresh();
+            apply_weather_ui(ui);
         } else if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_BLUETOOTH) {
             if (s_bt_list == ESP_GSP_LIST_NONE) {
                 s_bt_list = esp_gsp_list_bind_component(
@@ -522,6 +720,13 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
             ui, GSP_OBJ_KEY_WIFI_ENABLED, &widget_checked);
         if (ck_err == ESP_GSP_OK) {
             s_wifi_enabled = widget_checked;
+        }
+        if (!s_wifi_enabled) {
+            (void)esp_wifi_disconnect();
+            s_wifi_conn_state = WIFI_CONN_STATE_DISCONNECTED;
+            s_connected_ip[0] = '\0';
+            weather_service_set_offline();
+            s_wifi_results_dirty = true;
         }
         ESP_LOGI(TAG, "Wi-Fi toggled: %s (raw arg=%u checked=%d err=%d)",
                  s_wifi_enabled ? "ON" : "OFF", (unsigned)event->arg,
@@ -564,7 +769,61 @@ static void board_ui_event(esp_gsp_handle_t ui, const esp_gsp_event_t *event,
     if (event->scene_id == GSP_BUNDLE_SCENE_KORVO_WIFI) {
         if (event->action_id == GSP_KORVO_WIFI_ACT_ID_RESCAN) {
             wifi_scan_async(ui);
+        } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_WIFI_DISCONNECT) {
+            ESP_LOGI(TAG, "User requested Wi-Fi disconnect");
+            (void)esp_wifi_disconnect();
+            s_wifi_conn_state = WIFI_CONN_STATE_DISCONNECTED;
+            s_connected_ip[0] = '\0';
+            weather_service_set_offline();
+            s_wifi_results_dirty = true;
+        } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_WIFI_PREV_PAGE) {
+            if (s_wifi_page > 0) {
+                s_wifi_page--;
+                s_wifi_results_dirty = true;
+            }
+        } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_WIFI_NEXT_PAGE) {
+            if ((s_wifi_page + 1) * 7 < s_wifi_ap_count) {
+                s_wifi_page++;
+                s_wifi_results_dirty = true;
+            }
+        } else if (event->action_id >= GSP_KORVO_WIFI_ACT_ID_WIFI_SELECT_0 &&
+                   event->action_id <= GSP_KORVO_WIFI_ACT_ID_WIFI_SELECT_6) {
+            int row_idx = event->action_id - GSP_KORVO_WIFI_ACT_ID_WIFI_SELECT_0;
+            int ap_idx = (int)s_wifi_page * 7 + row_idx;
+            if (ap_idx < s_wifi_ap_count && strlen((const char *)s_wifi_aps[ap_idx].ssid) > 0) {
+                s_selected_ap = s_wifi_aps[ap_idx];
+                char ssid_buf[64];
+                snprintf(ssid_buf, sizeof(ssid_buf), "SSID: %s", (const char *)s_selected_ap.ssid);
+                (void)esp_gsp_set_text(ui, GSP_KORVO_WIFI_BIND_WIFI_CONNECT_SSID, ssid_buf);
+                if (s_selected_ap.authmode == WIFI_AUTH_OPEN) {
+                    wifi_connect_to_ap((const char *)s_selected_ap.ssid, NULL);
+                } else {
+                    (void)esp_gsp_drawer_open(ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_CONNECT_DRAWER, true);
+                    (void)esp_gsp_keyboard_attach(ui, ESP_GSP_KEYBOARD_NONE, 0);
+                    (void)esp_gsp_set_text(ui, GSP_KORVO_WIFI_BIND_WIFI_PASS_INPUT, "");
+                    (void)esp_gsp_keyboard_attach(ui, GSP_KORVO_WIFI_ACT_ID_WIFI_KEYBOARD_KEY,
+                                                  GSP_KORVO_WIFI_BIND_WIFI_PASS_INPUT);
+                }
+            }
+        } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_WIFI_CONNECT_CONFIRM ||
+                   event->action_id == GSP_KORVO_WIFI_ACT_ID_WIFI_KEYBOARD_KEY) {
+            const char *target_ssid = (const char *)s_selected_ap.ssid;
+            if (strlen(target_ssid) == 0 && strlen(s_connecting_ssid) > 0) {
+                target_ssid = s_connecting_ssid;
+            }
+            char pass_buf[64] = {0};
+            (void)esp_gsp_keyboard_text(ui, pass_buf, sizeof(pass_buf));
+            (void)esp_gsp_keyboard_attach(ui, ESP_GSP_KEYBOARD_NONE, 0);
+            (void)esp_gsp_drawer_close(ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_CONNECT_DRAWER, true);
+            if (strlen(target_ssid) > 0) {
+                wifi_connect_to_ap(target_ssid, pass_buf);
+            }
+        } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_WIFI_CONNECT_CANCEL) {
+            (void)esp_gsp_keyboard_attach(ui, ESP_GSP_KEYBOARD_NONE, 0);
+            (void)esp_gsp_drawer_close(ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_CONNECT_DRAWER, true);
         } else if (event->action_id == GSP_KORVO_WIFI_ACT_ID_HOME) {
+            (void)esp_gsp_keyboard_attach(ui, ESP_GSP_KEYBOARD_NONE, 0);
+            (void)esp_gsp_drawer_close(ui, GSP_KORVO_WIFI_OBJ_KEY_WIFI_CONNECT_DRAWER, false);
             s_reopen_drawer = true;
             board_ui_open_scene(ui, state, s_settings_return_event,
                                 s_settings_return_scene);

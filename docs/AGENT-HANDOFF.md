@@ -49,15 +49,25 @@ set-target 适配 ESP32-S31-Korvo-1、ESP32-S31 Mosaico、ESP32-P4X-Function-EV 
   - Wi-Fi 详情：扫描完成后左上角从「確認中」变为 AP 数，SSID 列表无需拖动即可显示。
   - 详情页「ホーム」回到**进入前的页面**并立刻打开快捷设置，不闪空桌面。
 - Synthesizer：20 键布局、波形/DSP 引擎、A2DP Sink 名 `Yokai-Groovebox` 已接入代码并完成过全量构建；groovebox 发声与混音以固件为准，后续 Agent 接手后应再真机听一次，不要假设未发声。
+- **Wi-Fi 真实连接功能**：
+  - 在 Wi-Fi 详情页点击 SSID 唤起底部连接抽屉（`wifi_connect_drawer`），内置 GSP 虚拟键盘输入密码。
+  - 支持连接成功获取 IP、连接失败捕获原因码错误提示。
+  - 修复关闭 Wi-Fi 开关后的后台状态同步，断开后无线状态与天气状态同步降级。
+- **天气 App（纯正雪女神话 UI）**：
+  - 彻底根除两层 UI 重叠冲突，移除外部黄色边框卡片（`weather_card`）与实体蓝色按钮。
+  - 底图（`assets/images/yokai_weather_sunny_800.png`）进行了精准平滑擦除，完美呈现雪女（Yukionna）、花猫、富士山、红枫小桥流水、“東京”与“Open-Meteo”。
+  - 动态温度（28px）、天气（24px）、时间（18px）、状态徽章（18px）以无边框无背景文字直接融入画卷。
+  - 真实 Open-Meteo 数据获取 + 离线 DEMO 兜底（Wi-Fi 断开时稳定保持 DEMO 状态，不偷连）。
+  - 返回与 Home 按钮采用全透明热区覆盖。
 
 ## 下一步（按用户优先级）
 
-用户要求先做完第一页四个 App。建议顺序：
+用户要求先做完第一页四个 App。当前 Task 2 (Synthesizer) 与 Task 3 (Weather) 已完成并经真机验证，建议顺序：
 
-1. **Task 3 天气**（计划文件中下一未勾项）：复用已有 STA 扫描/初始化，补连接、SNTP、天气请求。城市/数据源/凭据问用户；密钥不得进仓库。
-2. Task 4 语音/AEC → Task 5 物体识别。
-3. Task 6 剩余：开关控制**真实** Wi-Fi/BT radio、跨场景同步、BLE 扫描/连接。UI 门禁与扫描列表已完成，不要重做。
-4. 第二页业务、待机、Mosaico、P4X。
+1. **Task 4 语音与 AEC**：配置 ESP-SR AFE（AEC、降噪、VAD、WakeNet），唤醒词 `wn9l_ja_konnichihaesp_tts3`，接英语/日语命令词识别。
+2. **Task 5 物体识别**：板载相机预览与 ESP-DL 视觉推理。
+3. **Task 6 剩余**：BLE 详情扫描/连接，双开关在所有场景间的常驻广播同步。
+4. **第二页业务、待机、Mosaico、P4X**。
 
 完整任务清单：`docs/superpowers/plans/2026-09-10-korvo1-next-development.md`。
 
@@ -75,22 +85,29 @@ set-target 适配 ESP32-S31-Korvo-1、ESP32-S31 Mosaico、ESP32-P4X-Function-EV 
 8. **不要**从 Wi-Fi scan worker 调 GSP。填 `s_wifi_aps` / `s_wifi_ap_count`，设 `s_wifi_results_dirty`，由 UI 定时器/`SCENE_CHANGED` 调 `apply_wifi_scan_ui()`。
 9. List **每个逻辑列表只 bind 一次**（`CONFIG_ESP_GSP_MAX_LISTS` 默认 5）。更新用 `set_total` + `refresh`，不要每次 `SCENE_CHANGED` 再 bind。
 10. 动态列表总数若已等于 JSON 占位行数（Wi-Fi 为 10），`set_total(10)` 不会重绑已可见行。必须 `set_total(0)` 再 `set_total(N)` 然后 `refresh`，否则 SSID 要拖动才出现。
-11. 从 Wi-Fi/BT 详情按「ホーム」：`remember_settings_return` → `s_reopen_drawer` → `ESP_GSP_NO_TRANSITION` → `SCENE_CHANGED` 里 `drawer_open(..., false)`。不要 `FADE_THROUGH_BLACK` + 带动画的 `drawer_open`（会闪空桌面）。
-12. 全场景同一有序 `font_charset`。只改一个场景会 `GSPC-RS-FONT-ORDER-CONFLICT`。
+11. Wi-Fi/BT 详情页切入与返回：
+    - 切入（点击 card）：`is_details_scene` 时不要在原场景提前 `drawer_close` 暴露母页，且必须使用 `ESP_GSP_NO_TRANSITION` 直接切入，杜绝闪回母 App 画面；
+    - 返回（按「ホーム」）：`remember_settings_return` → `s_reopen_drawer` → `ESP_GSP_NO_TRANSITION` → `SCENE_CHANGED` 里 `drawer_open(..., false)`。不要 `FADE_THROUGH_BLACK` + 带动画的 `drawer_open`（会闪空桌面）。
+12. 全场景同一有序 `font_charset`（目前 289 字符，自动化检查：`test/check_font_charset.py`）。只改一个场景或改动字体顺序会触发 `GSPC-RS-FONT-ORDER-CONFLICT`。所有场景必须声明相同的有序字体集 `[15, 16, 18, 20, 22, 24, 28, 30]`。
 13. 不要改 RGB panel 初始化路径（曾黑屏）。App 场景不要开 swipe。
+14. 天气 App 原画不可遮挡：底图为雪女神话像素原画，动态温度/天气/更新时间/徽章直接裸露嵌入画卷对应平滑区域，不要叠加外部有色边框或容器；返回与 Home 必须保持为无框 100% 透明热区。
+15. 离线状态守卫：Wi-Fi 关闭或断开连接时，`weather_service.c` 必须稳定降级回 DEMO 基准（26℃、晴れ、更新 14:30），禁止在无网络状态下循环重试偷连 Wi-Fi 导致状态闪烁。
 
 ## 关键代码地图
 
 | 路径 | 职责 |
 | --- | --- |
 | `firmware/korvo1_yokai_demo/main/app_state.h/.c` | 页面/Home/语音状态 |
-| `firmware/korvo1_yokai_demo/main/board_ui.c` | BSP、GSP 事件、抽屉、Wi-Fi 扫描 UI |
+| `firmware/korvo1_yokai_demo/main/board_ui.c` | BSP、GSP 事件、抽屉、Wi-Fi 扫描与连接 UI、天气 UI 绑定 |
 | `firmware/korvo1_yokai_demo/main/app_main.c` | NVS、static `app_state_t`、启动 |
 | `firmware/korvo1_yokai_demo/main/synth_service.c/.h` | 合成器、DSP、A2DP Sink |
-| `firmware/korvo1_yokai_demo/scenes/korvo_*_800.json` | 桌面、八 App、Wi-Fi、Bluetooth |
-| `firmware/korvo1_yokai_demo/test/check_wifi_bt_drawer.py` | 抽屉卡片 JSON 不变量 |
+| `firmware/korvo1_yokai_demo/main/weather_service.c/.h` | Open-Meteo 天气请求、SNTP 时间校准、LIVE/DEMO 状态管理 |
+| `firmware/korvo1_yokai_demo/scenes/korvo_*_800.json` | 桌面、八 App、Wi-Fi、Bluetooth 场景 JSON |
+| `firmware/korvo1_yokai_demo/test/check_wifi_bt_drawer.py` | 抽屉卡片与层级结构 JSON 自动化检查 |
+| `firmware/korvo1_yokai_demo/test/check_font_charset.py` | 11 场景 289 字符集一致性自动化检查 |
 | `firmware/korvo1_yokai_demo/test/test_app_state.c` | 宿主机导航测试 |
 | `firmware/korvo1_yokai_demo/test/test_synth_math.c` | 合成器数学自检 |
+| `firmware/korvo1_yokai_demo/test/test_weather_service.c` | 天气 WMO 映射、Open-Meteo JSON 解析与格式化宿主机单元测试 |
 
 抽屉 object key 在各场景相同：`GSP_OBJ_KEY_QUICK_SETTINGS_DRAWER`。Wi-Fi scene 9，Bluetooth scene 10。
 

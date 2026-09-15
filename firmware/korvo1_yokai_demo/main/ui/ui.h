@@ -12,6 +12,13 @@ typedef enum {
     UI_SCREEN_HOME = 0,
     UI_SCREEN_SYNTH,
     UI_SCREEN_WEATHER,
+    UI_SCREEN_WIFI,
+    UI_SCREEN_VOICE,
+    UI_SCREEN_VISION,
+    UI_SCREEN_FIREWORKS,
+    UI_SCREEN_CLOCK,
+    UI_SCREEN_CALCULATOR,
+    UI_SCREEN_FOOD,
     UI_SCREEN_MAX,
 } ui_screen_t;
 
@@ -24,7 +31,7 @@ void ui_switch_screen(ui_screen_t target);
 /** Get currently active screen. */
 ui_screen_t ui_get_current_screen(void);
 
-/** Periodic tick hook for updating waveform, weather info, and clock. */
+/** Periodic tick hook for updating waveform, weather info, wifi, and clock. */
 void ui_tick_periodic(void);
 
 #ifdef __cplusplus

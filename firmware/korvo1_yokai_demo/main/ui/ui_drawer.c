@@ -9,8 +9,10 @@ static lv_obj_t *s_slider_vol = NULL;
 static lv_obj_t *s_slider_bright = NULL;
 static lv_obj_t *s_lbl_vol_val = NULL;
 static lv_obj_t *s_lbl_bright_val = NULL;
+static lv_obj_t *s_lbl_wf_desc = NULL;
 
 static ui_drawer_wifi_toggle_cb_t s_wifi_cb = NULL;
+static ui_drawer_wifi_details_cb_t s_wifi_details_cb = NULL;
 static ui_drawer_bt_toggle_cb_t s_bt_cb = NULL;
 static ui_drawer_volume_cb_t s_vol_cb = NULL;
 static ui_drawer_brightness_cb_t s_bright_cb = NULL;
@@ -18,30 +20,42 @@ static ui_drawer_brightness_cb_t s_bright_cb = NULL;
 static void wifi_switch_event_cb(lv_event_t *e)
 {
     lv_obj_t *sw = lv_event_get_target(e);
-    bool en = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    bool state = lv_obj_has_state(sw, LV_STATE_CHECKED);
     if (s_wifi_cb) {
-        s_wifi_cb(en);
+        s_wifi_cb(state);
+    }
+}
+
+static void wifi_card_click_cb(lv_event_t *e)
+{
+    lv_obj_t *target = lv_event_get_target(e);
+    /* Ignore clicks directly on the switch */
+    if (target == s_sw_wifi) {
+        return;
+    }
+    bool enabled = lv_obj_has_state(s_sw_wifi, LV_STATE_CHECKED);
+    if (enabled && s_wifi_details_cb) {
+        ui_drawer_set_visible(false);
+        s_wifi_details_cb();
     }
 }
 
 static void bt_switch_event_cb(lv_event_t *e)
 {
     lv_obj_t *sw = lv_event_get_target(e);
-    bool en = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    bool state = lv_obj_has_state(sw, LV_STATE_CHECKED);
     if (s_bt_cb) {
-        s_bt_cb(en);
+        s_bt_cb(state);
     }
 }
 
 static void vol_slider_event_cb(lv_event_t *e)
 {
     lv_obj_t *slider = lv_event_get_target(e);
-    int val = lv_slider_get_value(slider);
-    if (s_lbl_vol_val) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d%%", val);
-        lv_label_set_text(s_lbl_vol_val, buf);
-    }
+    int32_t val = lv_slider_get_value(slider);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d%%", (int)val);
+    lv_label_set_text(s_lbl_vol_val, buf);
     if (s_vol_cb) {
         s_vol_cb(val);
     }
@@ -50,12 +64,10 @@ static void vol_slider_event_cb(lv_event_t *e)
 static void bright_slider_event_cb(lv_event_t *e)
 {
     lv_obj_t *slider = lv_event_get_target(e);
-    int val = lv_slider_get_value(slider);
-    if (s_lbl_bright_val) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d%%", val);
-        lv_label_set_text(s_lbl_bright_val, buf);
-    }
+    int32_t val = lv_slider_get_value(slider);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d%%", (int)val);
+    lv_label_set_text(s_lbl_bright_val, buf);
     if (s_bright_cb) {
         s_bright_cb(val);
     }
@@ -69,11 +81,13 @@ static void close_btn_event_cb(lv_event_t *e)
 
 lv_obj_t *ui_drawer_create(lv_obj_t *parent,
                            ui_drawer_wifi_toggle_cb_t wifi_cb,
+                           ui_drawer_wifi_details_cb_t wifi_details_cb,
                            ui_drawer_bt_toggle_cb_t bt_cb,
                            ui_drawer_volume_cb_t vol_cb,
                            ui_drawer_brightness_cb_t bright_cb)
 {
     s_wifi_cb = wifi_cb;
+    s_wifi_details_cb = wifi_details_cb;
     s_bt_cb = bt_cb;
     s_vol_cb = vol_cb;
     s_bright_cb = bright_cb;
@@ -118,6 +132,8 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_size(card_wifi, 280, 110);
     lv_obj_set_pos(card_wifi, 20, 65);
     lv_obj_remove_flag(card_wifi, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(card_wifi, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(card_wifi, wifi_card_click_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_wf = lv_label_create(card_wifi);
     lv_label_set_text(lbl_wf, "Wi-Fi (STA)");
@@ -125,15 +141,16 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_style_text_font(lbl_wf, UI_FONT_REGULAR, 0);
     lv_obj_set_pos(lbl_wf, 12, 12);
 
-    lv_obj_t *lbl_wf_desc = lv_label_create(card_wifi);
-    lv_label_set_text(lbl_wf_desc, "Open-Meteo 天気接続");
-    lv_obj_set_style_text_color(lbl_wf_desc, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_wf_desc, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_wf_desc, 12, 40);
+    s_lbl_wf_desc = lv_label_create(card_wifi);
+    lv_label_set_text(s_lbl_wf_desc, "未接続 (タップして設定)");
+    lv_obj_set_style_text_color(s_lbl_wf_desc, UI_COLOR_TEXT_SUB, 0);
+    lv_obj_set_style_text_font(s_lbl_wf_desc, UI_FONT_SMALL, 0);
+    lv_obj_set_pos(s_lbl_wf_desc, 12, 40);
 
     s_sw_wifi = lv_switch_create(card_wifi);
     lv_obj_set_pos(s_sw_wifi, 195, 20);
     lv_obj_set_style_bg_color(s_sw_wifi, UI_COLOR_CYAN_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_state(s_sw_wifi, LV_STATE_CHECKED);
     lv_obj_add_event_cb(s_sw_wifi, wifi_switch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     /* 2. Bluetooth Card */
@@ -240,4 +257,22 @@ bool ui_drawer_is_visible(void)
 {
     if (!s_drawer_modal) return false;
     return !lv_obj_has_flag(s_drawer_modal, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_drawer_update_status(const board_wifi_info_t *wifi_info)
+{
+    if (!s_lbl_wf_desc || !wifi_info) return;
+
+    if (wifi_info->state == BOARD_WIFI_CONNECTED) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "接続済み: %s", wifi_info->connected_ssid);
+        lv_label_set_text(s_lbl_wf_desc, buf);
+        lv_obj_set_style_text_color(s_lbl_wf_desc, UI_COLOR_CYAN_ACCENT, 0);
+    } else if (wifi_info->state == BOARD_WIFI_CONNECTING) {
+        lv_label_set_text(s_lbl_wf_desc, "接続中…");
+        lv_obj_set_style_text_color(s_lbl_wf_desc, UI_COLOR_CYAN_ACCENT, 0);
+    } else {
+        lv_label_set_text(s_lbl_wf_desc, "未接続 (タップして設定)");
+        lv_obj_set_style_text_color(s_lbl_wf_desc, UI_COLOR_TEXT_SUB, 0);
+    }
 }

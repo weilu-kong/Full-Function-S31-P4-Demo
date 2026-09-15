@@ -18,19 +18,48 @@ static lv_obj_t *s_btn_wave = NULL;
 static lv_obj_t *s_lbl_wave = NULL;
 static ui_synth_home_cb_t s_home_cb = NULL;
 
+static lv_obj_t *s_btn_modes[3] = {0};
+
 static float s_last_active_freq = 0.0f;
 static uint32_t s_wave_phase = 0;
 
-static const struct {
+/* 12 White Keys */
+typedef struct {
     const char *name;
     float freq;
-} s_synth_keys[20] = {
-    {"C3", 130.81f}, {"C#3", 138.59f}, {"D3", 146.83f}, {"D#3", 155.56f},
-    {"E3", 164.81f}, {"F3", 174.61f}, {"F#3", 185.00f}, {"G3", 196.00f},
-    {"G#3", 207.65f}, {"A3", 220.00f},
-    {"A#3", 233.08f}, {"B3", 246.94f}, {"C4", 261.63f}, {"C#4", 277.18f},
-    {"D4", 293.66f}, {"D#4", 311.13f}, {"E4", 329.63f}, {"F4", 349.23f},
-    {"G4", 392.00f}, {"A4", 440.00f},
+} synth_key_info_t;
+
+static const synth_key_info_t s_white_keys[12] = {
+    {"C3", 130.81f},
+    {"D3", 146.83f},
+    {"E3", 164.81f},
+    {"F3", 174.61f},
+    {"G3", 196.00f},
+    {"A3", 220.00f},
+    {"B3", 246.94f},
+    {"C4", 261.63f},
+    {"D4", 293.66f},
+    {"E4", 329.63f},
+    {"F4", 349.23f},
+    {"G4", 392.00f},
+};
+
+/* 8 Black Keys (placed between specific white keys) */
+typedef struct {
+    const char *name;
+    float freq;
+    int after_white_idx;
+} synth_black_key_info_t;
+
+static const synth_black_key_info_t s_black_keys[8] = {
+    {"C#3", 138.59f, 0},
+    {"D#3", 155.56f, 1},
+    {"F#3", 185.00f, 3},
+    {"G#3", 207.65f, 4},
+    {"A#3", 233.08f, 5},
+    {"C#4", 277.18f, 7},
+    {"D#4", 311.13f, 8},
+    {"F#4", 369.99f, 10},
 };
 
 static void home_click_event_cb(lv_event_t *e)
@@ -42,19 +71,43 @@ static void home_click_event_cb(lv_event_t *e)
     }
 }
 
-static void key_event_cb(lv_event_t *e)
+static void key_play_note(float freq, bool on)
+{
+    if (on) {
+        s_last_active_freq = freq;
+        synth_service_note_on(freq, 1.0f);
+        ESP_LOGD(TAG, "Note ON: %.2f Hz", freq);
+    } else {
+        if (s_last_active_freq == freq) {
+            synth_service_note_on(0.0f, 0.0f);
+            s_last_active_freq = 0.0f;
+        }
+    }
+}
+
+static void white_key_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    uintptr_t key_idx = (uintptr_t)lv_event_get_user_data(e);
-    if (key_idx >= 20) return;
+    uintptr_t idx = (uintptr_t)lv_event_get_user_data(e);
+    if (idx >= 12) return;
 
     if (code == LV_EVENT_PRESSED) {
-        s_last_active_freq = s_synth_keys[key_idx].freq;
-        synth_service_note_on(s_last_active_freq, 1.0f);
-        ESP_LOGD(TAG, "Key %s pressed (%.2f Hz)", s_synth_keys[key_idx].name, s_last_active_freq);
-    } else if (code == LV_EVENT_RELEASED) {
-        synth_service_note_on(0.0f, 0.0f);
-        s_last_active_freq = 0.0f;
+        key_play_note(s_white_keys[idx].freq, true);
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        key_play_note(s_white_keys[idx].freq, false);
+    }
+}
+
+static void black_key_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    uintptr_t idx = (uintptr_t)lv_event_get_user_data(e);
+    if (idx >= 8) return;
+
+    if (code == LV_EVENT_PRESSED) {
+        key_play_note(s_black_keys[idx].freq, true);
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        key_play_note(s_black_keys[idx].freq, false);
     }
 }
 
@@ -101,10 +154,28 @@ static void wave_switch_event_cb(lv_event_t *e)
     synth_wave_t next = (cur + 1) % SYNTH_WAVE_MAX;
     synth_service_set_waveform(next);
 
-    const char *names[] = {"SIN 波", "SQR 矩形", "SAW 锯齿", "DRUM 太鼓"};
+    const char *names[] = {"SIN 正弦", "SQR 矩形", "SAW 鋸歯", "和太鼓 (Drum)"};
     if (s_lbl_wave && next < SYNTH_WAVE_MAX) {
         lv_label_set_text(s_lbl_wave, names[next]);
     }
+}
+
+static void mode_select_event_cb(lv_event_t *e)
+{
+    synth_mode_t mode = (synth_mode_t)(uintptr_t)lv_event_get_user_data(e);
+    synth_service_set_mode(mode);
+    for (int i = 0; i < 3; i++) {
+        if (s_btn_modes[i]) {
+            if (i == (int)mode) {
+                lv_obj_set_style_bg_color(s_btn_modes[i], UI_COLOR_GOLD_ACCENT, 0);
+                lv_obj_set_style_text_color(lv_obj_get_child(s_btn_modes[i], 0), lv_color_hex(0x0C0F17), 0);
+            } else {
+                lv_obj_set_style_bg_color(s_btn_modes[i], UI_COLOR_KEY_WHITE, 0);
+                lv_obj_set_style_text_color(lv_obj_get_child(s_btn_modes[i], 0), UI_COLOR_TEXT_SUB, 0);
+            }
+        }
+    }
+    ESP_LOGI(TAG, "Switched Synth Mode: %d", (int)mode);
 }
 
 lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
@@ -112,51 +183,75 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     s_home_cb = home_cb;
 
     s_scr_synth = lv_obj_create(NULL);
+    lv_obj_set_size(s_scr_synth, 800, 480);
     lv_obj_set_style_bg_color(s_scr_synth, UI_COLOR_BG_DARK, 0);
-    lv_obj_set_style_bg_opa(s_scr_synth, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(s_scr_synth, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Background Subtle Grid / Carbon texture */
-    lv_obj_t *bg_overlay = lv_obj_create(s_scr_synth);
-    lv_obj_set_size(bg_overlay, 800, 480);
-    lv_obj_center(bg_overlay);
-    lv_obj_set_style_bg_color(bg_overlay, lv_color_hex(0x10141D), 0);
-    lv_obj_set_style_border_width(bg_overlay, 0, 0);
-    lv_obj_set_style_radius(bg_overlay, 0, 0);
-    lv_obj_remove_flag(bg_overlay, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* Top Bar: Title & Home Button */
+    /* 1. Header Bar: Home Button, Title, and Mode Buttons */
     lv_obj_t *btn_home = lv_button_create(s_scr_synth);
     lv_obj_add_style(btn_home, &ui_style_btn_home, 0);
-    lv_obj_set_size(btn_home, 110, 38);
-    lv_obj_set_pos(btn_home, 20, 12);
+    lv_obj_set_size(btn_home, 106, 36);
+    lv_obj_set_pos(btn_home, 16, 12);
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
+
     lv_obj_t *lbl_home = lv_label_create(btn_home);
-    lv_label_set_text(lbl_home, "< ホーム");
+    lv_label_set_text(lbl_home, "⌂ ホーム");
     lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 
     lv_obj_t *lbl_title = lv_label_create(s_scr_synth);
-    lv_label_set_text(lbl_title, "妖怪シンセサイザー (Yokai Groovebox)");
+    lv_label_set_text(lbl_title, "妖精の鍵盤 (Yokai Groovebox)");
     lv_obj_set_style_text_color(lbl_title, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_title, UI_FONT_TITLE, 0);
-    lv_obj_set_pos(lbl_title, 150, 18);
+    lv_obj_set_pos(lbl_title, 134, 15);
 
-    /* Upper Left: Real-time Oscilloscope Display Card */
+    /* Mode Buttons: KEY / BT / WEB */
+    synth_mode_t cur_mode = synth_service_get_mode();
+    const char *mode_names[3] = {"KEY 鍵盤", "BT 無線", "WEB 連携"};
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *btn_m = lv_button_create(s_scr_synth);
+        lv_obj_set_size(btn_m, 86, 36);
+        lv_obj_set_pos(btn_m, 506 + i * 92, 12);
+        lv_obj_set_style_radius(btn_m, 18, 0);
+        lv_obj_set_style_border_width(btn_m, 1, 0);
+        lv_obj_set_style_border_color(btn_m, UI_COLOR_GOLD_ACCENT, 0);
+
+        if (i == (int)cur_mode) {
+            lv_obj_set_style_bg_color(btn_m, UI_COLOR_GOLD_ACCENT, 0);
+        } else {
+            lv_obj_set_style_bg_color(btn_m, UI_COLOR_KEY_WHITE, 0);
+        }
+
+        lv_obj_t *lbl_m = lv_label_create(btn_m);
+        lv_label_set_text(lbl_m, mode_names[i]);
+        lv_obj_set_style_text_font(lbl_m, UI_FONT_SMALL, 0);
+        if (i == (int)cur_mode) {
+            lv_obj_set_style_text_color(lbl_m, lv_color_hex(0x0C0F17), 0);
+        } else {
+            lv_obj_set_style_text_color(lbl_m, UI_COLOR_TEXT_SUB, 0);
+        }
+        lv_obj_center(lbl_m);
+
+        lv_obj_add_event_cb(btn_m, mode_select_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        s_btn_modes[i] = btn_m;
+    }
+
+    /* 2. Oscilloscope Display Card (Upper Left) */
     lv_obj_t *osc_card = lv_obj_create(s_scr_synth);
     lv_obj_add_style(osc_card, &ui_style_glass_card, 0);
-    lv_obj_set_size(osc_card, 380, 200);
-    lv_obj_set_pos(osc_card, 20, 60);
+    lv_obj_set_size(osc_card, 380, 196);
+    lv_obj_set_pos(osc_card, 16, 56);
     lv_obj_remove_flag(osc_card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *lbl_osc_title = lv_label_create(osc_card);
-    lv_label_set_text(lbl_osc_title, "OSCILLOSCOPE  /  示波器");
+    lv_label_set_text(lbl_osc_title, "示波器 (OSCILLOSCOPE)");
     lv_obj_set_style_text_color(lbl_osc_title, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_osc_title, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_osc_title, 10, 8);
+    lv_obj_set_pos(lbl_osc_title, 12, 8);
 
     s_chart_wave = lv_chart_create(osc_card);
-    lv_obj_set_size(s_chart_wave, 340, 140);
-    lv_obj_set_pos(s_chart_wave, 10, 30);
+    lv_obj_set_size(s_chart_wave, 344, 140);
+    lv_obj_set_pos(s_chart_wave, 10, 32);
     lv_chart_set_type(s_chart_wave, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(s_chart_wave, 32);
     lv_chart_set_range(s_chart_wave, LV_CHART_AXIS_PRIMARY_Y, -100, 100);
@@ -169,17 +264,17 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
         lv_chart_set_next_value(s_chart_wave, s_ser_wave, 0);
     }
 
-    /* Upper Right: Knobs and Control Card */
+    /* 3. Knobs and Controls Card (Upper Right) */
     lv_obj_t *ctrl_card = lv_obj_create(s_scr_synth);
     lv_obj_add_style(ctrl_card, &ui_style_glass_card, 0);
-    lv_obj_set_size(ctrl_card, 360, 200);
-    lv_obj_set_pos(ctrl_card, 420, 60);
+    lv_obj_set_size(ctrl_card, 376, 196);
+    lv_obj_set_pos(ctrl_card, 408, 56);
     lv_obj_remove_flag(ctrl_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Knob 1: Cutoff Frequency Arc */
+    /* Knob 1: Cutoff Frequency */
     s_arc_cutoff = lv_arc_create(ctrl_card);
-    lv_obj_set_size(s_arc_cutoff, 95, 95);
-    lv_obj_set_pos(s_arc_cutoff, 15, 20);
+    lv_obj_set_size(s_arc_cutoff, 90, 90);
+    lv_obj_set_pos(s_arc_cutoff, 16, 16);
     lv_arc_set_rotation(s_arc_cutoff, 135);
     lv_arc_set_bg_angles(s_arc_cutoff, 0, 270);
     lv_arc_set_range(s_arc_cutoff, 0, 100);
@@ -190,100 +285,126 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_add_event_cb(s_arc_cutoff, arc_cutoff_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     lv_obj_t *lbl_cut = lv_label_create(ctrl_card);
-    lv_label_set_text(lbl_cut, "CUTOFF");
+    lv_label_set_text(lbl_cut, "遮断周波数");
     lv_obj_set_style_text_color(lbl_cut, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(lbl_cut, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_cut, 35, 120);
+    lv_obj_set_pos(lbl_cut, 26, 115);
 
     s_lbl_cutoff_val = lv_label_create(ctrl_card);
     lv_label_set_text(s_lbl_cutoff_val, "4100Hz");
     lv_obj_set_style_text_color(s_lbl_cutoff_val, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(s_lbl_cutoff_val, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(s_lbl_cutoff_val, 32, 140);
+    lv_obj_set_pos(lbl_cut, 26, 135);
 
-    /* Knob 2: Resonance Arc */
+    /* Knob 2: Resonance */
     s_arc_res = lv_arc_create(ctrl_card);
-    lv_obj_set_size(s_arc_res, 95, 95);
-    lv_obj_set_pos(s_arc_res, 135, 20);
+    lv_obj_set_size(s_arc_res, 90, 90);
+    lv_obj_set_pos(s_arc_res, 136, 16);
     lv_arc_set_rotation(s_arc_res, 135);
     lv_arc_set_bg_angles(s_arc_res, 0, 270);
     lv_arc_set_range(s_arc_res, 0, 100);
     lv_arc_set_value(s_arc_res, 30);
     lv_obj_set_style_arc_color(s_arc_res, UI_COLOR_RED_ACCENT, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(s_arc_cutoff, 6, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(s_arc_cutoff, 6, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(s_arc_res, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(s_arc_res, 6, LV_PART_MAIN);
     lv_obj_add_event_cb(s_arc_res, arc_res_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     lv_obj_t *lbl_res = lv_label_create(ctrl_card);
-    lv_label_set_text(lbl_res, "RESONANCE");
+    lv_label_set_text(lbl_res, "共鳴 (Q)");
     lv_obj_set_style_text_color(lbl_res, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(lbl_res, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_res, 145, 120);
+    lv_obj_set_pos(lbl_res, 150, 115);
 
     s_lbl_res_val = lv_label_create(ctrl_card);
     lv_label_set_text(s_lbl_res_val, "1.8");
     lv_obj_set_style_text_color(s_lbl_res_val, UI_COLOR_RED_ACCENT, 0);
     lv_obj_set_style_text_font(s_lbl_res_val, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(s_lbl_res_val, 170, 140);
+    lv_obj_set_pos(s_lbl_res_val, 165, 135);
 
-    /* Waveform Switch Button */
+    /* Waveform Button */
     s_btn_wave = lv_button_create(ctrl_card);
     lv_obj_add_style(s_btn_wave, &ui_style_pill_badge, 0);
-    lv_obj_set_size(s_btn_wave, 95, 45);
-    lv_obj_set_pos(s_btn_wave, 245, 45);
+    lv_obj_set_size(s_btn_wave, 106, 44);
+    lv_obj_set_pos(s_btn_wave, 252, 40);
     lv_obj_add_event_cb(s_btn_wave, wave_switch_event_cb, LV_EVENT_CLICKED, NULL);
 
     s_lbl_wave = lv_label_create(s_btn_wave);
-    lv_label_set_text(s_lbl_wave, "SIN 波");
+    lv_label_set_text(s_lbl_wave, "SIN 正弦");
     lv_obj_set_style_text_font(s_lbl_wave, UI_FONT_SMALL, 0);
     lv_obj_center(s_lbl_wave);
 
     lv_obj_t *lbl_wave_title = lv_label_create(ctrl_card);
-    lv_label_set_text(lbl_wave_title, "WAVEFORM");
+    lv_label_set_text(lbl_wave_title, "音色波形切替");
     lv_obj_set_style_text_color(lbl_wave_title, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(lbl_wave_title, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_wave_title, 255, 105);
+    lv_obj_set_pos(lbl_wave_title, 260, 100);
 
-    /* Lower Area: 20-Key Groovebox Keyboard Surface (2 rows x 10 keys) */
-    lv_obj_t *keys_container = lv_obj_create(s_scr_synth);
-    lv_obj_set_size(keys_container, 760, 195);
-    lv_obj_set_pos(keys_container, 20, 270);
-    lv_obj_set_style_bg_opa(keys_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(keys_container, 0, 0);
-    lv_obj_remove_flag(keys_container, LV_OBJ_FLAG_SCROLLABLE);
+    /* 4. Real Piano Keyboard Surface (12 White Keys + 8 Floating Black Keys) */
+    lv_obj_t *keys_panel = lv_obj_create(s_scr_synth);
+    lv_obj_set_size(keys_panel, 768, 206);
+    lv_obj_set_pos(keys_panel, 16, 262);
+    lv_obj_set_style_bg_color(keys_panel, lv_color_hex(0x141822), 0);
+    lv_obj_set_style_radius(keys_panel, 12, 0);
+    lv_obj_set_style_border_width(keys_panel, 1, 0);
+    lv_obj_set_style_border_color(keys_panel, lv_color_hex(0x2D3748), 0);
+    lv_obj_remove_flag(keys_panel, LV_OBJ_FLAG_SCROLLABLE);
 
-    const int key_w = 70;
-    const int key_h = 85;
-    const int gap = 6;
+    const int white_w = 58;
+    const int white_gap = 5;
+    const int white_h = 192;
+    const int start_x = 8;
+    const int start_y = 6;
 
-    for (int i = 0; i < 20; i++) {
-        int row = i / 10;
-        int col = i % 10;
-        int x = col * (key_w + gap);
-        int y = row * (key_h + gap);
+    /* A. Create 12 White Keys Side by Side */
+    for (int i = 0; i < 12; i++) {
+        int x = start_x + i * (white_w + white_gap);
+        lv_obj_t *btn_w = lv_button_create(keys_panel);
+        lv_obj_set_size(btn_w, white_w, white_h);
+        lv_obj_set_pos(btn_w, x, start_y);
+        lv_obj_set_style_bg_color(btn_w, UI_COLOR_KEY_WHITE, 0);
+        lv_obj_set_style_radius(btn_w, 8, 0);
+        lv_obj_set_style_border_width(btn_w, 1, 0);
+        lv_obj_set_style_border_color(btn_w, lv_color_hex(0x4A5568), 0);
 
-        lv_obj_t *btn_k = lv_button_create(keys_container);
-        lv_obj_set_size(btn_k, key_w, key_h);
-        lv_obj_set_pos(btn_k, x, y);
+        /* Pressed style */
+        lv_obj_set_style_bg_color(btn_w, UI_COLOR_CYAN_ACCENT, LV_STATE_PRESSED);
 
-        /* Japanese Lacquer Key Styling */
-        bool is_sharp = (s_synth_keys[i].name[1] == '#');
-        lv_color_t bg_col = is_sharp ? UI_COLOR_KEY_BLACK : UI_COLOR_KEY_WHITE;
-        lv_obj_set_style_bg_color(btn_k, bg_col, 0);
-        lv_obj_set_style_bg_opa(btn_k, LV_OPA_90, 0);
-        lv_obj_set_style_radius(btn_k, 10, 0);
-        lv_obj_set_style_border_width(btn_k, 1, 0);
-        lv_obj_set_style_border_color(btn_k, UI_COLOR_GOLD_ACCENT, 0);
-        lv_obj_set_style_border_opa(btn_k, is_sharp ? LV_OPA_30 : LV_OPA_60, 0);
+        lv_obj_t *lbl = lv_label_create(btn_w);
+        lv_label_set_text(lbl, s_white_keys[i].name);
+        lv_obj_set_style_text_color(lbl, UI_COLOR_TEXT_TITLE, 0);
+        lv_obj_set_style_text_font(lbl, UI_FONT_SMALL, 0);
+        lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -8);
 
-        /* Key label */
-        lv_obj_t *lbl_k = lv_label_create(btn_k);
-        lv_label_set_text(lbl_k, s_synth_keys[i].name);
-        lv_obj_set_style_text_color(lbl_k, is_sharp ? UI_COLOR_GOLD_ACCENT : UI_COLOR_TEXT_TITLE, 0);
-        lv_obj_set_style_text_font(lbl_k, UI_FONT_SMALL, 0);
-        lv_obj_align(lbl_k, LV_ALIGN_BOTTOM_MID, 0, -6);
+        lv_obj_add_event_cb(btn_w, white_key_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
+    }
 
-        lv_obj_add_event_cb(btn_k, key_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
+    /* B. Create 8 Black Keys Floating on Top */
+    const int black_w = 36;
+    const int black_h = 118;
+    for (int j = 0; j < 8; j++) {
+        int after_idx = s_black_keys[j].after_white_idx;
+        /* Position black key centered over the seam between white keys */
+        int white_x = start_x + after_idx * (white_w + white_gap);
+        int black_x = white_x + white_w + (white_gap / 2) - (black_w / 2);
+
+        lv_obj_t *btn_b = lv_button_create(keys_panel);
+        lv_obj_set_size(btn_b, black_w, black_h);
+        lv_obj_set_pos(btn_b, black_x, start_y);
+        lv_obj_set_style_bg_color(btn_b, UI_COLOR_KEY_BLACK, 0);
+        lv_obj_set_style_radius(btn_b, 6, 0);
+        lv_obj_set_style_border_width(btn_b, 1, 0);
+        lv_obj_set_style_border_color(btn_b, UI_COLOR_GOLD_ACCENT, 0);
+
+        /* Pressed style */
+        lv_obj_set_style_bg_color(btn_b, UI_COLOR_RED_ACCENT, LV_STATE_PRESSED);
+
+        lv_obj_t *lbl = lv_label_create(btn_b);
+        lv_label_set_text(lbl, s_black_keys[j].name);
+        lv_obj_set_style_text_color(lbl, UI_COLOR_GOLD_ACCENT, 0);
+        lv_obj_set_style_text_font(lbl, UI_FONT_SMALL, 0);
+        lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -6);
+
+        lv_obj_add_event_cb(btn_b, black_key_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)j);
     }
 
     return s_scr_synth;

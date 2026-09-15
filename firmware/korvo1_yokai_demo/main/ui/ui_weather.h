@@ -7,6 +7,9 @@
 extern "C" {
 #endif
 
+extern const lv_image_dsc_t ui_img_weather_day;
+extern const lv_image_dsc_t ui_img_weather_night;
+
 typedef void (*ui_home_btn_cb_t)(void);
 
 /** Create the Yokai Yukionna Weather Screen. */

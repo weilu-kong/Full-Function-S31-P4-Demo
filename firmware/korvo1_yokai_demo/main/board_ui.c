@@ -18,8 +18,19 @@ static const char *TAG = "board_ui";
 
 static lv_display_t *s_disp = NULL;
 static lv_indev_t *s_touch_indev = NULL;
+
 static bool s_wifi_ready = false;
 static bool s_wifi_enabled = false;
+static bool s_wifi_scan_running = false;
+static volatile uint32_t s_wifi_scan_generation = 0;
+static wifi_ap_record_t s_wifi_aps[MAX_WIFI_APS];
+static uint16_t s_wifi_ap_count = 0;
+static volatile bool s_wifi_results_dirty = false;
+static volatile bool s_wifi_scan_failed = false;
+static uint8_t s_wifi_last_disconnect_reason = 0;
+static board_wifi_state_t s_wifi_state = BOARD_WIFI_DISCONNECTED;
+static char s_connecting_ssid[33] = {0};
+static char s_connected_ip[16] = {0};
 
 static void ui_lv_timer_cb(lv_timer_t *timer)
 {
@@ -33,14 +44,38 @@ static void on_board_wifi_event(void *arg, esp_event_base_t base, int32_t id, vo
     if (base == WIFI_EVENT) {
         if (id == WIFI_EVENT_STA_START) {
             ESP_LOGI(TAG, "Wi-Fi STA started");
-            (void)esp_wifi_connect();
+            wifi_config_t cfg = {0};
+            if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
+                strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+                s_wifi_state = BOARD_WIFI_CONNECTING;
+                s_wifi_results_dirty = true;
+                (void)esp_wifi_connect();
+            }
+        } else if (id == WIFI_EVENT_STA_CONNECTED) {
+            ESP_LOGI(TAG, "Wi-Fi STA connected to AP");
+            s_wifi_state = BOARD_WIFI_CONNECTING;
+            s_wifi_results_dirty = true;
         } else if (id == WIFI_EVENT_STA_DISCONNECTED) {
-            ESP_LOGW(TAG, "Wi-Fi STA disconnected");
+            wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)data;
+            uint8_t reason = disconn ? disconn->reason : 0;
+            ESP_LOGW(TAG, "Wi-Fi STA disconnected (reason=%u)", (unsigned)reason);
+            if (s_wifi_state == BOARD_WIFI_CONNECTING) {
+                s_wifi_state = BOARD_WIFI_FAILED;
+                s_wifi_last_disconnect_reason = reason;
+            } else {
+                s_wifi_state = BOARD_WIFI_DISCONNECTED;
+            }
+            s_connected_ip[0] = '\0';
             weather_service_set_offline();
+            s_wifi_results_dirty = true;
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
-        ESP_LOGI(TAG, "Wi-Fi STA got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        snprintf(s_connected_ip, sizeof(s_connected_ip), IPSTR, IP2STR(&event->ip_info.ip));
+        s_wifi_state = BOARD_WIFI_CONNECTED;
+        ESP_LOGI(TAG, "Wi-Fi STA got IP: %s", s_connected_ip);
+        s_wifi_results_dirty = true;
+        weather_service_trigger_refresh();
     }
 }
 
@@ -76,7 +111,7 @@ esp_err_t board_ui_wifi_ensure_started(void)
     s_wifi_enabled = true;
     ESP_LOGI(TAG, "Wi-Fi STA started successfully");
 
-    static bool s_events_registered;
+    static bool s_events_registered = false;
     if (!s_events_registered) {
         (void)esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                   on_board_wifi_event, NULL, NULL);
@@ -84,7 +119,211 @@ esp_err_t board_ui_wifi_ensure_started(void)
                                                   on_board_wifi_event, NULL, NULL);
         s_events_registered = true;
     }
+
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ip_info;
+    if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
+        s_wifi_state = BOARD_WIFI_CONNECTED;
+        snprintf(s_connected_ip, sizeof(s_connected_ip), IPSTR, IP2STR(&ip_info.ip));
+        wifi_config_t cfg = {0};
+        if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
+            strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+        }
+    }
+
     return ESP_OK;
+}
+
+static void wifi_scan_worker_task(void *arg)
+{
+    const uint32_t generation = (uint32_t)(uintptr_t)arg;
+    vTaskDelay(pdMS_TO_TICKS(150));
+    if (generation != s_wifi_scan_generation) {
+        s_wifi_scan_running = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    esp_err_t err = board_ui_wifi_ensure_started();
+    if (err != ESP_OK) {
+        s_wifi_scan_failed = true;
+        s_wifi_results_dirty = true;
+        s_wifi_scan_running = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    uint16_t ap_count = 0;
+    int retries = 3;
+    wifi_scan_config_t scan_cfg = {
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time.active.min = 100,
+        .scan_time.active.max = 150,
+    };
+    while (retries > 0) {
+        if (generation != s_wifi_scan_generation) {
+            s_wifi_scan_running = false;
+            vTaskDelete(NULL);
+            return;
+        }
+        err = esp_wifi_scan_start(&scan_cfg, true);
+        if (err == ESP_OK) {
+            esp_wifi_scan_get_ap_num(&ap_count);
+            if (ap_count > 0 || retries == 1) {
+                break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(150));
+        retries--;
+    }
+
+    if (generation != s_wifi_scan_generation) {
+        s_wifi_scan_running = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    if (err == ESP_OK) {
+        uint16_t fetch_count = ap_count > MAX_WIFI_APS ? MAX_WIFI_APS : ap_count;
+        if (fetch_count > 0) {
+            memset(s_wifi_aps, 0, sizeof(s_wifi_aps));
+            esp_wifi_scan_get_ap_records(&fetch_count, s_wifi_aps);
+        }
+        s_wifi_ap_count = fetch_count;
+        s_wifi_scan_failed = false;
+    } else {
+        s_wifi_scan_failed = true;
+    }
+
+    s_wifi_results_dirty = true;
+    s_wifi_scan_running = false;
+    vTaskDelete(NULL);
+}
+
+esp_err_t board_ui_wifi_scan_async(void)
+{
+    if (s_wifi_scan_running) {
+        return ESP_OK;
+    }
+    s_wifi_scan_running = true;
+    s_wifi_scan_failed = false;
+    s_wifi_results_dirty = true;
+    uint32_t generation = ++s_wifi_scan_generation;
+    if (xTaskCreate(wifi_scan_worker_task, "wifi_scan", 4096,
+                    (void *)(uintptr_t)generation, 5, NULL) != pdPASS) {
+        s_wifi_scan_running = false;
+        s_wifi_scan_failed = true;
+        s_wifi_results_dirty = true;
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
+void board_ui_wifi_get_info(board_wifi_info_t *out_info)
+{
+    if (!out_info) return;
+    out_info->state = s_wifi_state;
+    strncpy(out_info->connected_ssid, s_connecting_ssid, sizeof(out_info->connected_ssid) - 1);
+    out_info->connected_ssid[sizeof(out_info->connected_ssid) - 1] = '\0';
+    strncpy(out_info->ip_str, s_connected_ip, sizeof(out_info->ip_str) - 1);
+    out_info->ip_str[sizeof(out_info->ip_str) - 1] = '\0';
+    out_info->last_disconnect_reason = s_wifi_last_disconnect_reason;
+    out_info->scan_running = s_wifi_scan_running;
+    out_info->scan_failed = s_wifi_scan_failed;
+    out_info->ap_count = s_wifi_ap_count;
+    memcpy(out_info->aps, s_wifi_aps, sizeof(s_wifi_aps));
+}
+
+bool board_ui_wifi_is_dirty(void)
+{
+    return s_wifi_results_dirty;
+}
+
+void board_ui_wifi_clear_dirty(void)
+{
+    s_wifi_results_dirty = false;
+}
+
+void board_ui_wifi_connect(const char *ssid, const char *password)
+{
+    if (!ssid || strlen(ssid) == 0) return;
+    board_ui_wifi_ensure_started();
+    s_wifi_enabled = true;
+    s_wifi_state = BOARD_WIFI_CONNECTING;
+    s_wifi_results_dirty = true;
+    strncpy(s_connecting_ssid, ssid, sizeof(s_connecting_ssid) - 1);
+    s_connecting_ssid[sizeof(s_connecting_ssid) - 1] = '\0';
+    s_connected_ip[0] = '\0';
+
+    ++s_wifi_scan_generation;
+    s_wifi_scan_running = false;
+
+    wifi_config_t wifi_cfg = {0};
+    strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
+    if (password && strlen(password) > 0) {
+        strncpy((char *)wifi_cfg.sta.password, password, sizeof(wifi_cfg.sta.password) - 1);
+    }
+    (void)esp_wifi_disconnect();
+    (void)esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    esp_err_t err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(err));
+        s_wifi_state = BOARD_WIFI_FAILED;
+        s_wifi_results_dirty = true;
+    }
+}
+
+void board_ui_wifi_reconnect_saved(void)
+{
+    board_ui_wifi_ensure_started();
+    wifi_config_t cfg = {0};
+    if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
+        s_wifi_enabled = true;
+        s_wifi_state = BOARD_WIFI_CONNECTING;
+        strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+        s_wifi_results_dirty = true;
+        (void)esp_wifi_connect();
+    }
+}
+
+void board_ui_wifi_forget_saved(void)
+{
+    wifi_config_t cfg = {0};
+    (void)esp_wifi_disconnect();
+    (void)esp_wifi_set_config(WIFI_IF_STA, &cfg);
+    s_connecting_ssid[0] = '\0';
+    s_connected_ip[0] = '\0';
+    s_wifi_state = BOARD_WIFI_DISCONNECTED;
+    s_wifi_results_dirty = true;
+    weather_service_set_offline();
+}
+
+void board_ui_wifi_disconnect(void)
+{
+    (void)esp_wifi_disconnect();
+    s_wifi_state = BOARD_WIFI_DISCONNECTED;
+    s_connected_ip[0] = '\0';
+    s_wifi_results_dirty = true;
+    weather_service_set_offline();
+}
+
+bool board_ui_wifi_is_saved(const char *ssid)
+{
+    if (!ssid) return false;
+    wifi_config_t cfg = {0};
+    return (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK &&
+            strlen((char *)cfg.sta.ssid) > 0 &&
+            strcmp(ssid, (char *)cfg.sta.ssid) == 0);
+}
+
+void board_ui_wifi_set_enabled(bool enabled)
+{
+    s_wifi_enabled = enabled;
+}
+
+bool board_ui_wifi_is_enabled(void)
+{
+    return s_wifi_enabled;
 }
 
 esp_err_t board_ui_start(app_state_t *state)

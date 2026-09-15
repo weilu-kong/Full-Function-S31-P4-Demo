@@ -55,6 +55,14 @@ weather_background_t weather_background_for_condition(weather_cond_t condition)
             condition == WEATHER_COND_THUNDER) ? WEATHER_BACKGROUND_RAIN : WEATHER_BACKGROUND_SUNNY;
 }
 
+weather_theme_t weather_theme_for_info(const weather_info_t *info, int local_hour)
+{
+    if (info && info->is_live) {
+        return info->is_day ? WEATHER_THEME_DAY : WEATHER_THEME_NIGHT;
+    }
+    return (local_hour >= 6 && local_hour < 18) ? WEATHER_THEME_DAY : WEATHER_THEME_NIGHT;
+}
+
 bool weather_parse_open_meteo_json(const char *json_str, int *out_temp_c, int *out_wmo_code, bool *out_is_day)
 {
     if (!json_str || !out_temp_c || !out_wmo_code) {

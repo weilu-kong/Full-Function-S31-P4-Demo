@@ -34,6 +34,11 @@ typedef enum {
     WEATHER_BACKGROUND_RAIN,
 } weather_background_t;
 
+typedef enum {
+    WEATHER_THEME_DAY = 0,
+    WEATHER_THEME_NIGHT,
+} weather_theme_t;
+
 typedef struct {
     bool is_live;             /* true if fetched from live network, false if DEMO */
     bool is_day;              /* true if daytime, false if nighttime */
@@ -79,6 +84,7 @@ void weather_service_set_offline(void);
 /* Pure logic helpers exposed for unit testability */
 weather_cond_t weather_map_wmo_code(int wmo_code);
 weather_background_t weather_background_for_condition(weather_cond_t condition);
+weather_theme_t weather_theme_for_info(const weather_info_t *info, int local_hour);
 void weather_format_info(weather_info_t *info, bool is_live, int temp_c, int wmo_code, bool is_day, const char *time_str);
 bool weather_parse_open_meteo_json(const char *json_str, int *out_temp_c, int *out_wmo_code, bool *out_is_day);
 

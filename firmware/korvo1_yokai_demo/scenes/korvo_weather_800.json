@@ -5,7 +5,7 @@
   "swipe": false,
   "screen_bg": "#15345B",
   "font": "../assets/fonts/NotoSansCJKjp-Regular.otf",
-  "font_charset": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~…℃○●♩　、。「」いかがきくけこさしじすせだちってでとなにのはまみもらりるれわをんイカクケシジセタットバペホポマムメョラン・ー上中付体作信備像具切列卓台合周喪器固声天太好妖守定室察屋屏左右幕形待怪態戻所接提揺操新明映時晴暮更期材村機次残気河波済準火灯照物状狸理画盤目知確社神祭空童算管紋紫続良花行要見観言計設話認識辺通連道量金閉限雲雷電霊青面音食鼓むゆよ（）東京雨雪度未取得同夜風降静白",
+  "font_charset": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~…℃○●♩　、。「」いかがきくけこさしじすせだちってでとなにのはまみもらりるれわをんイカクケシジセタットバペホポマムメョラン・ー上中付体作信備像具切列卓台合周喪器固声天太好妖守定室察屋屏左右幕形待怪態戻所接提揺操新明映時晴暮更期材村機次残気河波済準火灯照物状狸理画盤目知確社神祭空童算管紋紫続良花行要見観言計設話認識辺通連道量金閉限雲雷電霊青面音食鼓むゆよ（）東京雨雪度未取得同夜風降静白ネワ忘",
   "default_font_size": 20,
   "objects": [
     {
@@ -135,13 +135,26 @@
       "y": 0,
       "w": 800,
       "h": 480,
-      "image": "../assets/images/yokai_weather_sunny_800.png"
+      "image": "../assets/images/yokai_weather_day_800.png",
+      "bind": "weather_bg"
+    },
+    {
+      "type": "image",
+      "parent": -1,
+      "name": "weather_bg_night",
+      "x": 0,
+      "y": 0,
+      "w": 800,
+      "h": 480,
+      "image": "../assets/images/yokai_weather_night_800.png",
+      "bind": "weather_bg_night",
+      "visible": false
     },
     {
       "type": "label",
       "parent": -1,
       "name": "weather_badge_label",
-      "x": 95,
+      "x": 145,
       "y": 7,
       "w": 60,
       "h": 20,
@@ -158,32 +171,44 @@
       "y": 4,
       "w": 85,
       "h": 30,
-      "text": "",
+      "text": "<",
+      "font_size": 24,
+      "fg_color": "#FFFBE8",
+      "text_align": "center",
       "bg_color": "#00000000",
       "border_width": 0,
       "callback": "home"
     },
     {
-      "type": "container",
+      "type": "label",
       "parent": -1,
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "bg_color": "#00000000"
+      "name": "weather_title_label",
+      "x": 42,
+      "y": 7,
+      "w": 90,
+      "h": 26,
+      "text": "天気",
+      "font_size": 24,
+      "fg_color": "#FFFBE8"
+    },
+    {
+      "type": "button",
+      "parent": -1,
+      "name": "weather_refresh",
+      "x": 20,
+      "y": 338,
+      "w": 180,
+      "h": 34,
+      "text": "",
+      "fg_color": "#F6EBCB",
+      "bg_color": "#00000000",
+      "border_width": 0,
+      "callback": "weather_refresh"
     },
     {
       "type": "container",
       "parent": -1,
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "bg_color": "#00000000"
-    },
-    {
-      "type": "container",
-      "parent": -1,
+      "name": "weather_clock",
       "x": 0,
       "y": 0,
       "w": 0,
@@ -193,9 +218,24 @@
     {
       "type": "label",
       "parent": -1,
+      "name": "weather_clock_text",
+      "bind": "weather_clock_text",
+      "bind_target": "text",
+      "x": 420,
+      "y": 7,
+      "w": 360,
+      "h": 28,
+      "text": "--:--",
+      "font_size": 24,
+      "fg_color": "#FFFBE8",
+      "text_align": "right"
+    },
+    {
+      "type": "label",
+      "parent": -1,
       "name": "weather_cond_label",
       "x": 24,
-      "y": 312,
+      "y": 306,
       "w": 172,
       "h": 28,
       "text": "晴れ",
@@ -210,9 +250,9 @@
       "parent": -1,
       "name": "weather_temp_label",
       "x": 24,
-      "y": 242,
+      "y": 246,
       "w": 172,
-      "h": 68,
+      "h": 54,
       "text": "26℃",
       "bind": "weather_temp",
       "bind_target": "text",
@@ -261,7 +301,7 @@
     },
     {
       "type": "rect",
-      "parent": 21,
+      "parent": 23,
       "x": 0,
       "y": 0,
       "w": 800,
@@ -271,7 +311,7 @@
     },
     {
       "type": "container",
-      "parent": 21,
+      "parent": 23,
       "x": 80,
       "y": 54,
       "w": 640,
@@ -283,7 +323,7 @@
     },
     {
       "type": "label",
-      "parent": 23,
+      "parent": 25,
       "x": 32,
       "y": 24,
       "w": 400,
@@ -294,7 +334,7 @@
     },
     {
       "type": "button",
-      "parent": 23,
+      "parent": 25,
       "x": 490,
       "y": 18,
       "w": 112,
@@ -315,7 +355,7 @@
     },
     {
       "type": "label",
-      "parent": 23,
+      "parent": 25,
       "x": 32,
       "y": 86,
       "w": 140,
@@ -326,7 +366,7 @@
     },
     {
       "type": "slider",
-      "parent": 23,
+      "parent": 25,
       "name": "brightness",
       "x": 170,
       "y": 84,
@@ -344,7 +384,7 @@
     },
     {
       "type": "label",
-      "parent": 23,
+      "parent": 25,
       "x": 32,
       "y": 148,
       "w": 120,
@@ -355,7 +395,7 @@
     },
     {
       "type": "slider",
-      "parent": 23,
+      "parent": 25,
       "name": "volume",
       "x": 170,
       "y": 146,
@@ -372,7 +412,7 @@
     },
     {
       "type": "toggle",
-      "parent": 23,
+      "parent": 25,
       "name": "wifi_enabled",
       "x": 32,
       "y": 223,
@@ -386,7 +426,7 @@
     },
     {
       "type": "button",
-      "parent": 23,
+      "parent": 25,
       "name": "wifi_card",
       "x": 114,
       "y": 210,
@@ -406,7 +446,7 @@
     },
     {
       "type": "toggle",
-      "parent": 23,
+      "parent": 25,
       "name": "bluetooth_enabled",
       "x": 336,
       "y": 223,
@@ -420,7 +460,7 @@
     },
     {
       "type": "button",
-      "parent": 23,
+      "parent": 25,
       "name": "bluetooth_card",
       "x": 418,
       "y": 210,
@@ -440,7 +480,7 @@
     },
     {
       "type": "label",
-      "parent": 23,
+      "parent": 25,
       "x": 32,
       "y": 296,
       "w": 560,

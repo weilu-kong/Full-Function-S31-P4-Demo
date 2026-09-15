@@ -82,37 +82,10 @@ dependencies:
       type: service
     version: 1.8.0
   espressif/esp-gsp:
-    component_hash: bea3f39ec2079a0180f71af8d2ca375b5112f92e61d3fd3cdfd8a3293049cfe2
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=6.0'
-    - name: espressif/esp_display_present
-      registry_url: https://components.espressif.com
-      require: private
-      version: ^1.0.2
-    - name: espressif/esp_lcd_touch
-      registry_url: https://components.espressif.com
-      require: public
-      version: ^1
-    - name: espressif/esp_new_jpeg
-      registry_url: https://components.espressif.com
-      require: private
-      version: 1.*
-    - name: espressif/freetype
-      registry_url: https://components.espressif.com
-      require: private
-      version: ^2.14.2
+    dependencies: []
     source:
-      registry_url: https://components.espressif.com/
-      type: service
-    targets:
-    - esp32c3
-    - esp32s3
-    - esp32p4
-    - esp32s31
-    - esp32c5
-    - esp32c6
+      path: components/espressif__esp-gsp
+      type: local
     version: 1.2.0
   espressif/esp-sr:
     component_hash: c3dd4d3a3ce520c90e6a48370f41ff1e138cea128929270ea03ee74e6710cea3
@@ -425,7 +398,11 @@ direct_dependencies:
 - espressif/esp-sr
 - espressif/esp32_s31_korvo_1_noglib
 - espressif/esp_audio_effects
+- espressif/esp_display_present
+- espressif/esp_lcd_touch
+- espressif/esp_new_jpeg
+- espressif/freetype
 - idf
-manifest_hash: 8dbfd92ab492482d9fc08d580e0c4365641a065dc319f16764c32092b5d65444
+manifest_hash: 7af17b7c53ea3708409dfc0fe2ad958fd76feb35a364aacbbe3c82a08c7ab02a
 target: esp32s31
 version: 3.0.0

@@ -148,7 +148,7 @@ python -m esptool --chip esp32s31 -p /dev/cu.usbserial-1140 -b 460800 \
   0x10000 "$BUILD/korvo1_yokai_demo.bin"
 ```
 
-布局：bootloader `0x2000`、partition table `0x8000`、app `0x10000`、srmodels `0x610000`。app 分区 6 MiB。
+布局：bootloader `0x2000`、partition table `0x8000`、app `0x10000`（9 MiB）、`model` `0x910000`（6 MiB）、`storage` `0xf10000`（960 KiB）。模型区预留给 ESP-SR 语音模型和经实测可装入的紧凑 ESP-DL 视觉模型；当前未打包模型。
 
 工作流程：最小可运行检查 → GSP pack/完整构建 → 真机烧录 → 用户确认。构建成功 ≠ 真机功能已确认。
 

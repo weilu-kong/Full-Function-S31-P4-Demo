@@ -1,6 +1,7 @@
 #include "ui/ui_weather.h"
 #include "ui/ui_theme.h"
 #include "ui/ui_lottie_assets.h"
+#include "ui/ui_drawer.h"
 #include "esp_lv_lottie.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -34,6 +35,12 @@ static void refresh_click_event_cb(lv_event_t *e)
     (void)e;
     ESP_LOGI(TAG, "Manual weather refresh requested");
     weather_service_trigger_refresh();
+}
+
+static void drawer_btn_event_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_drawer_set_visible(true);
 }
 
 lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
@@ -72,7 +79,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
         }
     }
 
-    /* 3. Top Navigation: Home and Refresh Buttons (Transparent Pill Badges) */
+    /* 3. Top Navigation: Home, Refresh, and Drawer Buttons */
     lv_obj_t *btn_home = lv_button_create(s_scr_weather);
     lv_obj_add_style(btn_home, &ui_style_btn_home, 0);
     lv_obj_set_size(btn_home, 106, 36);
@@ -80,20 +87,31 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
-    lv_label_set_text(lbl_home, "⌂ ホーム");
+    lv_label_set_text(lbl_home, "ホーム");
     lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 
     lv_obj_t *btn_refresh = lv_button_create(s_scr_weather);
     lv_obj_add_style(btn_refresh, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_refresh, 106, 36);
-    lv_obj_set_pos(btn_refresh, 678, 12);
+    lv_obj_set_size(btn_refresh, 100, 36);
+    lv_obj_set_pos(btn_refresh, 564, 12);
     lv_obj_add_event_cb(btn_refresh, refresh_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
-    lv_label_set_text(lbl_refresh, "更新 ⟳");
+    lv_label_set_text(lbl_refresh, "更新");
     lv_obj_set_style_text_font(lbl_refresh, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_refresh);
+
+    lv_obj_t *btn_drawer = lv_button_create(s_scr_weather);
+    lv_obj_add_style(btn_drawer, &ui_style_pill_badge, 0);
+    lv_obj_set_size(btn_drawer, 108, 36);
+    lv_obj_set_pos(btn_drawer, 676, 12);
+    lv_obj_add_event_cb(btn_drawer, drawer_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_drawer = lv_label_create(btn_drawer);
+    lv_label_set_text(lbl_drawer, "設定 ▼");
+    lv_obj_set_style_text_font(lbl_drawer, UI_FONT_SMALL, 0);
+    lv_obj_center(lbl_drawer);
 
     /* 4. Bare Text Overlay on Left Smooth Art Region (NO OPAQUE FRAMES!) */
 
@@ -132,14 +150,14 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(s_lbl_time, UI_FONT_SMALL, 0);
     lv_obj_set_pos(s_lbl_time, 28, 194);
 
-    /* Lore / Story description text */
+    /* Lore / Story description text (Wrapped neatly within left negative area) */
     s_lbl_lore = lv_label_create(s_scr_weather);
-    lv_label_set_text(s_lbl_lore, "村の上には、青い空と雲の行列。");
+    lv_label_set_text(s_lbl_lore, "夜の妖怪村、提灯が灯り、静かに雪が舞い降ります。");
     lv_obj_set_style_text_color(s_lbl_lore, lv_color_hex(0xEDF2F7), 0);
     lv_obj_set_style_text_font(s_lbl_lore, UI_FONT_REGULAR, 0);
-    lv_obj_set_width(s_lbl_lore, 380);
+    lv_obj_set_width(s_lbl_lore, 220);
     lv_label_set_long_mode(s_lbl_lore, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(s_lbl_lore, 28, 240);
+    lv_obj_set_pos(s_lbl_lore, 28, 236);
 
     return s_scr_weather;
 }
@@ -171,7 +189,7 @@ void ui_weather_screen_update(const weather_info_t *info)
         const char *cond_name = "晴れ";
         switch (info->condition) {
         case WEATHER_COND_CLOUDY:
-            cond_name = "雲";
+            cond_name = "曇り";
             break;
         case WEATHER_COND_RAINY:
             cond_name = "雨";

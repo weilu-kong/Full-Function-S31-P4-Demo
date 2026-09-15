@@ -92,7 +92,7 @@ lv_obj_t *ui_bluetooth_screen_create(ui_bt_home_cb_t home_cb)
     lv_obj_add_event_cb(btn_home, home_click_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
-    lv_label_set_text(lbl_home, "⌂ ホーム");
+    lv_label_set_text(lbl_home, "ホーム");
     lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 

@@ -1,5 +1,6 @@
 #include "ui/ui_synth.h"
 #include "ui/ui_theme.h"
+#include "ui/ui_drawer.h"
 #include "synth_service.h"
 #include "esp_log.h"
 #include <math.h>
@@ -69,6 +70,12 @@ static void home_click_event_cb(lv_event_t *e)
     if (s_home_cb) {
         s_home_cb();
     }
+}
+
+static void drawer_btn_event_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_drawer_set_visible(true);
 }
 
 static void key_play_note(float freq, bool on)
@@ -195,23 +202,23 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
-    lv_label_set_text(lbl_home, "⌂ ホーム");
+    lv_label_set_text(lbl_home, "ホーム");
     lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 
     lv_obj_t *lbl_title = lv_label_create(s_scr_synth);
-    lv_label_set_text(lbl_title, "妖精の鍵盤 (Yokai Groovebox)");
+    lv_label_set_text(lbl_title, "妖精の鍵盤 (Yokai)");
     lv_obj_set_style_text_color(lbl_title, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_title, UI_FONT_TITLE, 0);
-    lv_obj_set_pos(lbl_title, 134, 15);
+    lv_obj_set_pos(lbl_title, 128, 15);
 
     /* Mode Buttons: KEY / BT / WEB */
     synth_mode_t cur_mode = synth_service_get_mode();
     const char *mode_names[3] = {"KEY 鍵盤", "BT 無線", "WEB 連携"};
     for (int i = 0; i < 3; i++) {
         lv_obj_t *btn_m = lv_button_create(s_scr_synth);
-        lv_obj_set_size(btn_m, 86, 36);
-        lv_obj_set_pos(btn_m, 506 + i * 92, 12);
+        lv_obj_set_size(btn_m, 80, 36);
+        lv_obj_set_pos(btn_m, 418 + i * 86, 12);
         lv_obj_set_style_radius(btn_m, 18, 0);
         lv_obj_set_style_border_width(btn_m, 1, 0);
         lv_obj_set_style_border_color(btn_m, UI_COLOR_GOLD_ACCENT, 0);
@@ -235,6 +242,18 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
         lv_obj_add_event_cb(btn_m, mode_select_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
         s_btn_modes[i] = btn_m;
     }
+
+    /* Top-Right Quick Settings Drawer Button */
+    lv_obj_t *btn_qs = lv_button_create(s_scr_synth);
+    lv_obj_add_style(btn_qs, &ui_style_pill_badge, 0);
+    lv_obj_set_size(btn_qs, 102, 36);
+    lv_obj_set_pos(btn_qs, 682, 12);
+    lv_obj_add_event_cb(btn_qs, drawer_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_qs = lv_label_create(btn_qs);
+    lv_label_set_text(lbl_qs, "設定 ▼");
+    lv_obj_set_style_text_font(lbl_qs, UI_FONT_SMALL, 0);
+    lv_obj_center(lbl_qs);
 
     /* 2. Oscilloscope Display Card (Upper Left) */
     lv_obj_t *osc_card = lv_obj_create(s_scr_synth);

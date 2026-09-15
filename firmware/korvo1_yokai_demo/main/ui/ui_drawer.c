@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 static lv_obj_t *s_drawer_modal = NULL;
+static lv_obj_t *s_drawer_handle = NULL;
 static lv_obj_t *s_sw_wifi = NULL;
 static lv_obj_t *s_sw_bt = NULL;
 static lv_obj_t *s_card_wifi = NULL;
@@ -113,6 +114,20 @@ static void close_btn_event_cb(lv_event_t *e)
     ui_drawer_set_visible(false);
 }
 
+static void backdrop_click_event_cb(lv_event_t *e)
+{
+    lv_obj_t *target = lv_event_get_target(e);
+    if (target == s_drawer_modal) {
+        ui_drawer_set_visible(false);
+    }
+}
+
+static void handle_click_event_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_drawer_set_visible(true);
+}
+
 lv_obj_t *ui_drawer_create(lv_obj_t *parent,
                            ui_drawer_wifi_toggle_cb_t wifi_cb,
                            ui_drawer_wifi_details_cb_t wifi_details_cb,
@@ -128,6 +143,26 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     s_vol_cb = vol_cb;
     s_bright_cb = bright_cb;
 
+    /* Universal Floating Quick Settings Top Handle (Persistent on lv_layer_top) */
+    s_drawer_handle = lv_button_create(parent);
+    lv_obj_set_size(s_drawer_handle, 110, 22);
+    lv_obj_set_pos(s_drawer_handle, 345, 0);
+    lv_obj_set_style_bg_color(s_drawer_handle, lv_color_hex(0x161B26), 0);
+    lv_obj_set_style_bg_opa(s_drawer_handle, LV_OPA_80, 0);
+    lv_obj_set_style_border_color(s_drawer_handle, UI_COLOR_GOLD_ACCENT, 0);
+    lv_obj_set_style_border_width(s_drawer_handle, 1, 0);
+    lv_obj_set_style_radius(s_drawer_handle, 11, 0);
+    lv_obj_add_event_cb(s_drawer_handle, handle_click_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *bar = lv_obj_create(s_drawer_handle);
+    lv_obj_set_size(bar, 40, 4);
+    lv_obj_center(bar);
+    lv_obj_set_style_bg_color(bar, UI_COLOR_GOLD_ACCENT, 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_90, 0);
+    lv_obj_set_style_radius(bar, 2, 0);
+    lv_obj_set_style_border_width(bar, 0, 0);
+    lv_obj_remove_flag(bar, LV_OBJ_FLAG_CLICKABLE);
+
     /* Full-screen semi-transparent backdrop */
     s_drawer_modal = lv_obj_create(parent);
     lv_obj_set_size(s_drawer_modal, 800, 480);
@@ -136,6 +171,8 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_style_bg_opa(s_drawer_modal, LV_OPA_60, 0);
     lv_obj_set_style_border_width(s_drawer_modal, 0, 0);
     lv_obj_remove_flag(s_drawer_modal, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_drawer_modal, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_drawer_modal, backdrop_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     /* Centered Glassmorphic Drawer Panel */
     lv_obj_t *panel = lv_obj_create(s_drawer_modal);
@@ -280,8 +317,14 @@ void ui_drawer_set_visible(bool visible)
     if (!s_drawer_modal) return;
     if (visible) {
         lv_obj_remove_flag(s_drawer_modal, LV_OBJ_FLAG_HIDDEN);
+        if (s_drawer_handle) {
+            lv_obj_add_flag(s_drawer_handle, LV_OBJ_FLAG_HIDDEN);
+        }
     } else {
         lv_obj_add_flag(s_drawer_modal, LV_OBJ_FLAG_HIDDEN);
+        if (s_drawer_handle) {
+            lv_obj_remove_flag(s_drawer_handle, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 

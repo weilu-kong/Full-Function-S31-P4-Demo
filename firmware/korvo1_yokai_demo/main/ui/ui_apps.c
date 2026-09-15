@@ -1,5 +1,6 @@
 #include "ui/ui_apps.h"
 #include "ui/ui_theme.h"
+#include "ui/ui_drawer.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +11,12 @@
 /* -------------------------------------------------------------
  * Common Helper: Header Bar
  * ------------------------------------------------------------- */
+static void drawer_quick_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_drawer_set_visible(true);
+}
+
 static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_home_btn_cb_t home_cb)
 {
     lv_obj_t *btn_home = lv_button_create(parent);
@@ -21,7 +28,7 @@ static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_ho
     }
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
-    lv_label_set_text(lbl_home, "⌂ ホーム");
+    lv_label_set_text(lbl_home, "ホーム");
     lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 
@@ -30,6 +37,18 @@ static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_ho
     lv_obj_set_style_text_color(lbl_title, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_title, 134, 15);
+
+    /* Quick Settings Drawer Button in Header */
+    lv_obj_t *btn_qs = lv_button_create(parent);
+    lv_obj_add_style(btn_qs, &ui_style_pill_badge, 0);
+    lv_obj_set_size(btn_qs, 96, 36);
+    lv_obj_set_pos(btn_qs, 688, 12);
+    lv_obj_add_event_cb(btn_qs, drawer_quick_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_qs = lv_label_create(btn_qs);
+    lv_label_set_text(lbl_qs, "設定 ▼");
+    lv_obj_set_style_text_font(lbl_qs, UI_FONT_SMALL, 0);
+    lv_obj_center(lbl_qs);
 
     return btn_home;
 }
@@ -100,7 +119,7 @@ lv_obj_t *ui_voice_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_rec, voice_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_rec = lv_label_create(btn_rec);
-    lv_label_set_text(lbl_rec, "言霊を唱える 🎙");
+    lv_label_set_text(lbl_rec, "言霊を唱える");
     lv_obj_set_style_text_font(lbl_rec, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_rec);
 
@@ -180,7 +199,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_scan, vision_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_scan = lv_label_create(btn_scan);
-    lv_label_set_text(lbl_scan, "霊視スキャン 👁");
+    lv_label_set_text(lbl_scan, "霊視スキャン");
     lv_obj_set_style_text_font(lbl_scan, UI_FONT_REGULAR, 0);
     lv_obj_set_style_text_color(lbl_scan, lv_color_hex(0x0C0F17), 0);
     lv_obj_center(lbl_scan);

@@ -1,5 +1,6 @@
 #include "board_ui.h"
 #include "ui/ui.h"
+#include "ui/ui_drawer.h"
 #include "esp_lv_adapter.h"
 #include "bsp/esp32_s31_korvo_1.h"
 #include "bsp/display.h"
@@ -12,12 +13,44 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "weather_service.h"
+#include "synth_service.h"
+#include "nvs_flash.h"
 #include <string.h>
 
 static const char *TAG = "board_ui";
 
 static lv_display_t *s_disp = NULL;
 static lv_indev_t *s_touch_indev = NULL;
+
+static void global_touch_event_cb(lv_event_t *e)
+{
+    static int16_t s_touch_down_y = -1;
+
+    lv_indev_t *indev = (lv_indev_t *)lv_event_get_target(e);
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_PRESSED) {
+        lv_point_t p;
+        lv_indev_get_point(indev, &p);
+        /* If touch begins in the top edge (y <= 70) */
+        if (p.y <= 70) {
+            s_touch_down_y = p.y;
+        } else {
+            s_touch_down_y = -1;
+        }
+    } else if (code == LV_EVENT_PRESSING || code == LV_EVENT_RELEASED) {
+        if (s_touch_down_y >= 0) {
+            lv_point_t p;
+            lv_indev_get_point(indev, &p);
+            /* Detect downward swipe: moved down by >= 35 pixels */
+            if (p.y - s_touch_down_y >= 35) {
+                s_touch_down_y = -1;
+                ESP_LOGI(TAG, "Global top swipe-down detected: Opening Quick Settings");
+                ui_drawer_set_visible(true);
+            }
+        }
+    }
+}
 
 static bool s_wifi_ready = false;
 static bool s_wifi_enabled = false;
@@ -379,6 +412,8 @@ esp_err_t board_ui_start(app_state_t *state)
         s_touch_indev = esp_lv_adapter_register_touch(&touch_cfg);
         if (s_touch_indev == NULL) {
             ESP_LOGW(TAG, "failed to register touch indev with esp_lvgl_adapter");
+        } else {
+            lv_indev_add_event_cb(s_touch_indev, global_touch_event_cb, LV_EVENT_ALL, NULL);
         }
     }
 

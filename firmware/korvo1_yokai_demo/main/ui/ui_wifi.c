@@ -158,7 +158,7 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
     lv_obj_add_event_cb(btn_home, home_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
-    lv_label_set_text(lbl_home, "⌂ ホーム");
+    lv_label_set_text(lbl_home, "ホーム");
     lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 
@@ -181,7 +181,7 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
     lv_obj_add_event_cb(btn_rescan, rescan_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_rescan = lv_label_create(btn_rescan);
-    lv_label_set_text(lbl_rescan, "再検索 ⟳");
+    lv_label_set_text(lbl_rescan, "再検索");
     lv_obj_set_style_text_font(lbl_rescan, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_rescan);
 

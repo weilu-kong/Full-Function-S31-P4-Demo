@@ -83,6 +83,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_t *lbl_city = lv_label_create(badge_city);
     lv_label_set_text(lbl_city, "東京 / TOKYO");
     lv_obj_set_style_text_color(lbl_city, UI_COLOR_GOLD_ACCENT, 0);
+    lv_obj_set_style_text_font(lbl_city, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_city);
 
     /* Status Badge (LIVE / DEMO) */
@@ -93,40 +94,41 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     s_lbl_badge = lv_label_create(badge_status);
     lv_label_set_text(s_lbl_badge, "● DEMO");
     lv_obj_set_style_text_color(s_lbl_badge, UI_COLOR_CYAN_ACCENT, 0);
+    lv_obj_set_style_text_font(s_lbl_badge, UI_FONT_SMALL, 0);
     lv_obj_center(s_lbl_badge);
 
     /* Large Temperature Display */
     s_lbl_temp = lv_label_create(card);
     lv_label_set_text(s_lbl_temp, "26°");
     lv_obj_set_style_text_color(s_lbl_temp, UI_COLOR_TEXT_TITLE, 0);
-    lv_obj_set_style_text_font(s_lbl_temp, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_font(s_lbl_temp, UI_FONT_LARGE, 0);
     lv_obj_set_pos(s_lbl_temp, 20, 75);
 
     lv_obj_t *lbl_c = lv_label_create(card);
     lv_label_set_text(lbl_c, "C");
     lv_obj_set_style_text_color(lbl_c, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_c, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(lbl_c, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_c, 90, 80);
 
     /* Condition Label (e.g. 晴れ, 降雪, 小雨) */
     s_lbl_cond = lv_label_create(card);
     lv_label_set_text(s_lbl_cond, "晴れ / Clear");
     lv_obj_set_style_text_color(s_lbl_cond, UI_COLOR_CYAN_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_cond, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_lbl_cond, UI_FONT_TITLE, 0);
     lv_obj_set_pos(s_lbl_cond, 20, 140);
 
     /* Metrics: Humidity & Wind */
     lv_obj_t *lbl_metrics = lv_label_create(card);
     lv_label_set_text(lbl_metrics, "湿度: 65%   風速: 2.4 m/s");
     lv_obj_set_style_text_color(lbl_metrics, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_metrics, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_metrics, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_metrics, 20, 185);
 
     /* Time & Attribution */
     s_lbl_time = lv_label_create(card);
     lv_label_set_text(s_lbl_time, "更新: 14:30  (Open-Meteo)");
     lv_obj_set_style_text_color(s_lbl_time, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(s_lbl_time, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_time, UI_FONT_SMALL, 0);
     lv_obj_set_pos(s_lbl_time, 20, 230);
 
     /*
@@ -163,7 +165,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_t *lbl_yokai_title = lv_label_create(yokai_card);
     lv_label_set_text(lbl_yokai_title, "雪 女 伝 説");
     lv_obj_set_style_text_color(lbl_yokai_title, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_yokai_title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl_yokai_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_yokai_title, 20, 20);
 
     lv_obj_t *lbl_yokai_desc = lv_label_create(yokai_card);
@@ -176,7 +178,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
         "ESP32-S31 Korvo-1\n"
         "LVGL v9 + ThorVG");
     lv_obj_set_style_text_color(lbl_yokai_desc, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_yokai_desc, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_yokai_desc, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_yokai_desc, 20, 65);
 
     /* Manual Refresh Button */
@@ -187,6 +189,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_refresh, refresh_click_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
     lv_label_set_text(lbl_refresh, "天候更新 (Refresh)");
+    lv_obj_set_style_text_font(lbl_refresh, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_refresh);
 
     /* Top Bar Navigation: Home Button */
@@ -197,6 +200,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_home = lv_label_create(btn_home);
     lv_label_set_text(lbl_home, "< ホーム");
+    lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 
     return s_scr_weather;

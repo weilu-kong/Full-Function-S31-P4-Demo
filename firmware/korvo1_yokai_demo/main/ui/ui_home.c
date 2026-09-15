@@ -48,14 +48,14 @@ static lv_obj_t *create_app_card(lv_obj_t *parent, int x, int y, int w, int h,
     lv_obj_t *lbl_t = lv_label_create(card);
     lv_label_set_text(lbl_t, title);
     lv_obj_set_style_text_color(lbl_t, UI_COLOR_TEXT_TITLE, 0);
-    lv_obj_set_style_text_font(lbl_t, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl_t, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_t, 24, 18);
 
     /* Subtitle / Description */
     lv_obj_t *lbl_s = lv_label_create(card);
     lv_label_set_text(lbl_s, sub);
     lv_obj_set_style_text_color(lbl_s, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_s, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_s, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_s, 24, 48);
 
     lv_obj_add_event_cb(card, app_card_click_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)app_id);
@@ -96,19 +96,19 @@ lv_obj_t *ui_home_screen_create(ui_app_launch_cb_t app_cb, ui_quick_settings_tog
     lv_obj_t *lbl_logo = lv_label_create(top_bar);
     lv_label_set_text(lbl_logo, "妖怪中控 (Yokai OS)");
     lv_obj_set_style_text_color(lbl_logo, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_logo, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(lbl_logo, UI_FONT_REGULAR, 0);
     lv_obj_set_pos(lbl_logo, 16, 12);
 
     s_lbl_wifi_status = lv_label_create(top_bar);
     lv_label_set_text(s_lbl_wifi_status, "Wi-Fi: ○ 切断");
     lv_obj_set_style_text_color(s_lbl_wifi_status, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(s_lbl_wifi_status, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_wifi_status, UI_FONT_SMALL, 0);
     lv_obj_set_pos(s_lbl_wifi_status, 280, 14);
 
     s_lbl_clock = lv_label_create(top_bar);
     lv_label_set_text(s_lbl_clock, "--:--");
     lv_obj_set_style_text_color(s_lbl_clock, UI_COLOR_TEXT_TITLE, 0);
-    lv_obj_set_style_text_font(s_lbl_clock, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_lbl_clock, UI_FONT_REGULAR, 0);
     lv_obj_set_pos(s_lbl_clock, 450, 13);
 
     /* Quick Settings Dropdown Toggle Button */
@@ -120,6 +120,7 @@ lv_obj_t *ui_home_screen_create(ui_app_launch_cb_t app_cb, ui_quick_settings_tog
 
     lv_obj_t *lbl_qs = lv_label_create(btn_qs);
     lv_label_set_text(lbl_qs, "設定 / Drawer ▼");
+    lv_obj_set_style_text_font(lbl_qs, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_qs);
 
     /* 2-Page Horizontal TileView */

@@ -44,6 +44,7 @@ void ui_theme_init(void)
     lv_style_set_border_color(&ui_style_pill_badge, UI_COLOR_GOLD_ACCENT);
     lv_style_set_border_opa(&ui_style_pill_badge, LV_OPA_40);
     lv_style_set_text_color(&ui_style_pill_badge, UI_COLOR_GOLD_ACCENT);
+    lv_style_set_text_font(&ui_style_pill_badge, UI_FONT_SMALL);
     lv_style_set_pad_hor(&ui_style_pill_badge, 10);
     lv_style_set_pad_ver(&ui_style_pill_badge, 4);
 
@@ -56,6 +57,7 @@ void ui_theme_init(void)
     lv_style_set_border_color(&ui_style_btn_home, UI_COLOR_GOLD_ACCENT);
     lv_style_set_border_opa(&ui_style_btn_home, LV_OPA_50);
     lv_style_set_text_color(&ui_style_btn_home, UI_COLOR_TEXT_TITLE);
+    lv_style_set_text_font(&ui_style_btn_home, UI_FONT_SMALL);
     lv_style_set_pad_hor(&ui_style_btn_home, 12);
     lv_style_set_pad_ver(&ui_style_btn_home, 6);
 }

@@ -132,12 +132,13 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_home = lv_label_create(btn_home);
     lv_label_set_text(lbl_home, "< ホーム");
+    lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_home);
 
     lv_obj_t *lbl_title = lv_label_create(s_scr_synth);
     lv_label_set_text(lbl_title, "妖怪シンセサイザー (Yokai Groovebox)");
     lv_obj_set_style_text_color(lbl_title, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_title, 150, 18);
 
     /* Upper Left: Real-time Oscilloscope Display Card */
@@ -150,7 +151,7 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_t *lbl_osc_title = lv_label_create(osc_card);
     lv_label_set_text(lbl_osc_title, "OSCILLOSCOPE  /  示波器");
     lv_obj_set_style_text_color(lbl_osc_title, UI_COLOR_CYAN_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_osc_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_osc_title, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_osc_title, 10, 8);
 
     s_chart_wave = lv_chart_create(osc_card);
@@ -191,13 +192,13 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_t *lbl_cut = lv_label_create(ctrl_card);
     lv_label_set_text(lbl_cut, "CUTOFF");
     lv_obj_set_style_text_color(lbl_cut, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_cut, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_cut, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_cut, 35, 120);
 
     s_lbl_cutoff_val = lv_label_create(ctrl_card);
     lv_label_set_text(s_lbl_cutoff_val, "4100Hz");
     lv_obj_set_style_text_color(s_lbl_cutoff_val, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_cutoff_val, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_cutoff_val, UI_FONT_SMALL, 0);
     lv_obj_set_pos(s_lbl_cutoff_val, 32, 140);
 
     /* Knob 2: Resonance Arc */
@@ -216,13 +217,13 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_t *lbl_res = lv_label_create(ctrl_card);
     lv_label_set_text(lbl_res, "RESONANCE");
     lv_obj_set_style_text_color(lbl_res, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_res, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_res, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_res, 145, 120);
 
     s_lbl_res_val = lv_label_create(ctrl_card);
     lv_label_set_text(s_lbl_res_val, "1.8");
     lv_obj_set_style_text_color(s_lbl_res_val, UI_COLOR_RED_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_res_val, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_res_val, UI_FONT_SMALL, 0);
     lv_obj_set_pos(s_lbl_res_val, 170, 140);
 
     /* Waveform Switch Button */
@@ -234,12 +235,13 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
 
     s_lbl_wave = lv_label_create(s_btn_wave);
     lv_label_set_text(s_lbl_wave, "SIN 波");
+    lv_obj_set_style_text_font(s_lbl_wave, UI_FONT_SMALL, 0);
     lv_obj_center(s_lbl_wave);
 
     lv_obj_t *lbl_wave_title = lv_label_create(ctrl_card);
     lv_label_set_text(lbl_wave_title, "WAVEFORM");
     lv_obj_set_style_text_color(lbl_wave_title, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_wave_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_wave_title, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_wave_title, 255, 105);
 
     /* Lower Area: 20-Key Groovebox Keyboard Surface (2 rows x 10 keys) */
@@ -278,7 +280,7 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
         lv_obj_t *lbl_k = lv_label_create(btn_k);
         lv_label_set_text(lbl_k, s_synth_keys[i].name);
         lv_obj_set_style_text_color(lbl_k, is_sharp ? UI_COLOR_GOLD_ACCENT : UI_COLOR_TEXT_TITLE, 0);
-        lv_obj_set_style_text_font(lbl_k, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(lbl_k, UI_FONT_SMALL, 0);
         lv_obj_align(lbl_k, LV_ALIGN_BOTTOM_MID, 0, -6);
 
         lv_obj_add_event_cb(btn_k, key_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);

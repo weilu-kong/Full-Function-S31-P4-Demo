@@ -98,7 +98,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_t *lbl_title = lv_label_create(panel);
     lv_label_set_text(lbl_title, "クイック設定 (Quick Settings)");
     lv_obj_set_style_text_color(lbl_title, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_title, 20, 16);
 
     /* Close button */
@@ -109,6 +109,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_add_event_cb(btn_close, close_btn_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_close = lv_label_create(btn_close);
     lv_label_set_text(lbl_close, "閉じる ✕");
+    lv_obj_set_style_text_font(lbl_close, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_close);
 
     /* 1. Wi-Fi Card */
@@ -121,13 +122,13 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_t *lbl_wf = lv_label_create(card_wifi);
     lv_label_set_text(lbl_wf, "Wi-Fi (STA)");
     lv_obj_set_style_text_color(lbl_wf, UI_COLOR_TEXT_TITLE, 0);
-    lv_obj_set_style_text_font(lbl_wf, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(lbl_wf, UI_FONT_REGULAR, 0);
     lv_obj_set_pos(lbl_wf, 12, 12);
 
     lv_obj_t *lbl_wf_desc = lv_label_create(card_wifi);
     lv_label_set_text(lbl_wf_desc, "Open-Meteo 天気接続");
     lv_obj_set_style_text_color(lbl_wf_desc, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_wf_desc, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_wf_desc, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_wf_desc, 12, 40);
 
     s_sw_wifi = lv_switch_create(card_wifi);
@@ -145,13 +146,13 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_t *lbl_bt = lv_label_create(card_bt);
     lv_label_set_text(lbl_bt, "Bluetooth (A2DP)");
     lv_obj_set_style_text_color(lbl_bt, UI_COLOR_TEXT_TITLE, 0);
-    lv_obj_set_style_text_font(lbl_bt, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(lbl_bt, UI_FONT_REGULAR, 0);
     lv_obj_set_pos(lbl_bt, 12, 12);
 
     lv_obj_t *lbl_bt_desc = lv_label_create(card_bt);
     lv_label_set_text(lbl_bt_desc, "Yokai-Groovebox");
     lv_obj_set_style_text_color(lbl_bt_desc, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_bt_desc, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_bt_desc, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_bt_desc, 12, 40);
 
     s_sw_bt = lv_switch_create(card_bt);
@@ -169,7 +170,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_t *lbl_v = lv_label_create(card_vol);
     lv_label_set_text(lbl_v, "マスター音量 (Volume)");
     lv_obj_set_style_text_color(lbl_v, UI_COLOR_TEXT_TITLE, 0);
-    lv_obj_set_style_text_font(lbl_v, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_v, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_v, 12, 10);
 
     s_slider_vol = lv_slider_create(card_vol);
@@ -183,7 +184,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     s_lbl_vol_val = lv_label_create(card_vol);
     lv_label_set_text(s_lbl_vol_val, "70%");
     lv_obj_set_style_text_color(s_lbl_vol_val, UI_COLOR_CYAN_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_vol_val, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_vol_val, UI_FONT_SMALL, 0);
     lv_obj_set_pos(s_lbl_vol_val, 210, 46);
 
     /* 4. Display Brightness Slider */
@@ -196,7 +197,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_t *lbl_b = lv_label_create(card_bright);
     lv_label_set_text(lbl_b, "画面の明るさ (Brightness)");
     lv_obj_set_style_text_color(lbl_b, UI_COLOR_TEXT_TITLE, 0);
-    lv_obj_set_style_text_font(lbl_b, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_b, UI_FONT_SMALL, 0);
     lv_obj_set_pos(lbl_b, 12, 10);
 
     s_slider_bright = lv_slider_create(card_bright);
@@ -210,7 +211,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     s_lbl_bright_val = lv_label_create(card_bright);
     lv_label_set_text(s_lbl_bright_val, "80%");
     lv_obj_set_style_text_color(s_lbl_bright_val, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_bright_val, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_bright_val, UI_FONT_SMALL, 0);
     lv_obj_set_pos(s_lbl_bright_val, 210, 46);
 
     /* Initially Hidden */

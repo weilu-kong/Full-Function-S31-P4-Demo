@@ -25,6 +25,17 @@ extern lv_style_t ui_style_accent_border;
 extern lv_style_t ui_style_pill_badge;
 extern lv_style_t ui_style_btn_home;
 
+/* Japanese Yokai CJK Font Declarations */
+LV_FONT_DECLARE(ui_font_cjk_14);
+LV_FONT_DECLARE(ui_font_cjk_16);
+LV_FONT_DECLARE(ui_font_cjk_20);
+LV_FONT_DECLARE(ui_font_cjk_32);
+
+#define UI_FONT_SMALL   (&ui_font_cjk_14)
+#define UI_FONT_REGULAR (&ui_font_cjk_16)
+#define UI_FONT_TITLE   (&ui_font_cjk_20)
+#define UI_FONT_LARGE   (&ui_font_cjk_32)
+
 /** Initialize the Japanese Yokai theme styles and tokens. */
 void ui_theme_init(void);
 

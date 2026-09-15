@@ -358,6 +358,10 @@ void synth_service_set_bt_volume(float volume)
 
 void synth_service_set_active(bool active)
 {
+    if (s_synth_mutex == NULL) {
+        s_active = active;
+        return;
+    }
     if (xSemaphoreTake(s_synth_mutex, portMAX_DELAY) == pdTRUE) {
         s_active = active;
         if (!active) {

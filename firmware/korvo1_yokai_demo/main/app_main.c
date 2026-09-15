@@ -17,15 +17,15 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    /* board_ui keeps this pointer after app_main returns. */
-    static app_state_t state;
-    app_state_init(&state);
-    ESP_ERROR_CHECK(board_ui_start(&state));
-    ESP_LOGI(TAG, "Korvo-1 Yokai demo UI started");
-
     /* Initialize synthesizer audio engine with esp-audio-effects */
     ESP_ERROR_CHECK(synth_service_init());
 
     /* Initialize weather service with SNTP & Open-Meteo polling */
     ESP_ERROR_CHECK(weather_service_init());
+
+    /* board_ui keeps this pointer after app_main returns. */
+    static app_state_t state;
+    app_state_init(&state);
+    ESP_ERROR_CHECK(board_ui_start(&state));
+    ESP_LOGI(TAG, "Korvo-1 Yokai demo UI started");
 }

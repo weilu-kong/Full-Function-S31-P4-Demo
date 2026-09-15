@@ -115,6 +115,7 @@ esp_err_t board_ui_start(app_state_t *state)
     adapter_cfg.task_stack_size = 32768; /* 32KB stack for ThorVG Lottie rendering */
     adapter_cfg.task_priority = 6;
     adapter_cfg.tick_period_ms = 1;
+    adapter_cfg.stack_in_psram = true;
     ESP_RETURN_ON_ERROR(esp_lv_adapter_init(&adapter_cfg), TAG, "init esp_lvgl_adapter");
 
     /* 4. Register RGB Display with Triple Buffering in PSRAM */

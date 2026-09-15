@@ -284,7 +284,6 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
         lv_obj_add_event_cb(btn_k, key_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
     }
 
-    synth_service_set_active(true);
     return s_scr_synth;
 }
 

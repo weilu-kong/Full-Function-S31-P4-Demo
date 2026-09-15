@@ -4,6 +4,7 @@
 #include "ui/ui_weather.h"
 #include "ui/ui_synth.h"
 #include "ui/ui_wifi.h"
+#include "ui/ui_bluetooth.h"
 #include "ui/ui_apps.h"
 #include "ui/ui_drawer.h"
 #include "board_ui.h"
@@ -79,6 +80,23 @@ static void on_wifi_details_requested(void)
     (void)board_ui_wifi_scan_async();
 }
 
+static void on_return_from_bt(void)
+{
+    ui_switch_screen(s_return_screen);
+    if (s_reopen_drawer_on_return) {
+        ui_drawer_set_visible(true);
+        s_reopen_drawer_on_return = false;
+    }
+}
+
+static void on_bt_details_requested(void)
+{
+    ESP_LOGI(TAG, "Opening Bluetooth settings from drawer");
+    s_return_screen = s_current_screen;
+    s_reopen_drawer_on_return = true;
+    ui_switch_screen(UI_SCREEN_BLUETOOTH);
+}
+
 static void on_drawer_toggle(void)
 {
     ui_drawer_toggle();
@@ -98,11 +116,13 @@ static void on_wifi_toggle(bool enable)
 static void on_bt_toggle(bool enable)
 {
     ESP_LOGI(TAG, "Drawer BT toggled: %d", enable);
+    synth_service_set_bt_enabled(enable);
 }
 
 static void on_volume_change(int volume)
 {
-    ESP_LOGD(TAG, "Master volume changed: %d", volume);
+    ESP_LOGI(TAG, "Master volume changed: %d", volume);
+    synth_service_set_master_volume(volume);
 }
 
 static void on_bright_change(int brightness)
@@ -122,6 +142,7 @@ void ui_init(lv_display_t *disp, app_state_t *state)
     s_screen_objs[UI_SCREEN_WEATHER] = ui_weather_screen_create(on_return_home);
     s_screen_objs[UI_SCREEN_SYNTH] = ui_synth_screen_create(on_return_home);
     s_screen_objs[UI_SCREEN_WIFI] = ui_wifi_screen_create(on_return_from_wifi);
+    s_screen_objs[UI_SCREEN_BLUETOOTH] = ui_bluetooth_screen_create(on_return_from_bt);
     s_screen_objs[UI_SCREEN_VOICE] = ui_voice_screen_create(on_return_home);
     s_screen_objs[UI_SCREEN_VISION] = ui_vision_screen_create(on_return_home);
     s_screen_objs[UI_SCREEN_FIREWORKS] = ui_fireworks_screen_create(on_return_home);
@@ -132,12 +153,13 @@ void ui_init(lv_display_t *disp, app_state_t *state)
     /* Create Quick Settings Drawer on the persistent Top Layer */
     lv_obj_t *top_layer = lv_layer_top();
     s_drawer = ui_drawer_create(top_layer, on_wifi_toggle, on_wifi_details_requested,
-                                on_bt_toggle, on_volume_change, on_bright_change);
+                                on_bt_toggle, on_bt_details_requested,
+                                on_volume_change, on_bright_change);
 
     /* Start at Home Desktop */
     s_current_screen = UI_SCREEN_HOME;
     lv_screen_load(s_screen_objs[UI_SCREEN_HOME]);
-    ESP_LOGI(TAG, "Yokai UI initialized with 8 Apps + Wi-Fi screen active");
+    ESP_LOGI(TAG, "Yokai UI initialized with 8 Apps + Wi-Fi & BT screens active");
 }
 
 void ui_switch_screen(ui_screen_t target)
@@ -194,11 +216,25 @@ void ui_tick_periodic(void)
         weather_service_clear_dirty();
     }
 
-    /* 4. Update Synth Oscilloscope */
+    /* 4. Update Bluetooth Status */
+    bool bt_enabled = synth_service_is_bt_enabled();
+    bool bt_connected = synth_service_is_bt_connected();
+    bool bt_streaming = synth_service_is_bt_streaming();
+    char dev_name[32] = "";
+    char bda_str[24] = "";
+    if (bt_connected) {
+        synth_service_get_bt_device_info(dev_name, sizeof(dev_name), bda_str, sizeof(bda_str));
+    }
+    ui_drawer_update_bt_status(bt_enabled, bt_connected, dev_name);
+    if (s_current_screen == UI_SCREEN_BLUETOOTH) {
+        ui_bluetooth_screen_update(bt_enabled, bt_connected, bt_streaming, dev_name, bda_str);
+    }
+
+    /* 5. Update Synth Oscilloscope */
     if (s_current_screen == UI_SCREEN_SYNTH) {
         ui_synth_update_waveform();
     }
 
-    /* 5. Update Remaining Apps (Clock / Timer, etc.) */
+    /* 6. Update Remaining Apps (Clock / Timer, etc.) */
     ui_apps_tick_periodic();
 }

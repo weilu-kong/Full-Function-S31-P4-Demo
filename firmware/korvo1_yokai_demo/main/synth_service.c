@@ -60,7 +60,10 @@ static bool s_inited = false;
 static bool s_bt_inited = false;
 static volatile bool s_bt_connected = false;
 static volatile bool s_bt_streaming = false;
+static bool s_bt_enabled = true;
+static esp_bd_addr_t s_remote_bda = {0};
 static float s_bt_volume = 0.75f;
+static int s_master_volume = 80;
 
 static SemaphoreHandle_t s_synth_mutex = NULL;
 static RingbufHandle_t s_bt_ringbuf = NULL;
@@ -264,6 +267,7 @@ static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
     case ESP_A2D_CONNECTION_STATE_EVT:
         if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
             s_bt_connected = true;
+            memcpy(s_remote_bda, param->conn_stat.remote_bda, sizeof(esp_bd_addr_t));
             ESP_LOGI(TAG, "A2DP accompaniment connected from: %02x:%02x:%02x:%02x:%02x:%02x",
                      param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
                      param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
@@ -271,6 +275,7 @@ static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
         } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
             s_bt_connected = false;
             s_bt_streaming = false;
+            memset(s_remote_bda, 0, sizeof(esp_bd_addr_t));
             ESP_LOGI(TAG, "A2DP accompaniment disconnected");
             esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
         }
@@ -354,6 +359,66 @@ void synth_service_set_bt_volume(float volume)
     if (volume < 0.0f) volume = 0.0f;
     if (volume > 1.0f) volume = 1.0f;
     s_bt_volume = volume;
+}
+
+void synth_service_set_master_volume(int volume)
+{
+    if (volume < 0) volume = 0;
+    if (volume > 100) volume = 100;
+    s_master_volume = volume;
+    if (s_speaker_dev != NULL) {
+        esp_codec_dev_set_out_vol(s_speaker_dev, volume);
+    }
+}
+
+int synth_service_get_master_volume(void)
+{
+    return s_master_volume;
+}
+
+bool synth_service_is_bt_enabled(void)
+{
+    return s_bt_enabled;
+}
+
+void synth_service_set_bt_enabled(bool enabled)
+{
+    s_bt_enabled = enabled;
+    if (enabled) {
+        if (!s_bt_inited) {
+            synth_service_bt_a2dp_init();
+        } else {
+            esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+        }
+    } else {
+        if (s_bt_connected) {
+            synth_service_bt_disconnect();
+        }
+        esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
+    }
+}
+
+bool synth_service_get_bt_device_info(char *dev_name, size_t max_len, char *bda_str, size_t bda_max_len)
+{
+    if (!s_bt_connected) {
+        return false;
+    }
+    if (dev_name && max_len > 0) {
+        snprintf(dev_name, max_len, "Bluetooth 音声端末");
+    }
+    if (bda_str && bda_max_len > 0) {
+        snprintf(bda_str, bda_max_len, "%02X:%02X:%02X:%02X:%02X:%02X",
+                 s_remote_bda[0], s_remote_bda[1], s_remote_bda[2],
+                 s_remote_bda[3], s_remote_bda[4], s_remote_bda[5]);
+    }
+    return true;
+}
+
+void synth_service_bt_disconnect(void)
+{
+    if (s_bt_connected) {
+        esp_a2d_sink_disconnect(s_remote_bda);
+    }
 }
 
 void synth_service_set_active(bool active)

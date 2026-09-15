@@ -114,6 +114,36 @@ bool synth_service_is_bt_streaming(void);
  */
 void synth_service_set_bt_volume(float volume);
 
+/**
+ * @brief Set hardware master speaker volume (0 .. 100).
+ */
+void synth_service_set_master_volume(int volume);
+
+/**
+ * @brief Get hardware master speaker volume (0 .. 100).
+ */
+int synth_service_get_master_volume(void);
+
+/**
+ * @brief Query whether Bluetooth radio is enabled.
+ */
+bool synth_service_is_bt_enabled(void);
+
+/**
+ * @brief Enable or disable Bluetooth radio.
+ */
+void synth_service_set_bt_enabled(bool enabled);
+
+/**
+ * @brief Query connected Bluetooth device name and address.
+ */
+bool synth_service_get_bt_device_info(char *dev_name, size_t max_len, char *bda_str, size_t bda_max_len);
+
+/**
+ * @brief Disconnect currently connected Bluetooth A2DP device.
+ */
+void synth_service_bt_disconnect(void);
+
 #ifdef __cplusplus
 }
 #endif

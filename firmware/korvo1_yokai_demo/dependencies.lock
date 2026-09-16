@@ -143,6 +143,17 @@ dependencies:
     targets:
     - esp32s31
     version: 1.0.1
+  espressif/esp_asrc:
+    component_hash: 20da57976f191b60399b6c2ea46e33c121e08ad03c11e269f690c80e7eb7f7b5
+    dependencies:
+    - name: espressif/esp_audio_effects
+      registry_url: https://components.espressif.com
+      require: private
+      version: ~1.4
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.1.0
   espressif/esp_audio_effects:
     component_hash: 3cee4f73b50425d3e0f339849196cc238d6666abb38d84a57ca4ecc3149e0fa4
     dependencies:
@@ -565,6 +576,7 @@ dependencies:
 direct_dependencies:
 - espressif/esp-sr
 - espressif/esp32_s31_korvo_1_noglib
+- espressif/esp_asrc
 - espressif/esp_audio_effects
 - espressif/esp_lv_lottie_player
 - espressif/esp_lvgl_adapter
@@ -572,6 +584,6 @@ direct_dependencies:
 - espressif/thorvg
 - idf
 - lvgl/lvgl
-manifest_hash: 7e1d1acb472865a7691089f82e06ba725a8a1e89d8ff8bccff3e46d8b6464012
+manifest_hash: 616a9809b632ba1f75faa4fe08a8a7ec2cc88804d01c1a028e43a21742ff1863
 target: esp32s31
 version: 3.0.0

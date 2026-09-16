@@ -27,6 +27,7 @@ typedef struct {
     bool scan_running;
     bool scan_failed;
     uint16_t ap_count;
+    int8_t connected_rssi;
     wifi_ap_record_t aps[MAX_WIFI_APS];
 } board_wifi_info_t;
 

@@ -75,7 +75,7 @@ static void on_wifi_details_requested(void)
 {
     ESP_LOGI(TAG, "Opening Wi-Fi settings from drawer");
     s_return_screen = s_current_screen;
-    s_reopen_drawer_on_return = true;
+    s_reopen_drawer_on_return = false;
     ui_switch_screen(UI_SCREEN_WIFI);
     (void)board_ui_wifi_scan_async();
 }
@@ -83,17 +83,13 @@ static void on_wifi_details_requested(void)
 static void on_return_from_bt(void)
 {
     ui_switch_screen(s_return_screen);
-    if (s_reopen_drawer_on_return) {
-        ui_drawer_set_visible(true);
-        s_reopen_drawer_on_return = false;
-    }
 }
 
 static void on_bt_details_requested(void)
 {
     ESP_LOGI(TAG, "Opening Bluetooth settings from drawer");
     s_return_screen = s_current_screen;
-    s_reopen_drawer_on_return = true;
+    s_reopen_drawer_on_return = false;
     ui_switch_screen(UI_SCREEN_BLUETOOTH);
 }
 
@@ -152,6 +148,9 @@ void ui_init(lv_display_t *disp, app_state_t *state)
 
     /* Create Quick Settings Drawer on the persistent Top Layer */
     lv_obj_t *top_layer = lv_layer_top();
+    lv_obj_set_style_pad_all(top_layer, 0, 0);
+    lv_obj_set_style_border_width(top_layer, 0, 0);
+    lv_obj_remove_flag(top_layer, LV_OBJ_FLAG_SCROLLABLE);
     s_drawer = ui_drawer_create(top_layer, on_wifi_toggle, on_wifi_details_requested,
                                 on_bt_toggle, on_bt_details_requested,
                                 on_volume_change, on_bright_change);
@@ -162,20 +161,103 @@ void ui_init(lv_display_t *disp, app_state_t *state)
     ESP_LOGI(TAG, "Yokai UI initialized with 8 Apps + Wi-Fi & BT screens active");
 }
 
+/* -------------------------------------------------------------
+ * iPhone-style Pure Black Snappy Center Transition (95ms ease-out)
+ * ------------------------------------------------------------- */
+static lv_obj_t *s_trans_card = NULL;
+static bool s_trans_active = false;
+static ui_screen_t s_pending_target = UI_SCREEN_HOME;
+
+static void trans_geom_apply(lv_obj_t *card, int32_t v)
+{
+    /* Proportional 5:3 center expansion from 60x36 to 800x480 */
+    int32_t w = 60 + ((800 - 60) * v) / 1000;
+    int32_t h = 36 + ((480 - 36) * v) / 1000;
+    int32_t x = 400 - w / 2;
+    int32_t y = 240 - h / 2;
+    int32_t r = (20 * (1000 - v)) / 1000;
+
+    lv_obj_set_size(card, w, h);
+    lv_obj_set_pos(card, x, y);
+    lv_obj_set_style_radius(card, r, 0);
+}
+
+static void trans_expand_exec_cb(lv_anim_t *a, int32_t v)
+{
+    lv_obj_t *card = (lv_obj_t *)a->var;
+    if (card) {
+        trans_geom_apply(card, v);
+    }
+}
+
+static void trans_expand_completed_cb(lv_anim_t *a)
+{
+    lv_obj_t *card = (lv_obj_t *)a->var;
+    if (s_pending_target < UI_SCREEN_MAX && s_screen_objs[s_pending_target]) {
+        lv_screen_load(s_screen_objs[s_pending_target]);
+        if (s_pending_target == UI_SCREEN_SYNTH) {
+            synth_service_set_active(true);
+        } else if (s_pending_target == UI_SCREEN_WEATHER) {
+            ui_weather_set_active(true);
+        }
+    }
+    if (card) {
+        lv_obj_delete(card);
+    }
+    s_trans_card = NULL;
+    s_trans_active = false;
+}
+
 void ui_switch_screen(ui_screen_t target)
 {
     if (target >= UI_SCREEN_MAX || !s_screen_objs[target]) {
         return;
     }
-
-    if (s_current_screen == UI_SCREEN_SYNTH && target != UI_SCREEN_SYNTH) {
-        synth_service_set_active(false);
-    } else if (target == UI_SCREEN_SYNTH) {
-        synth_service_set_active(true);
+    if (target == s_current_screen) {
+        return;
+    }
+    if (s_trans_active) {
+        return;
     }
 
+    ui_screen_t prev = s_current_screen;
     s_current_screen = target;
-    lv_screen_load_anim(s_screen_objs[target], LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
+    s_pending_target = target;
+
+    if (prev == UI_SCREEN_SYNTH && target != UI_SCREEN_SYNTH) {
+        synth_service_set_active(false);
+    }
+    if (prev == UI_SCREEN_WEATHER && target != UI_SCREEN_WEATHER) {
+        ui_weather_set_active(false);
+    }
+
+    /*
+     * iPhone-style Pure Black Snappy Center Transition:
+     * Clean pure black surface rapidly blooms outward from center (400, 240) in 95ms,
+     * seamlessly occluding the outgoing view and revealing the incoming dark screen
+     * without any abrupt 1-frame blackout.
+     */
+    lv_obj_t *top = lv_layer_top();
+    s_trans_active = true;
+    s_trans_card = lv_obj_create(top);
+    lv_obj_remove_flag(s_trans_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_trans_card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(s_trans_card, 60, 36);
+    lv_obj_set_pos(s_trans_card, 400 - 30, 240 - 18);
+    lv_obj_set_style_radius(s_trans_card, 20, 0);
+    lv_obj_set_style_bg_color(s_trans_card, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_trans_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_trans_card, 0, 0);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_trans_card);
+    lv_anim_set_values(&a, 0, 1000);
+    lv_anim_set_duration(&a, 95);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_custom_exec_cb(&a, trans_expand_exec_cb);
+    lv_anim_set_completed_cb(&a, trans_expand_completed_cb);
+    lv_anim_start(&a);
 }
 
 ui_screen_t ui_get_current_screen(void)
@@ -206,7 +288,7 @@ void ui_tick_periodic(void)
     if (localtime_r(&now, &local) != NULL && local.tm_year >= 120) {
         snprintf(time_buf, sizeof(time_buf), "%02d:%02d", local.tm_hour, local.tm_min);
     }
-    ui_home_screen_update_status(time_buf, wifi_info.state == BOARD_WIFI_CONNECTED);
+    ui_home_screen_update_status(time_buf, wifi_info.state == BOARD_WIFI_CONNECTED, wifi_info.connected_rssi);
 
     /* 3. Update Weather Screen */
     if (s_current_screen == UI_SCREEN_WEATHER && weather_service_is_dirty()) {

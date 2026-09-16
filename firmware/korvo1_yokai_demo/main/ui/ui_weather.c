@@ -18,8 +18,12 @@ static lv_obj_t *s_lbl_temp = NULL;
 static lv_obj_t *s_lbl_cond = NULL;
 static lv_obj_t *s_lbl_time = NULL;
 static lv_obj_t *s_lbl_lore = NULL;
+
 static lv_obj_t *s_lottie_snow = NULL;
-static char *s_lottie_json_buf = NULL;
+static lv_obj_t *s_lottie_rain = NULL;
+static char *s_lottie_snow_buf = NULL;
+static char *s_lottie_rain_buf = NULL;
+
 static ui_home_btn_cb_t s_home_cb = NULL;
 
 static void home_click_event_cb(lv_event_t *e)
@@ -37,12 +41,6 @@ static void refresh_click_event_cb(lv_event_t *e)
     weather_service_trigger_refresh();
 }
 
-static void drawer_btn_event_cb(lv_event_t *e)
-{
-    (void)e;
-    ui_drawer_set_visible(true);
-}
-
 lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
 {
     s_home_cb = home_cb;
@@ -52,38 +50,58 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_bg_color(s_scr_weather, UI_COLOR_BG_DARK, 0);
     lv_obj_remove_flag(s_scr_weather, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* 1. Full-screen Pixel Art Background (Yukionna Standing in Snow) */
+    /* 1. Full-screen Pixel Art Background (Sunny, Cloudy, Rain, Night/Snow) */
     s_img_bg = lv_image_create(s_scr_weather);
     lv_obj_set_size(s_img_bg, 800, 480);
     lv_obj_set_pos(s_img_bg, 0, 0);
-    lv_image_set_src(s_img_bg, &ui_img_weather_day);
+    lv_image_set_src(s_img_bg, &ui_img_weather_sunny);
     lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    /* 2. Full-Screen Transparent Lottie Snowfall Overlay */
+    /* 2a. Full-Screen Transparent Lottie Snowfall Overlay */
     s_lottie_snow = lv_lottie_create(s_scr_weather);
     if (s_lottie_snow) {
         lv_lottie_set_size(s_lottie_snow, 800, 480);
         lv_obj_set_pos(s_lottie_snow, 0, 0);
         lv_obj_remove_flag(s_lottie_snow, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
-        if (!s_lottie_json_buf) {
-            s_lottie_json_buf = (char *)heap_caps_malloc(sizeof(UI_LOTTIE_SNOW_JSON), MALLOC_CAP_SPIRAM);
-            if (s_lottie_json_buf) {
-                memcpy(s_lottie_json_buf, UI_LOTTIE_SNOW_JSON, sizeof(UI_LOTTIE_SNOW_JSON));
+        if (!s_lottie_snow_buf) {
+            s_lottie_snow_buf = (char *)heap_caps_malloc(sizeof(UI_LOTTIE_SNOW_JSON), MALLOC_CAP_SPIRAM);
+            if (s_lottie_snow_buf) {
+                memcpy(s_lottie_snow_buf, UI_LOTTIE_SNOW_JSON, sizeof(UI_LOTTIE_SNOW_JSON));
             }
         }
-        if (s_lottie_json_buf) {
-            lv_lottie_set_src_data(s_lottie_snow, s_lottie_json_buf, sizeof(UI_LOTTIE_SNOW_JSON) - 1);
+        if (s_lottie_snow_buf) {
+            lv_lottie_set_src_data(s_lottie_snow, s_lottie_snow_buf, sizeof(UI_LOTTIE_SNOW_JSON) - 1);
             lv_lottie_set_loop_enabled(s_lottie_snow, true);
-            lv_lottie_play(s_lottie_snow);
         }
+        lv_obj_add_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN);
     }
 
-    /* 3. Top Navigation: Home, Refresh, and Drawer Buttons */
+    /* 2b. Full-Screen Transparent Lottie Rainfall Overlay */
+    s_lottie_rain = lv_lottie_create(s_scr_weather);
+    if (s_lottie_rain) {
+        lv_lottie_set_size(s_lottie_rain, 800, 480);
+        lv_obj_set_pos(s_lottie_rain, 0, 0);
+        lv_obj_remove_flag(s_lottie_rain, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+        if (!s_lottie_rain_buf) {
+            s_lottie_rain_buf = (char *)heap_caps_malloc(sizeof(UI_LOTTIE_RAIN_JSON), MALLOC_CAP_SPIRAM);
+            if (s_lottie_rain_buf) {
+                memcpy(s_lottie_rain_buf, UI_LOTTIE_RAIN_JSON, sizeof(UI_LOTTIE_RAIN_JSON));
+            }
+        }
+        if (s_lottie_rain_buf) {
+            lv_lottie_set_src_data(s_lottie_rain, s_lottie_rain_buf, sizeof(UI_LOTTIE_RAIN_JSON) - 1);
+            lv_lottie_set_loop_enabled(s_lottie_rain, true);
+        }
+        lv_obj_add_flag(s_lottie_rain, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    /* 3. Top Navigation: Home and Refresh Buttons (Cleanly positioned inside top bar y: 0..38) */
     lv_obj_t *btn_home = lv_button_create(s_scr_weather);
     lv_obj_add_style(btn_home, &ui_style_btn_home, 0);
-    lv_obj_set_size(btn_home, 106, 36);
-    lv_obj_set_pos(btn_home, 16, 12);
+    lv_obj_set_size(btn_home, 96, 30);
+    lv_obj_set_pos(btn_home, 24, 4);
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
@@ -93,8 +111,8 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
 
     lv_obj_t *btn_refresh = lv_button_create(s_scr_weather);
     lv_obj_add_style(btn_refresh, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_refresh, 100, 36);
-    lv_obj_set_pos(btn_refresh, 564, 12);
+    lv_obj_set_size(btn_refresh, 96, 30);
+    lv_obj_set_pos(btn_refresh, 680, 4);
     lv_obj_add_event_cb(btn_refresh, refresh_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
@@ -102,62 +120,62 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(lbl_refresh, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_refresh);
 
-    lv_obj_t *btn_drawer = lv_button_create(s_scr_weather);
-    lv_obj_add_style(btn_drawer, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_drawer, 108, 36);
-    lv_obj_set_pos(btn_drawer, 676, 12);
-    lv_obj_add_event_cb(btn_drawer, drawer_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    /* 3b. Bottom Navigation: Touch Hotspot over Artwork's Home Glyph (center bottom) */
+    lv_obj_t *btn_bottom_home = lv_button_create(s_scr_weather);
+    lv_obj_remove_style_all(btn_bottom_home);
+    lv_obj_set_size(btn_bottom_home, 200, 50);
+    lv_obj_set_pos(btn_bottom_home, 300, 425);
+    lv_obj_add_event_cb(btn_bottom_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_radius(btn_bottom_home, 8, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(btn_bottom_home, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn_bottom_home, LV_OPA_20, LV_STATE_PRESSED);
 
-    lv_obj_t *lbl_drawer = lv_label_create(btn_drawer);
-    lv_label_set_text(lbl_drawer, "設定 ▼");
-    lv_obj_set_style_text_font(lbl_drawer, UI_FONT_SMALL, 0);
-    lv_obj_center(lbl_drawer);
-
-    /* 4. Bare Text Overlay on Left Smooth Art Region (NO OPAQUE FRAMES!) */
+    /* 4. Text Overlay Fitted Precisely Inside Left Pixel Art Scroll Frame (x: 25..198, y: 58..395) */
 
     /* Location Title */
     s_lbl_city = lv_label_create(s_scr_weather);
     lv_label_set_text(s_lbl_city, "妖怪村（東京）");
     lv_obj_set_style_text_color(s_lbl_city, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(s_lbl_city, UI_FONT_TITLE, 0);
-    lv_obj_set_pos(s_lbl_city, 28, 68);
+    lv_obj_set_width(s_lbl_city, 156);
+    lv_obj_set_pos(s_lbl_city, 36, 68);
 
     /* DEMO / LIVE Status Badge */
     s_lbl_badge = lv_label_create(s_scr_weather);
     lv_label_set_text(s_lbl_badge, "● DEMO");
     lv_obj_set_style_text_color(s_lbl_badge, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_text_font(s_lbl_badge, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(s_lbl_badge, 200, 72);
+    lv_obj_set_pos(s_lbl_badge, 36, 96);
 
     /* Temperature */
     s_lbl_temp = lv_label_create(s_scr_weather);
     lv_label_set_text(s_lbl_temp, "26℃");
     lv_obj_set_style_text_color(s_lbl_temp, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(s_lbl_temp, UI_FONT_LARGE, 0);
-    lv_obj_set_pos(s_lbl_temp, 28, 108);
+    lv_obj_set_pos(s_lbl_temp, 36, 122);
 
-    /* Weather Condition (晴れ, 雲, 雨, 雪, 雷) */
+    /* Weather Condition (Beside temperature inside frame: x=122, ends ~160 < 198) */
     s_lbl_cond = lv_label_create(s_scr_weather);
     lv_label_set_text(s_lbl_cond, "晴れ");
     lv_obj_set_style_text_color(s_lbl_cond, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_text_font(s_lbl_cond, UI_FONT_TITLE, 0);
-    lv_obj_set_pos(s_lbl_cond, 28, 156);
+    lv_obj_set_pos(s_lbl_cond, 122, 130);
 
     /* Update Time */
     s_lbl_time = lv_label_create(s_scr_weather);
     lv_label_set_text(s_lbl_time, "更新 14:30");
     lv_obj_set_style_text_color(s_lbl_time, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(s_lbl_time, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(s_lbl_time, 28, 194);
+    lv_obj_set_pos(s_lbl_time, 36, 174);
 
-    /* Lore / Story description text (Wrapped neatly within left negative area) */
+    /* Lore / Story description text (Wrapped neatly within 156px) */
     s_lbl_lore = lv_label_create(s_scr_weather);
-    lv_label_set_text(s_lbl_lore, "夜の妖怪村、提灯が灯り、静かに雪が舞い降ります。");
+    lv_label_set_text(s_lbl_lore, "村の上には、澄み渡る空と富士の嶺。");
     lv_obj_set_style_text_color(s_lbl_lore, lv_color_hex(0xEDF2F7), 0);
-    lv_obj_set_style_text_font(s_lbl_lore, UI_FONT_REGULAR, 0);
-    lv_obj_set_width(s_lbl_lore, 220);
+    lv_obj_set_style_text_font(s_lbl_lore, UI_FONT_SMALL, 0);
+    lv_obj_set_width(s_lbl_lore, 156);
     lv_label_set_long_mode(s_lbl_lore, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(s_lbl_lore, 28, 236);
+    lv_obj_set_pos(s_lbl_lore, 36, 206);
 
     return s_scr_weather;
 }
@@ -168,23 +186,66 @@ void ui_weather_screen_update(const weather_info_t *info)
         return;
     }
 
-    /* 1. Dynamic Background Image Switch (Day vs Night) */
+    /* 1. Dynamic Background Image Switch based on weather condition & day/night */
+    const lv_image_dsc_t *bg_img = &ui_img_weather_sunny;
+    bool is_rain = (info->condition == WEATHER_COND_RAINY || info->condition == WEATHER_COND_THUNDER);
+    bool is_snow = (info->condition == WEATHER_COND_SNOWY);
+
+    if (is_rain) {
+        bg_img = &ui_img_weather_rain;
+    } else if (is_snow) {
+        bg_img = &ui_img_weather_night;
+    } else if (!info->is_day) {
+        bg_img = &ui_img_weather_night;
+    } else if (info->condition == WEATHER_COND_CLOUDY) {
+        bg_img = &ui_img_weather_cloudy;
+    } else {
+        bg_img = &ui_img_weather_sunny;
+    }
+
     if (s_img_bg) {
-        if (!info->is_day) {
-            lv_image_set_src(s_img_bg, &ui_img_weather_night);
-        } else {
-            lv_image_set_src(s_img_bg, &ui_img_weather_day);
+        lv_image_set_src(s_img_bg, bg_img);
+    }
+
+    /* 2. Dynamic Precipitation Effect: Rain vs Snow vs Clear */
+    if (is_rain) {
+        if (s_lottie_rain) {
+            lv_obj_remove_flag(s_lottie_rain, LV_OBJ_FLAG_HIDDEN);
+            lv_lottie_play(s_lottie_rain);
+        }
+        if (s_lottie_snow) {
+            lv_obj_add_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN);
+            lv_lottie_pause(s_lottie_snow);
+        }
+    } else if (is_snow) {
+        if (s_lottie_snow) {
+            lv_obj_remove_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN);
+            lv_lottie_play(s_lottie_snow);
+        }
+        if (s_lottie_rain) {
+            lv_obj_add_flag(s_lottie_rain, LV_OBJ_FLAG_HIDDEN);
+            lv_lottie_pause(s_lottie_rain);
+        }
+    } else {
+        /* Clear / Cloudy: hide both animations */
+        if (s_lottie_rain) {
+            lv_obj_add_flag(s_lottie_rain, LV_OBJ_FLAG_HIDDEN);
+            lv_lottie_pause(s_lottie_rain);
+        }
+        if (s_lottie_snow) {
+            lv_obj_add_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN);
+            lv_lottie_pause(s_lottie_snow);
         }
     }
 
-    /* 2. Temperature */
+    /* 3. Temperature */
     if (s_lbl_temp) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d℃", info->temp_c);
         lv_label_set_text(s_lbl_temp, buf);
     }
 
-    /* 3. Weather Condition Name */
+    /* 4. Weather Condition Name */
     if (s_lbl_cond) {
         const char *cond_name = "晴れ";
         switch (info->condition) {
@@ -198,7 +259,7 @@ void ui_weather_screen_update(const weather_info_t *info)
             cond_name = "雪";
             break;
         case WEATHER_COND_THUNDER:
-            cond_name = "雷";
+            cond_name = "雷雨";
             break;
         default:
             cond_name = "晴れ";
@@ -207,7 +268,7 @@ void ui_weather_screen_update(const weather_info_t *info)
         lv_label_set_text(s_lbl_cond, cond_name);
     }
 
-    /* 4. Live vs Demo Status Badge */
+    /* 5. Live vs Demo Status Badge */
     if (s_lbl_badge) {
         if (info->is_live) {
             lv_label_set_text(s_lbl_badge, "● LIVE");
@@ -218,7 +279,7 @@ void ui_weather_screen_update(const weather_info_t *info)
         }
     }
 
-    /* 5. Update Time */
+    /* 6. Update Time */
     if (s_lbl_time) {
         char buf[64];
         snprintf(buf, sizeof(buf), "更新 %s",
@@ -226,8 +287,27 @@ void ui_weather_screen_update(const weather_info_t *info)
         lv_label_set_text(s_lbl_time, buf);
     }
 
-    /* 6. Lore Text */
+    /* 7. Lore Text */
     if (s_lbl_lore && info->lore_text[0] != '\0') {
         lv_label_set_text(s_lbl_lore, info->lore_text);
+    }
+}
+
+void ui_weather_set_active(bool active)
+{
+    if (active) {
+        if (s_lottie_snow && !lv_obj_has_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN)) {
+            lv_lottie_play(s_lottie_snow);
+        }
+        if (s_lottie_rain && !lv_obj_has_flag(s_lottie_rain, LV_OBJ_FLAG_HIDDEN)) {
+            lv_lottie_play(s_lottie_rain);
+        }
+    } else {
+        if (s_lottie_snow) {
+            lv_lottie_pause(s_lottie_snow);
+        }
+        if (s_lottie_rain) {
+            lv_lottie_pause(s_lottie_rain);
+        }
     }
 }

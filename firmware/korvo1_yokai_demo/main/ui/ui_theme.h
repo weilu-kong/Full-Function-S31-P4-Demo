@@ -31,8 +31,9 @@ LV_FONT_DECLARE(ui_font_cjk_16);
 LV_FONT_DECLARE(ui_font_cjk_20);
 LV_FONT_DECLARE(ui_font_cjk_32);
 
-#define UI_FONT_SMALL   (&ui_font_cjk_14)
-#define UI_FONT_REGULAR (&ui_font_cjk_16)
+#define UI_FONT_TINY    (&ui_font_cjk_14)
+#define UI_FONT_SMALL   (&ui_font_cjk_16)
+#define UI_FONT_REGULAR (&ui_font_cjk_20)
 #define UI_FONT_TITLE   (&ui_font_cjk_20)
 #define UI_FONT_LARGE   (&ui_font_cjk_32)
 

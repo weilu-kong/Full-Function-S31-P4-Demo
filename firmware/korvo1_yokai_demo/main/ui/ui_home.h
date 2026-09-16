@@ -20,11 +20,14 @@ typedef enum {
 typedef void (*ui_app_launch_cb_t)(ui_app_id_t app);
 typedef void (*ui_quick_settings_toggle_cb_t)(void);
 
+extern const lv_image_dsc_t ui_img_home_p1;
+extern const lv_image_dsc_t ui_img_home_p2;
+
 /** Create the 2-Page Desktop Launcher Screen. */
 lv_obj_t *ui_home_screen_create(ui_app_launch_cb_t app_cb, ui_quick_settings_toggle_cb_t drawer_cb);
 
-/** Update home screen status header (clock, Wi-Fi icon). */
-void ui_home_screen_update_status(const char *time_str, bool wifi_connected);
+/** Update home screen status header (clock, Wi-Fi icon, signal strength). */
+void ui_home_screen_update_status(const char *time_str, bool wifi_connected, int rssi);
 
 #ifdef __cplusplus
 }

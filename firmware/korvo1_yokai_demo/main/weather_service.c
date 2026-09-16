@@ -316,9 +316,16 @@ static void weather_worker_task(void *arg)
 
     if (!has_credentials) {
         if (esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg) == ESP_OK && strlen((char *)wifi_cfg.sta.ssid) > 0) {
-            has_credentials = true;
-            (void)esp_wifi_connect();
-            ESP_LOGI(TAG, "Connecting to stored Wi-Fi SSID '%s'...", (char *)wifi_cfg.sta.ssid);
+            if (strlen((char *)wifi_cfg.sta.password) >= 8) {
+                wifi_cfg.sta.pmf_cfg.capable = true;
+                wifi_cfg.sta.pmf_cfg.required = false;
+                wifi_cfg.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+                wifi_cfg.sta.threshold.authmode = WIFI_AUTH_OPEN;
+                (void)esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+                has_credentials = true;
+                (void)esp_wifi_connect();
+                ESP_LOGI(TAG, "Connecting to stored Wi-Fi SSID '%s'...", (char *)wifi_cfg.sta.ssid);
+            }
         }
     }
 

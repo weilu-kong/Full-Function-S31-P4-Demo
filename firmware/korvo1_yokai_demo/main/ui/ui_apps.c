@@ -11,12 +11,6 @@
 /* -------------------------------------------------------------
  * Common Helper: Header Bar
  * ------------------------------------------------------------- */
-static void drawer_quick_btn_cb(lv_event_t *e)
-{
-    (void)e;
-    ui_drawer_set_visible(true);
-}
-
 static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_home_btn_cb_t home_cb)
 {
     lv_obj_t *btn_home = lv_button_create(parent);
@@ -29,7 +23,7 @@ static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_ho
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
     lv_label_set_text(lbl_home, "ホーム");
-    lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_font(lbl_home, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_home);
 
     lv_obj_t *lbl_title = lv_label_create(parent);
@@ -37,18 +31,6 @@ static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_ho
     lv_obj_set_style_text_color(lbl_title, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_title, 134, 15);
-
-    /* Quick Settings Drawer Button in Header */
-    lv_obj_t *btn_qs = lv_button_create(parent);
-    lv_obj_add_style(btn_qs, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_qs, 96, 36);
-    lv_obj_set_pos(btn_qs, 688, 12);
-    lv_obj_add_event_cb(btn_qs, drawer_quick_btn_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *lbl_qs = lv_label_create(btn_qs);
-    lv_label_set_text(lbl_qs, "設定 ▼");
-    lv_obj_set_style_text_font(lbl_qs, UI_FONT_SMALL, 0);
-    lv_obj_center(lbl_qs);
 
     return btn_home;
 }
@@ -109,7 +91,7 @@ lv_obj_t *ui_voice_screen_create(ui_home_btn_cb_t home_cb)
     lv_label_set_text(s_lbl_voice_status, "待機中 (ESP-SR 準備完了)");
     lv_obj_set_style_text_color(s_lbl_voice_status, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(s_lbl_voice_status, UI_FONT_REGULAR, 0);
-    lv_obj_set_pos(s_lbl_voice_status, 240, 240);
+    lv_obj_align(s_lbl_voice_status, LV_ALIGN_TOP_MID, 0, 240);
 
     lv_obj_t *btn_rec = lv_button_create(card);
     lv_obj_add_style(btn_rec, &ui_style_pill_badge, 0);
@@ -173,7 +155,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_t *lbl_target = lv_label_create(vf);
     lv_label_set_text(lbl_target, "[ 霊視ビューファインダー / ESP-DL ]");
     lv_obj_set_style_text_color(lbl_target, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_target, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_font(lbl_target, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_target);
 
     /* Right Control Area */
@@ -186,7 +168,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     s_lbl_vision_det = lv_label_create(card);
     lv_label_set_text(s_lbl_vision_det, "[物体検出] 妖怪探索中…");
     lv_obj_set_style_text_color(s_lbl_vision_det, UI_COLOR_CYAN_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_vision_det, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_font(s_lbl_vision_det, UI_FONT_REGULAR, 0);
     lv_obj_set_width(s_lbl_vision_det, 180);
     lv_label_set_long_mode(s_lbl_vision_det, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(s_lbl_vision_det, 560, 70);
@@ -251,8 +233,8 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb)
     s_lbl_fw_count = lv_label_create(scr);
     lv_label_set_text(s_lbl_fw_count, "打上数: 0 発");
     lv_obj_set_style_text_color(s_lbl_fw_count, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_fw_count, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(s_lbl_fw_count, 660, 18);
+    lv_obj_set_style_text_font(s_lbl_fw_count, UI_FONT_REGULAR, 0);
+    lv_obj_set_pos(s_lbl_fw_count, 640, 16);
 
     s_fireworks_area = lv_obj_create(scr);
     lv_obj_add_style(s_fireworks_area, &ui_style_glass_card, 0);
@@ -338,7 +320,7 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_start, timer_start_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_st = lv_label_create(btn_start);
     lv_label_set_text(lbl_st, "開始 / 停止");
-    lv_obj_set_style_text_font(lbl_st, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_font(lbl_st, UI_FONT_REGULAR, 0);
     lv_obj_set_style_text_color(lbl_st, lv_color_hex(0x0C0F17), 0);
     lv_obj_center(lbl_st);
 
@@ -349,7 +331,7 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_rst, timer_reset_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_rt = lv_label_create(btn_rst);
     lv_label_set_text(lbl_rt, "リセット");
-    lv_obj_set_style_text_font(lbl_rt, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_font(lbl_rt, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_rt);
 
     return scr;
@@ -431,7 +413,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     s_lbl_calc_screen = lv_label_create(screen_box);
     lv_label_set_text(s_lbl_calc_screen, "0");
     lv_obj_set_style_text_color(s_lbl_calc_screen, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_calc_screen, UI_FONT_TITLE, 0);
+    lv_obj_set_style_text_font(s_lbl_calc_screen, UI_FONT_LARGE, 0);
     lv_obj_align(s_lbl_calc_screen, LV_ALIGN_RIGHT_MID, -12, 0);
 
     /* 4x4 Keypad */
@@ -456,7 +438,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
 
             lv_obj_t *lbl = lv_label_create(btn);
             lv_label_set_text(lbl, keys[idx]);
-            lv_obj_set_style_text_font(lbl, UI_FONT_TITLE, 0);
+            lv_obj_set_style_text_font(lbl, UI_FONT_LARGE, 0);
             lv_obj_set_style_text_color(lbl, UI_COLOR_TEXT_TITLE, 0);
             lv_obj_center(lbl);
         }
@@ -515,7 +497,7 @@ lv_obj_t *ui_food_screen_create(ui_home_btn_cb_t home_cb)
         lv_obj_t *lbl_days = lv_label_create(row);
         lv_label_set_text(lbl_days, foods[i].days);
         lv_obj_set_style_text_color(lbl_days, foods[i].color, 0);
-        lv_obj_set_style_text_font(lbl_days, UI_FONT_SMALL, 0);
+        lv_obj_set_style_text_font(lbl_days, UI_FONT_REGULAR, 0);
         lv_obj_align(lbl_days, LV_ALIGN_RIGHT_MID, -12, 0);
     }
 

@@ -72,12 +72,6 @@ static void home_click_event_cb(lv_event_t *e)
     }
 }
 
-static void drawer_btn_event_cb(lv_event_t *e)
-{
-    (void)e;
-    ui_drawer_set_visible(true);
-}
-
 static void key_play_note(float freq, bool on)
 {
     if (on) {
@@ -161,7 +155,7 @@ static void wave_switch_event_cb(lv_event_t *e)
     synth_wave_t next = (cur + 1) % SYNTH_WAVE_MAX;
     synth_service_set_waveform(next);
 
-    const char *names[] = {"SIN 正弦", "SQR 矩形", "SAW 鋸歯", "和太鼓 (Drum)"};
+    const char *names[] = {"正弦波 (SIN)", "矩形波 (SQR)", "ノコギリ (SAW)", "和太鼓 (Drum)"};
     if (s_lbl_wave && next < SYNTH_WAVE_MAX) {
         lv_label_set_text(s_lbl_wave, names[next]);
     }
@@ -203,22 +197,22 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
     lv_label_set_text(lbl_home, "ホーム");
-    lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_font(lbl_home, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_home);
 
     lv_obj_t *lbl_title = lv_label_create(s_scr_synth);
-    lv_label_set_text(lbl_title, "妖精の鍵盤 (Yokai)");
+    lv_label_set_text(lbl_title, "妖怪シンセサイザー (Yokai)");
     lv_obj_set_style_text_color(lbl_title, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_title, 128, 15);
 
-    /* Mode Buttons: KEY / BT / WEB */
+    /* Mode Buttons: KEY / BT / WEB (Right-aligned in header) */
     synth_mode_t cur_mode = synth_service_get_mode();
-    const char *mode_names[3] = {"KEY 鍵盤", "BT 無線", "WEB 連携"};
+    const char *mode_names[3] = {"鍵盤演奏", "BT 伴奏", "WEB 連動"};
     for (int i = 0; i < 3; i++) {
         lv_obj_t *btn_m = lv_button_create(s_scr_synth);
-        lv_obj_set_size(btn_m, 80, 36);
-        lv_obj_set_pos(btn_m, 418 + i * 86, 12);
+        lv_obj_set_size(btn_m, 86, 36);
+        lv_obj_set_pos(btn_m, 508 + i * 92, 12);
         lv_obj_set_style_radius(btn_m, 18, 0);
         lv_obj_set_style_border_width(btn_m, 1, 0);
         lv_obj_set_style_border_color(btn_m, UI_COLOR_GOLD_ACCENT, 0);
@@ -243,34 +237,23 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
         s_btn_modes[i] = btn_m;
     }
 
-    /* Top-Right Quick Settings Drawer Button */
-    lv_obj_t *btn_qs = lv_button_create(s_scr_synth);
-    lv_obj_add_style(btn_qs, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_qs, 102, 36);
-    lv_obj_set_pos(btn_qs, 682, 12);
-    lv_obj_add_event_cb(btn_qs, drawer_btn_event_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *lbl_qs = lv_label_create(btn_qs);
-    lv_label_set_text(lbl_qs, "設定 ▼");
-    lv_obj_set_style_text_font(lbl_qs, UI_FONT_SMALL, 0);
-    lv_obj_center(lbl_qs);
-
     /* 2. Oscilloscope Display Card (Upper Left) */
     lv_obj_t *osc_card = lv_obj_create(s_scr_synth);
     lv_obj_add_style(osc_card, &ui_style_glass_card, 0);
-    lv_obj_set_size(osc_card, 380, 196);
+    lv_obj_set_size(osc_card, 376, 196);
     lv_obj_set_pos(osc_card, 16, 56);
+    lv_obj_set_style_pad_all(osc_card, 0, 0);
     lv_obj_remove_flag(osc_card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *lbl_osc_title = lv_label_create(osc_card);
-    lv_label_set_text(lbl_osc_title, "示波器 (OSCILLOSCOPE)");
+    lv_label_set_text(lbl_osc_title, "オシロスコープ (OSCILLOSCOPE)");
     lv_obj_set_style_text_color(lbl_osc_title, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_osc_title, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_osc_title, 12, 8);
+    lv_obj_set_pos(lbl_osc_title, 16, 10);
 
     s_chart_wave = lv_chart_create(osc_card);
-    lv_obj_set_size(s_chart_wave, 344, 140);
-    lv_obj_set_pos(s_chart_wave, 10, 32);
+    lv_obj_set_size(s_chart_wave, 344, 142);
+    lv_obj_set_pos(s_chart_wave, 16, 36);
     lv_chart_set_type(s_chart_wave, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(s_chart_wave, 32);
     lv_chart_set_range(s_chart_wave, LV_CHART_AXIS_PRIMARY_Y, -100, 100);
@@ -288,6 +271,7 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_add_style(ctrl_card, &ui_style_glass_card, 0);
     lv_obj_set_size(ctrl_card, 376, 196);
     lv_obj_set_pos(ctrl_card, 408, 56);
+    lv_obj_set_style_pad_all(ctrl_card, 0, 0);
     lv_obj_remove_flag(ctrl_card, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Knob 1: Cutoff Frequency */
@@ -304,21 +288,21 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_add_event_cb(s_arc_cutoff, arc_cutoff_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     lv_obj_t *lbl_cut = lv_label_create(ctrl_card);
-    lv_label_set_text(lbl_cut, "遮断周波数");
+    lv_label_set_text(lbl_cut, "カットオフ");
     lv_obj_set_style_text_color(lbl_cut, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(lbl_cut, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_cut, 26, 115);
+    lv_obj_set_pos(lbl_cut, 20, 116);
 
     s_lbl_cutoff_val = lv_label_create(ctrl_card);
     lv_label_set_text(s_lbl_cutoff_val, "4100Hz");
     lv_obj_set_style_text_color(s_lbl_cutoff_val, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_cutoff_val, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_cut, 26, 135);
+    lv_obj_set_style_text_font(s_lbl_cutoff_val, UI_FONT_REGULAR, 0);
+    lv_obj_set_pos(s_lbl_cutoff_val, 24, 138);
 
     /* Knob 2: Resonance */
     s_arc_res = lv_arc_create(ctrl_card);
     lv_obj_set_size(s_arc_res, 90, 90);
-    lv_obj_set_pos(s_arc_res, 136, 16);
+    lv_obj_set_pos(s_arc_res, 134, 16);
     lv_arc_set_rotation(s_arc_res, 135);
     lv_arc_set_bg_angles(s_arc_res, 0, 270);
     lv_arc_set_range(s_arc_res, 0, 100);
@@ -329,39 +313,47 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_add_event_cb(s_arc_res, arc_res_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     lv_obj_t *lbl_res = lv_label_create(ctrl_card);
-    lv_label_set_text(lbl_res, "共鳴 (Q)");
+    lv_label_set_text(lbl_res, "レゾナンス (Q)");
     lv_obj_set_style_text_color(lbl_res, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(lbl_res, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_res, 150, 115);
+    lv_obj_set_pos(lbl_res, 142, 116);
 
     s_lbl_res_val = lv_label_create(ctrl_card);
     lv_label_set_text(s_lbl_res_val, "1.8");
     lv_obj_set_style_text_color(s_lbl_res_val, UI_COLOR_RED_ACCENT, 0);
-    lv_obj_set_style_text_font(s_lbl_res_val, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(s_lbl_res_val, 165, 135);
+    lv_obj_set_style_text_font(s_lbl_res_val, UI_FONT_REGULAR, 0);
+    lv_obj_set_pos(s_lbl_res_val, 160, 138);
 
     /* Waveform Button */
     s_btn_wave = lv_button_create(ctrl_card);
     lv_obj_add_style(s_btn_wave, &ui_style_pill_badge, 0);
-    lv_obj_set_size(s_btn_wave, 106, 44);
-    lv_obj_set_pos(s_btn_wave, 252, 40);
+    lv_obj_set_size(s_btn_wave, 138, 46);
+    lv_obj_set_pos(s_btn_wave, 226, 40);
+    lv_obj_set_style_pad_hor(s_btn_wave, 6, 0);
     lv_obj_add_event_cb(s_btn_wave, wave_switch_event_cb, LV_EVENT_CLICKED, NULL);
 
     s_lbl_wave = lv_label_create(s_btn_wave);
-    lv_label_set_text(s_lbl_wave, "SIN 正弦");
+    synth_wave_t init_wave = synth_service_get_waveform();
+    const char *init_names[] = {"正弦波 (SIN)", "矩形波 (SQR)", "ノコギリ (SAW)", "和太鼓 (Drum)"};
+    if (init_wave < SYNTH_WAVE_MAX) {
+        lv_label_set_text(s_lbl_wave, init_names[init_wave]);
+    } else {
+        lv_label_set_text(s_lbl_wave, "正弦波 (SIN)");
+    }
     lv_obj_set_style_text_font(s_lbl_wave, UI_FONT_SMALL, 0);
     lv_obj_center(s_lbl_wave);
 
     lv_obj_t *lbl_wave_title = lv_label_create(ctrl_card);
-    lv_label_set_text(lbl_wave_title, "音色波形切替");
+    lv_label_set_text(lbl_wave_title, "波形切り替え");
     lv_obj_set_style_text_color(lbl_wave_title, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(lbl_wave_title, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_wave_title, 260, 100);
+    lv_obj_set_pos(lbl_wave_title, 247, 96);
 
     /* 4. Real Piano Keyboard Surface (12 White Keys + 8 Floating Black Keys) */
     lv_obj_t *keys_panel = lv_obj_create(s_scr_synth);
     lv_obj_set_size(keys_panel, 768, 206);
     lv_obj_set_pos(keys_panel, 16, 262);
+    lv_obj_set_style_pad_all(keys_panel, 0, 0);
     lv_obj_set_style_bg_color(keys_panel, lv_color_hex(0x141822), 0);
     lv_obj_set_style_radius(keys_panel, 12, 0);
     lv_obj_set_style_border_width(keys_panel, 1, 0);
@@ -371,8 +363,8 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     const int white_w = 58;
     const int white_gap = 5;
     const int white_h = 192;
-    const int start_x = 8;
-    const int start_y = 6;
+    const int start_x = 9;
+    const int start_y = 7;
 
     /* A. Create 12 White Keys Side by Side */
     for (int i = 0; i < 12; i++) {
@@ -391,7 +383,7 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
         lv_obj_t *lbl = lv_label_create(btn_w);
         lv_label_set_text(lbl, s_white_keys[i].name);
         lv_obj_set_style_text_color(lbl, UI_COLOR_TEXT_TITLE, 0);
-        lv_obj_set_style_text_font(lbl, UI_FONT_SMALL, 0);
+        lv_obj_set_style_text_font(lbl, UI_FONT_REGULAR, 0);
         lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -8);
 
         lv_obj_add_event_cb(btn_w, white_key_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
@@ -435,30 +427,42 @@ void ui_synth_update_waveform(void)
         return;
     }
 
+    static bool s_was_active = false;
+    if (s_last_active_freq <= 0.0f) {
+        if (!s_was_active) {
+            return; /* Idle: no chart refresh needed */
+        }
+        s_was_active = false;
+        for (int i = 0; i < 32; i++) {
+            lv_chart_set_value_by_id(s_chart_wave, s_ser_wave, i, 0);
+        }
+        lv_chart_refresh(s_chart_wave);
+        return;
+    }
+
+    s_was_active = true;
     s_wave_phase += 3;
     synth_wave_t wave = synth_service_get_waveform();
 
     for (int i = 0; i < 32; i++) {
+        float t = (float)(i + s_wave_phase) * 0.3f;
         float val = 0.0f;
-        if (s_last_active_freq > 0.0f) {
-            float t = (float)(i + s_wave_phase) * 0.3f;
-            switch (wave) {
-            case SYNTH_WAVE_SIN:
-                val = sinf(t) * 75.0f;
-                break;
-            case SYNTH_WAVE_SQR:
-                val = (sinf(t) >= 0.0f ? 60.0f : -60.0f);
-                break;
-            case SYNTH_WAVE_SAW:
-                val = (fmodf(t, 3.14159f) / 3.14159f * 140.0f) - 70.0f;
-                break;
-            case SYNTH_WAVE_DRUM:
-                val = sinf(t * 1.5f) * expf(-fmodf((float)s_wave_phase * 0.05f, 2.0f)) * 80.0f;
-                break;
-            default:
-                val = 0.0f;
-                break;
-            }
+        switch (wave) {
+        case SYNTH_WAVE_SIN:
+            val = sinf(t) * 75.0f;
+            break;
+        case SYNTH_WAVE_SQR:
+            val = (sinf(t) >= 0.0f ? 60.0f : -60.0f);
+            break;
+        case SYNTH_WAVE_SAW:
+            val = (fmodf(t, 3.14159f) / 3.14159f * 140.0f) - 70.0f;
+            break;
+        case SYNTH_WAVE_DRUM:
+            val = sinf(t * 1.5f) * expf(-fmodf((float)s_wave_phase * 0.05f, 2.0f)) * 80.0f;
+            break;
+        default:
+            val = 0.0f;
+            break;
         }
         lv_chart_set_value_by_id(s_chart_wave, s_ser_wave, i, (int32_t)val);
     }

@@ -1,5 +1,7 @@
 #include "ui/ui_wifi.h"
 #include "ui/ui_theme.h"
+#include "ui/ui_wifi_signal.h"
+#include "ui/ui_img_key_icon.h"
 #include "board_ui.h"
 #include "esp_log.h"
 #include <stdio.h>
@@ -17,10 +19,10 @@ static lv_obj_t *s_lbl_empty = NULL;
 /* 14 AP Row Items */
 typedef struct {
     lv_obj_t *btn;
-    lv_obj_t *lbl_lock;
+    lv_obj_t *img_lock;
     lv_obj_t *lbl_ssid;
     lv_obj_t *lbl_badge;
-    lv_obj_t *lbl_rssi;
+    ui_wifi_signal_t rssi_icon;
     wifi_ap_record_t ap;
     bool in_use;
 } ap_row_t;
@@ -39,6 +41,10 @@ static lv_obj_t *s_kb = NULL;
 /* Saved Network Modal */
 static lv_obj_t *s_saved_modal = NULL;
 static lv_obj_t *s_lbl_saved_title = NULL;
+static lv_obj_t *s_lbl_saved_sub = NULL;
+static lv_obj_t *s_btn_saved_conn = NULL;
+static lv_obj_t *s_btn_saved_disconn = NULL;
+static lv_obj_t *s_lbl_s_conn = NULL;
 
 static void home_btn_event_cb(lv_event_t *e)
 {
@@ -93,8 +99,26 @@ static void kb_event_cb(lv_event_t *e)
 static void saved_reconnect_btn_cb(lv_event_t *e)
 {
     (void)e;
-    ESP_LOGI(TAG, "Reconnecting to saved SSID: %s", s_target_ssid);
+    ESP_LOGI(TAG, "Connecting to saved SSID: %s", s_target_ssid);
+    if (!board_ui_wifi_is_saved(s_target_ssid)) {
+        /* Saved credentials missing or password empty; prompt user for password */
+        lv_obj_add_flag(s_saved_modal, LV_OBJ_FLAG_HIDDEN);
+        char title[64];
+        snprintf(title, sizeof(title), "「%s」に接続", s_target_ssid);
+        lv_label_set_text(s_lbl_pass_title, title);
+        lv_textarea_set_text(s_ta_pass, "");
+        lv_obj_remove_flag(s_pass_modal, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
     board_ui_wifi_connect(s_target_ssid, NULL);
+    lv_obj_add_flag(s_saved_modal, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void saved_disconnect_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    ESP_LOGI(TAG, "Explicit disconnect requested for SSID: %s", s_target_ssid);
+    board_ui_wifi_disconnect();
     lv_obj_add_flag(s_saved_modal, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -125,13 +149,35 @@ static void ap_row_click_cb(lv_event_t *e)
 
     ESP_LOGI(TAG, "Selected AP [%d]: %s (auth=%d)", idx, s_target_ssid, ap->authmode);
 
-    if (ap->authmode == WIFI_AUTH_OPEN) {
-        board_ui_wifi_connect(s_target_ssid, NULL);
+    board_wifi_info_t cur_info;
+    board_ui_wifi_get_info(&cur_info);
+
+    wifi_ap_record_t live_ap;
+    bool is_live_connected = (esp_wifi_sta_get_ap_info(&live_ap) == ESP_OK &&
+                             strncmp(s_target_ssid, (const char *)live_ap.ssid, sizeof(s_target_ssid)) == 0);
+    bool is_connected = ((cur_info.state == BOARD_WIFI_CONNECTED &&
+                          strcmp(s_target_ssid, cur_info.connected_ssid) == 0) || is_live_connected);
+
+    if (is_connected) {
+        char title[64];
+        snprintf(title, sizeof(title), "接続中: 「%s」", s_target_ssid);
+        lv_label_set_text(s_lbl_saved_title, title);
+        lv_label_set_text(s_lbl_saved_sub, "接続中のネットワークです。\nWi-Fi を切断するか、保存された設定を削除できます。");
+        lv_obj_add_flag(s_btn_saved_conn, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_btn_saved_disconn, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_saved_modal, LV_OBJ_FLAG_HIDDEN);
     } else if (board_ui_wifi_is_saved(s_target_ssid)) {
         char title[64];
         snprintf(title, sizeof(title), "設定済み: 「%s」", s_target_ssid);
         lv_label_set_text(s_lbl_saved_title, title);
+        lv_label_set_text(s_lbl_saved_sub, "以前に接続したことのあるネットワークです。\n接続するか、保存された設定を削除できます。");
+        lv_label_set_text(s_lbl_s_conn, "接続");
+        lv_obj_set_style_bg_color(s_btn_saved_conn, UI_COLOR_CYAN_ACCENT, 0);
+        lv_obj_remove_flag(s_btn_saved_conn, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_btn_saved_disconn, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_saved_modal, LV_OBJ_FLAG_HIDDEN);
+    } else if (ap->authmode == WIFI_AUTH_OPEN) {
+        board_ui_wifi_connect(s_target_ssid, NULL);
     } else {
         char title[64];
         snprintf(title, sizeof(title), "「%s」に接続", s_target_ssid);
@@ -159,7 +205,7 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
     lv_label_set_text(lbl_home, "ホーム");
-    lv_obj_set_style_text_font(lbl_home, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_font(lbl_home, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_home);
 
     lv_obj_t *lbl_title = lv_label_create(s_screen);
@@ -213,36 +259,34 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
         lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_event_cb(btn, ap_row_click_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
 
-        lv_obj_t *lbl_lock = lv_label_create(btn);
-        lv_label_set_text(lbl_lock, "");
-        lv_obj_set_style_text_color(lbl_lock, UI_COLOR_GOLD_ACCENT, 0);
-        lv_obj_set_style_text_font(lbl_lock, UI_FONT_SMALL, 0);
-        lv_obj_align(lbl_lock, LV_ALIGN_LEFT_MID, 0, 0);
+        /* Graphic Key Icon (Crisp white icon for secured APs) */
+        lv_obj_t *img_lock = lv_image_create(btn);
+        lv_image_set_src(img_lock, &ui_img_key_icon);
+        lv_obj_set_style_image_recolor(img_lock, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_image_recolor_opa(img_lock, LV_OPA_COVER, 0);
+        lv_obj_align(img_lock, LV_ALIGN_LEFT_MID, 4, 0);
+        lv_obj_add_flag(img_lock, LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_t *lbl_ssid = lv_label_create(btn);
         lv_label_set_text(lbl_ssid, "");
         lv_obj_set_style_text_color(lbl_ssid, UI_COLOR_TEXT_TITLE, 0);
         lv_obj_set_style_text_font(lbl_ssid, UI_FONT_REGULAR, 0);
-        lv_obj_align(lbl_ssid, LV_ALIGN_LEFT_MID, 30, 0);
+        lv_obj_align(lbl_ssid, LV_ALIGN_LEFT_MID, 28, 0);
 
         lv_obj_t *lbl_badge = lv_label_create(btn);
         lv_label_set_text(lbl_badge, "");
         lv_obj_set_style_text_font(lbl_badge, UI_FONT_SMALL, 0);
-        lv_obj_align(lbl_badge, LV_ALIGN_RIGHT_MID, -90, 0);
+        lv_obj_align(lbl_badge, LV_ALIGN_RIGHT_MID, -50, 0);
 
-        lv_obj_t *lbl_rssi = lv_label_create(btn);
-        lv_label_set_text(lbl_rssi, "");
-        lv_obj_set_style_text_color(lbl_rssi, UI_COLOR_TEXT_SUB, 0);
-        lv_obj_set_style_text_font(lbl_rssi, UI_FONT_SMALL, 0);
-        lv_obj_align(lbl_rssi, LV_ALIGN_RIGHT_MID, 0, 0);
+        /* 4-bar smartphone-style signal widget */
+        ui_wifi_signal_create(&s_rows[i].rssi_icon, btn, 698, 16);
 
         lv_obj_add_flag(btn, LV_OBJ_FLAG_HIDDEN);
 
         s_rows[i].btn = btn;
-        s_rows[i].lbl_lock = lbl_lock;
+        s_rows[i].img_lock = img_lock;
         s_rows[i].lbl_ssid = lbl_ssid;
         s_rows[i].lbl_badge = lbl_badge;
-        s_rows[i].lbl_rssi = lbl_rssi;
         s_rows[i].in_use = false;
     }
 
@@ -257,19 +301,20 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
 
     lv_obj_t *pass_panel = lv_obj_create(s_pass_modal);
     lv_obj_add_style(pass_panel, &ui_style_glass_card, 0);
-    lv_obj_set_size(pass_panel, 760, 400);
-    lv_obj_set_pos(pass_panel, 20, 40);
+    lv_obj_set_size(pass_panel, 780, 460);
+    lv_obj_set_pos(pass_panel, 10, 10);
+    lv_obj_set_style_pad_all(pass_panel, 6, 0);
     lv_obj_remove_flag(pass_panel, LV_OBJ_FLAG_SCROLLABLE);
 
     s_lbl_pass_title = lv_label_create(pass_panel);
     lv_label_set_text(s_lbl_pass_title, "パスワード入力");
     lv_obj_set_style_text_color(s_lbl_pass_title, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(s_lbl_pass_title, UI_FONT_TITLE, 0);
-    lv_obj_set_pos(s_lbl_pass_title, 20, 10);
+    lv_obj_set_pos(s_lbl_pass_title, 14, 8);
 
     s_ta_pass = lv_textarea_create(pass_panel);
-    lv_obj_set_size(s_ta_pass, 520, 42);
-    lv_obj_set_pos(s_ta_pass, 20, 44);
+    lv_obj_set_size(s_ta_pass, 480, 40);
+    lv_obj_set_pos(s_ta_pass, 14, 38);
     lv_textarea_set_one_line(s_ta_pass, true);
     lv_textarea_set_placeholder_text(s_ta_pass, "パスワードを入力 (8文字以上)...");
     lv_obj_set_style_bg_color(s_ta_pass, UI_COLOR_KEY_WHITE, 0);
@@ -278,8 +323,8 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
 
     lv_obj_t *btn_pass_conn = lv_button_create(pass_panel);
     lv_obj_add_style(btn_pass_conn, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_pass_conn, 88, 42);
-    lv_obj_set_pos(btn_pass_conn, 550, 44);
+    lv_obj_set_size(btn_pass_conn, 110, 40);
+    lv_obj_set_pos(btn_pass_conn, 510, 38);
     lv_obj_set_style_bg_color(btn_pass_conn, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_add_event_cb(btn_pass_conn, pass_connect_btn_cb, LV_EVENT_CLICKED, NULL);
 
@@ -291,18 +336,18 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
 
     lv_obj_t *btn_pass_cancel = lv_button_create(pass_panel);
     lv_obj_add_style(btn_pass_cancel, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_pass_cancel, 88, 42);
-    lv_obj_set_pos(btn_pass_cancel, 646, 44);
+    lv_obj_set_size(btn_pass_cancel, 120, 40);
+    lv_obj_set_pos(btn_pass_cancel, 634, 38);
     lv_obj_add_event_cb(btn_pass_cancel, pass_cancel_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_cancel = lv_label_create(btn_pass_cancel);
-    lv_label_set_text(lbl_cancel, "閉じる ✕");
+    lv_label_set_text(lbl_cancel, "キャンセル");
     lv_obj_set_style_text_font(lbl_cancel, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_cancel);
 
     s_kb = lv_keyboard_create(pass_panel);
-    lv_obj_set_size(s_kb, 720, 270);
-    lv_obj_set_pos(s_kb, 10, 100);
+    lv_obj_set_size(s_kb, 764, 350);
+    lv_obj_set_pos(s_kb, 4, 88);
     lv_keyboard_set_textarea(s_kb, s_ta_pass);
     lv_obj_add_event_cb(s_kb, kb_event_cb, LV_EVENT_ALL, NULL);
 
@@ -319,7 +364,7 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
 
     lv_obj_t *saved_panel = lv_obj_create(s_saved_modal);
     lv_obj_add_style(saved_panel, &ui_style_glass_card, 0);
-    lv_obj_set_size(saved_panel, 540, 250);
+    lv_obj_set_size(saved_panel, 620, 240);
     lv_obj_center(saved_panel);
     lv_obj_remove_flag(saved_panel, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -329,30 +374,46 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
     lv_obj_set_style_text_font(s_lbl_saved_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(s_lbl_saved_title, 20, 16);
 
-    lv_obj_t *lbl_saved_sub = lv_label_create(saved_panel);
-    lv_label_set_text(lbl_saved_sub, "以前に接続したことのあるネットワークです。\n接続するか、保存された設定を削除できます。");
-    lv_obj_set_style_text_color(lbl_saved_sub, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_saved_sub, UI_FONT_SMALL, 0);
-    lv_obj_set_pos(lbl_saved_sub, 20, 54);
+    s_lbl_saved_sub = lv_label_create(saved_panel);
+    lv_label_set_text(s_lbl_saved_sub, "以前に接続したことのあるネットワークです。\n接続するか、保存された設定を削除できます。");
+    lv_obj_set_style_text_color(s_lbl_saved_sub, UI_COLOR_TEXT_SUB, 0);
+    lv_obj_set_style_text_font(s_lbl_saved_sub, UI_FONT_SMALL, 0);
+    lv_obj_set_pos(s_lbl_saved_sub, 20, 54);
 
-    lv_obj_t *btn_saved_conn = lv_button_create(saved_panel);
-    lv_obj_add_style(btn_saved_conn, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_saved_conn, 140, 44);
-    lv_obj_set_pos(btn_saved_conn, 20, 150);
-    lv_obj_set_style_bg_color(btn_saved_conn, UI_COLOR_CYAN_ACCENT, 0);
-    lv_obj_add_event_cb(btn_saved_conn, saved_reconnect_btn_cb, LV_EVENT_CLICKED, NULL);
+    /* 1. Connect / Reconnect Button */
+    s_btn_saved_conn = lv_button_create(saved_panel);
+    lv_obj_add_style(s_btn_saved_conn, &ui_style_pill_badge, 0);
+    lv_obj_set_size(s_btn_saved_conn, 160, 44);
+    lv_obj_set_pos(s_btn_saved_conn, 25, 150);
+    lv_obj_set_style_bg_color(s_btn_saved_conn, UI_COLOR_CYAN_ACCENT, 0);
+    lv_obj_add_event_cb(s_btn_saved_conn, saved_reconnect_btn_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_obj_t *lbl_s_conn = lv_label_create(btn_saved_conn);
-    lv_label_set_text(lbl_s_conn, "再接続");
-    lv_obj_set_style_text_font(lbl_s_conn, UI_FONT_REGULAR, 0);
-    lv_obj_set_style_text_color(lbl_s_conn, lv_color_hex(0x0C0F17), 0);
-    lv_obj_center(lbl_s_conn);
+    s_lbl_s_conn = lv_label_create(s_btn_saved_conn);
+    lv_label_set_text(s_lbl_s_conn, "接続");
+    lv_obj_set_style_text_font(s_lbl_s_conn, UI_FONT_REGULAR, 0);
+    lv_obj_set_style_text_color(s_lbl_s_conn, lv_color_hex(0x0C0F17), 0);
+    lv_obj_center(s_lbl_s_conn);
 
+    /* 2. Explicit Disconnect Button */
+    s_btn_saved_disconn = lv_button_create(saved_panel);
+    lv_obj_add_style(s_btn_saved_disconn, &ui_style_pill_badge, 0);
+    lv_obj_set_size(s_btn_saved_disconn, 160, 44);
+    lv_obj_set_pos(s_btn_saved_disconn, 25, 150);
+    lv_obj_set_style_bg_color(s_btn_saved_disconn, UI_COLOR_RED_ACCENT, 0);
+    lv_obj_add_event_cb(s_btn_saved_disconn, saved_disconnect_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_s_disconn = lv_label_create(s_btn_saved_disconn);
+    lv_label_set_text(lbl_s_disconn, "Wi-Fi を切断");
+    lv_obj_set_style_text_font(lbl_s_disconn, UI_FONT_REGULAR, 0);
+    lv_obj_set_style_text_color(lbl_s_disconn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(lbl_s_disconn);
+
+    /* 3. Forget / Delete Saved Config Button */
     lv_obj_t *btn_saved_forget = lv_button_create(saved_panel);
     lv_obj_add_style(btn_saved_forget, &ui_style_pill_badge, 0);
     lv_obj_set_size(btn_saved_forget, 170, 44);
-    lv_obj_set_pos(btn_saved_forget, 175, 150);
-    lv_obj_set_style_bg_color(btn_saved_forget, UI_COLOR_RED_ACCENT, 0);
+    lv_obj_set_pos(btn_saved_forget, 215, 150);
+    lv_obj_set_style_bg_color(btn_saved_forget, lv_color_hex(0x2D3748), 0);
     lv_obj_add_event_cb(btn_saved_forget, saved_forget_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_s_forget = lv_label_create(btn_saved_forget);
@@ -361,15 +422,16 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
     lv_obj_set_style_text_color(lbl_s_forget, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(lbl_s_forget);
 
+    /* 4. Cancel / Close Button */
     lv_obj_t *btn_saved_cancel = lv_button_create(saved_panel);
     lv_obj_add_style(btn_saved_cancel, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_saved_cancel, 120, 44);
-    lv_obj_set_pos(btn_saved_cancel, 360, 150);
+    lv_obj_set_size(btn_saved_cancel, 140, 44);
+    lv_obj_set_pos(btn_saved_cancel, 415, 150);
     lv_obj_add_event_cb(btn_saved_cancel, saved_cancel_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_s_cancel = lv_label_create(btn_saved_cancel);
-    lv_label_set_text(lbl_s_cancel, "閉じる ✕");
-    lv_obj_set_style_text_font(lbl_s_cancel, UI_FONT_SMALL, 0);
+    lv_label_set_text(lbl_s_cancel, "閉じる");
+    lv_obj_set_style_text_font(lbl_s_cancel, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_s_cancel);
 
     lv_obj_add_flag(s_saved_modal, LV_OBJ_FLAG_HIDDEN);
@@ -398,6 +460,8 @@ void ui_wifi_screen_update(const board_wifi_info_t *info)
             snprintf(status_text, sizeof(status_text), "接続失敗 (パスワード誤り)");
         } else if (info->last_disconnect_reason == 201) {
             snprintf(status_text, sizeof(status_text), "接続失敗 (APが見つかりません)");
+        } else if (info->last_disconnect_reason == 210) {
+            snprintf(status_text, sizeof(status_text), "接続失敗 (パスワード要再入力)");
         } else {
             snprintf(status_text, sizeof(status_text), "接続失敗 (エラー: %u)", (unsigned)info->last_disconnect_reason);
         }
@@ -436,11 +500,11 @@ void ui_wifi_screen_update(const board_wifi_info_t *info)
             s_rows[i].in_use = true;
             const char *ssid = (const char *)info->aps[i].ssid;
 
-            /* Lock icon */
+            /* Golden Key Icon */
             if (info->aps[i].authmode != WIFI_AUTH_OPEN) {
-                lv_label_set_text(s_rows[i].lbl_lock, "[鍵]");
+                lv_obj_remove_flag(s_rows[i].img_lock, LV_OBJ_FLAG_HIDDEN);
             } else {
-                lv_label_set_text(s_rows[i].lbl_lock, "");
+                lv_obj_add_flag(s_rows[i].img_lock, LV_OBJ_FLAG_HIDDEN);
             }
 
             /* SSID */
@@ -450,7 +514,7 @@ void ui_wifi_screen_update(const board_wifi_info_t *info)
             bool is_connected = (info->state == BOARD_WIFI_CONNECTED &&
                                  strcmp(ssid, info->connected_ssid) == 0);
             if (is_connected) {
-                lv_label_set_text(s_rows[i].lbl_badge, "[接続済み]");
+                lv_label_set_text(s_rows[i].lbl_badge, "[接続中]");
                 lv_obj_set_style_text_color(s_rows[i].lbl_badge, UI_COLOR_CYAN_ACCENT, 0);
             } else if (board_ui_wifi_is_saved(ssid)) {
                 lv_label_set_text(s_rows[i].lbl_badge, "[設定済み]");
@@ -459,10 +523,9 @@ void ui_wifi_screen_update(const board_wifi_info_t *info)
                 lv_label_set_text(s_rows[i].lbl_badge, "");
             }
 
-            /* RSSI */
-            char rssi_str[32];
-            snprintf(rssi_str, sizeof(rssi_str), "%d dBm", info->aps[i].rssi);
-            lv_label_set_text(s_rows[i].lbl_rssi, rssi_str);
+            /* 4-bar smartphone-style signal icon */
+            uint8_t lvl = ui_wifi_rssi_to_level(info->aps[i].rssi);
+            ui_wifi_signal_set_level(&s_rows[i].rssi_icon, lvl);
 
             lv_obj_remove_flag(s_rows[i].btn, LV_OBJ_FLAG_HIDDEN);
         } else {

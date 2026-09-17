@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "app_main.c" "app_state.c" "board_ui.c" "synth_service.c" "voice_service.c" "weather_service.c"
          "ui/ui_theme.c" "ui/ui_weather.c" "ui/ui_synth.c" "ui/ui_home.c" "ui/ui_drawer.c" "ui/ui_wifi.c" "ui/ui_bluetooth.c" "ui/ui_apps.c" "ui/ui.c"
-         "ui/ui_wifi_signal.c" "ui/ui_img_key_icon.c"
+         "ui/ui_wifi_signal.c" "ui/ui_img_key_icon.c" "ui/ui_image_loader.c"
          "ui/ui_img_home_p1.c" "ui/ui_img_home_p2.c"
          "ui/ui_img_weather_sunny.c" "ui/ui_img_weather_cloudy.c" "ui/ui_img_weather_rain.c" "ui/ui_img_weather_night.c"
          "ui/ui_font_cjk_14.c" "ui/ui_font_cjk_16.c" "ui/ui_font_cjk_20.c" "ui/ui_font_cjk_32.c"

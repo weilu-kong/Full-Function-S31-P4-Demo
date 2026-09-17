@@ -20,8 +20,8 @@ typedef enum {
 typedef void (*ui_app_launch_cb_t)(ui_app_id_t app);
 typedef void (*ui_quick_settings_toggle_cb_t)(void);
 
-extern const lv_image_dsc_t ui_img_home_p1;
-extern const lv_image_dsc_t ui_img_home_p2;
+extern lv_image_dsc_t ui_img_home_p1;
+extern lv_image_dsc_t ui_img_home_p2;
 
 /** Create the 2-Page Desktop Launcher Screen. */
 lv_obj_t *ui_home_screen_create(ui_app_launch_cb_t app_cb, ui_quick_settings_toggle_cb_t drawer_cb);

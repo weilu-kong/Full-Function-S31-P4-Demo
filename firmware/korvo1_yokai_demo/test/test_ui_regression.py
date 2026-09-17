@@ -29,7 +29,7 @@ assert "ui_home_screen_create" in home
 assert "ui_drawer_create" in ui
 assert "ui_switch_screen" in ui
 
-assert "factory,  app,  factory, 0x10000,  9M," in partitions
-assert "model,    data, spiffs,  0x910000, 6M," in partitions
+assert "factory,  app,  factory, 0x10000,  0xB80000," in partitions
+assert "model,    data, spiffs,  0xB90000, 0x380000," in partitions
 assert "storage,  data, spiffs,  0xf10000, 960K," in partitions
 print("LVGL UI regression checks passed")

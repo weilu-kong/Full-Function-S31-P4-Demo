@@ -39,6 +39,9 @@ void ui_drawer_update_status(const board_wifi_info_t *wifi_info);
 /** Update drawer Bluetooth status display and sync switch. */
 void ui_drawer_update_bt_status(bool enabled, bool connected, const char *dev_name);
 
+/** Synchronize the master-volume slider with an external volume change. */
+void ui_drawer_set_volume(int volume);
+
 #ifdef __cplusplus
 }
 #endif

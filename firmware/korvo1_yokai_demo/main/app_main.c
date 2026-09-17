@@ -4,6 +4,7 @@
 #include "app_state.h"
 #include "board_ui.h"
 #include "synth_service.h"
+#include "voice_service.h"
 #include "weather_service.h"
 
 static const char *TAG = "yokai_demo";
@@ -19,6 +20,10 @@ void app_main(void)
 
     /* Initialize synthesizer audio engine with esp-audio-effects */
     ESP_ERROR_CHECK(synth_service_init());
+
+    if (!voice_service_start()) {
+        ESP_LOGE(TAG, "Voice control unavailable: %s", voice_service_error());
+    }
 
     /* Initialize weather service with SNTP & Open-Meteo polling */
     ESP_ERROR_CHECK(weather_service_init());

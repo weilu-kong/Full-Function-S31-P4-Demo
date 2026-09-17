@@ -7,9 +7,11 @@
 #include "ui/ui_bluetooth.h"
 #include "ui/ui_apps.h"
 #include "ui/ui_drawer.h"
+#include "ui/ui_image_loader.h"
 #include "board_ui.h"
 #include "weather_service.h"
 #include "synth_service.h"
+#include "voice_service.h"
 #include "esp_log.h"
 #include <time.h>
 #include <stdio.h>
@@ -22,6 +24,25 @@ static bool s_reopen_drawer_on_return = false;
 static lv_obj_t *s_screen_objs[UI_SCREEN_MAX] = {0};
 static lv_obj_t *s_drawer = NULL;
 static app_state_t *s_app_state = NULL;
+static int s_voice_saved_volume = 80;
+static lv_obj_t *s_voice_toast = NULL;
+static lv_obj_t *s_voice_toast_label = NULL;
+static lv_timer_t *s_voice_toast_timer = NULL;
+
+static void voice_toast_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    lv_obj_add_flag(s_voice_toast, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_pause(s_voice_toast_timer);
+}
+
+static void show_voice_toast(const char *text)
+{
+    lv_label_set_text(s_voice_toast_label, text);
+    lv_obj_remove_flag(s_voice_toast, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_reset(s_voice_toast_timer);
+    lv_timer_resume(s_voice_toast_timer);
+}
 
 static void on_app_launch(ui_app_id_t app)
 {
@@ -64,7 +85,12 @@ static void on_return_home(void)
 
 static void on_return_from_wifi(void)
 {
-    ui_switch_screen(s_return_screen);
+    ui_screen_t target = s_return_screen;
+    if (target == UI_SCREEN_WIFI || target == UI_SCREEN_BLUETOOTH) {
+        target = UI_SCREEN_HOME;
+    }
+    s_return_screen = UI_SCREEN_HOME;
+    ui_switch_screen(target);
     if (s_reopen_drawer_on_return) {
         ui_drawer_set_visible(true);
         s_reopen_drawer_on_return = false;
@@ -73,8 +99,10 @@ static void on_return_from_wifi(void)
 
 static void on_wifi_details_requested(void)
 {
-    ESP_LOGI(TAG, "Opening Wi-Fi settings from drawer");
-    s_return_screen = s_current_screen;
+    ESP_LOGI(TAG, "Opening Wi-Fi settings");
+    if (s_current_screen != UI_SCREEN_WIFI) {
+        s_return_screen = s_current_screen;
+    }
     s_reopen_drawer_on_return = false;
     ui_switch_screen(UI_SCREEN_WIFI);
     (void)board_ui_wifi_scan_async();
@@ -82,13 +110,20 @@ static void on_wifi_details_requested(void)
 
 static void on_return_from_bt(void)
 {
-    ui_switch_screen(s_return_screen);
+    ui_screen_t target = s_return_screen;
+    if (target == UI_SCREEN_BLUETOOTH) {
+        target = UI_SCREEN_HOME;
+    }
+    s_return_screen = UI_SCREEN_HOME;
+    ui_switch_screen(target);
 }
 
 static void on_bt_details_requested(void)
 {
-    ESP_LOGI(TAG, "Opening Bluetooth settings from drawer");
-    s_return_screen = s_current_screen;
+    ESP_LOGI(TAG, "Opening Bluetooth settings");
+    if (s_current_screen != UI_SCREEN_BLUETOOTH) {
+        s_return_screen = s_current_screen;
+    }
     s_reopen_drawer_on_return = false;
     ui_switch_screen(UI_SCREEN_BLUETOOTH);
 }
@@ -126,10 +161,43 @@ static void on_bright_change(int brightness)
     ESP_LOGD(TAG, "Brightness changed: %d", brightness);
 }
 
+static void execute_voice_command(const voice_result_t *result)
+{
+    const voice_command_info_t *info = voice_service_command_info(result->command);
+    if (!info) return;
+
+    switch (info->target) {
+    case VOICE_TARGET_SYNTH:      ui_switch_screen(UI_SCREEN_SYNTH); break;
+    case VOICE_TARGET_WEATHER:    ui_switch_screen(UI_SCREEN_WEATHER); break;
+    case VOICE_TARGET_VOICE:      ui_switch_screen(UI_SCREEN_VOICE); break;
+    case VOICE_TARGET_VISION:     ui_switch_screen(UI_SCREEN_VISION); break;
+    case VOICE_TARGET_FIREWORKS:  ui_switch_screen(UI_SCREEN_FIREWORKS); break;
+    case VOICE_TARGET_CLOCK:      ui_switch_screen(UI_SCREEN_CLOCK); break;
+    case VOICE_TARGET_CALCULATOR: ui_switch_screen(UI_SCREEN_CALCULATOR); break;
+    case VOICE_TARGET_FOOD:       ui_switch_screen(UI_SCREEN_FOOD); break;
+    case VOICE_TARGET_WIFI:       on_wifi_details_requested(); break;
+    case VOICE_TARGET_BLUETOOTH:  on_bt_details_requested(); break;
+    case VOICE_TARGET_HOME:       ui_switch_screen(UI_SCREEN_HOME); break;
+    case VOICE_TARGET_VOLUME: {
+        int volume = voice_service_apply_volume(result->command,
+                                                synth_service_get_master_volume(),
+                                                &s_voice_saved_volume);
+        synth_service_set_master_volume(volume);
+        ui_drawer_set_volume(volume);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 void ui_init(lv_display_t *disp, app_state_t *state)
 {
     (void)disp;
     s_app_state = state;
+
+    /* Decompress Yokai background JPEGs into PSRAM via hardware acceleration */
+    ui_images_init();
 
     ui_theme_init();
 
@@ -154,9 +222,28 @@ void ui_init(lv_display_t *disp, app_state_t *state)
     s_drawer = ui_drawer_create(top_layer, on_wifi_toggle, on_wifi_details_requested,
                                 on_bt_toggle, on_bt_details_requested,
                                 on_volume_change, on_bright_change);
+    ui_drawer_set_volume(synth_service_get_master_volume());
+
+    s_voice_toast = lv_obj_create(top_layer);
+    lv_obj_set_size(s_voice_toast, 420, 58);
+    lv_obj_align(s_voice_toast, LV_ALIGN_TOP_MID, 0, 18);
+    lv_obj_set_style_radius(s_voice_toast, 16, 0);
+    lv_obj_set_style_bg_color(s_voice_toast, lv_color_hex(0x090D14), 0);
+    lv_obj_set_style_bg_opa(s_voice_toast, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(s_voice_toast, UI_COLOR_CYAN_ACCENT, 0);
+    lv_obj_set_style_border_width(s_voice_toast, 1, 0);
+    lv_obj_remove_flag(s_voice_toast, LV_OBJ_FLAG_SCROLLABLE);
+    s_voice_toast_label = lv_label_create(s_voice_toast);
+    lv_obj_set_style_text_font(s_voice_toast_label, UI_FONT_REGULAR, 0);
+    lv_obj_set_style_text_color(s_voice_toast_label, UI_COLOR_TEXT_TITLE, 0);
+    lv_obj_center(s_voice_toast_label);
+    lv_obj_add_flag(s_voice_toast, LV_OBJ_FLAG_HIDDEN);
+    s_voice_toast_timer = lv_timer_create(voice_toast_timer_cb, 1500, NULL);
+    lv_timer_pause(s_voice_toast_timer);
 
     /* Start at Home Desktop */
     s_current_screen = UI_SCREEN_HOME;
+    voice_service_set_mode(VOICE_MODE_GLOBAL_WAKE);
     lv_screen_load(s_screen_objs[UI_SCREEN_HOME]);
     ESP_LOGI(TAG, "Yokai UI initialized with 8 Apps + Wi-Fi & BT screens active");
 }
@@ -199,6 +286,18 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             synth_service_set_active(true);
         } else if (s_pending_target == UI_SCREEN_WEATHER) {
             ui_weather_set_active(true);
+            time_t now = time(NULL);
+            struct tm local = {0};
+            char time_buf[16] = "--:--";
+            if (localtime_r(&now, &local) != NULL && local.tm_year >= 120) {
+                snprintf(time_buf, sizeof(time_buf), "%02d:%02d", local.tm_hour, local.tm_min);
+            }
+            board_wifi_info_t winfo;
+            board_ui_wifi_get_info(&winfo);
+            ui_weather_screen_update_status(time_buf, winfo.state == BOARD_WIFI_CONNECTED, winfo.connected_rssi, synth_service_get_master_volume());
+            weather_info_t info;
+            weather_service_get_info(&info);
+            ui_weather_screen_update(&info);
         }
     }
     if (card) {
@@ -219,6 +318,9 @@ void ui_switch_screen(ui_screen_t target)
     if (s_trans_active) {
         return;
     }
+
+    voice_service_set_mode(target == UI_SCREEN_VOICE
+                           ? VOICE_MODE_CONTINUOUS : VOICE_MODE_GLOBAL_WAKE);
 
     ui_screen_t prev = s_current_screen;
     s_current_screen = target;
@@ -291,11 +393,17 @@ void ui_tick_periodic(void)
     ui_home_screen_update_status(time_buf, wifi_info.state == BOARD_WIFI_CONNECTED, wifi_info.connected_rssi);
 
     /* 3. Update Weather Screen */
-    if (s_current_screen == UI_SCREEN_WEATHER && weather_service_is_dirty()) {
-        weather_info_t info;
-        weather_service_get_info(&info);
-        ui_weather_screen_update(&info);
-        weather_service_clear_dirty();
+    if (s_current_screen == UI_SCREEN_WEATHER) {
+        ui_weather_screen_update_status(time_buf,
+                                        wifi_info.state == BOARD_WIFI_CONNECTED,
+                                        wifi_info.connected_rssi,
+                                        synth_service_get_master_volume());
+        if (weather_service_is_dirty()) {
+            weather_info_t info;
+            weather_service_get_info(&info);
+            ui_weather_screen_update(&info);
+            weather_service_clear_dirty();
+        }
     }
 
     /* 4. Update Bluetooth Status */
@@ -319,4 +427,30 @@ void ui_tick_periodic(void)
 
     /* 6. Update Remaining Apps (Clock / Timer, etc.) */
     ui_apps_tick_periodic();
+
+    /* 7. Consume speech results only on the LVGL thread. */
+    voice_result_t result;
+    while (voice_service_receive(&result)) {
+        if (result.event == VOICE_EVENT_WAKE) {
+            synth_service_play_feedback_tone();
+            show_voice_toast("御用でしょうか");
+        } else if (result.event == VOICE_EVENT_RETRY) {
+            show_voice_toast("もう一度");
+        } else if (result.event == VOICE_EVENT_COMMAND) {
+            const voice_command_info_t *info = voice_service_command_info(result.command);
+            execute_voice_command(&result);
+            if (info) {
+                char text[96];
+                if (info->target == VOICE_TARGET_VOLUME) {
+                    snprintf(text, sizeof(text), "%s  %d%%", info->feature,
+                             synth_service_get_master_volume());
+                    show_voice_toast(text);
+                } else {
+                    show_voice_toast(info->feature);
+                }
+            }
+        }
+        ui_voice_screen_update(&result, synth_service_get_master_volume(),
+                               voice_service_is_ready(), voice_service_error());
+    }
 }

@@ -408,3 +408,14 @@ void ui_drawer_update_bt_status(bool enabled, bool connected, const char *dev_na
         lv_obj_set_style_text_color(s_lbl_bt_desc, UI_COLOR_TEXT_SUB, 0);
     }
 }
+
+void ui_drawer_set_volume(int volume)
+{
+    if (!s_slider_vol || !s_lbl_vol_val) return;
+    if (volume < 0) volume = 0;
+    if (volume > 100) volume = 100;
+    lv_slider_set_value(s_slider_vol, volume, LV_ANIM_OFF);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d%%", volume);
+    lv_label_set_text(s_lbl_vol_val, buf);
+}

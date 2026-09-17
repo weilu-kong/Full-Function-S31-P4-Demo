@@ -82,14 +82,14 @@ MultiNet 是命令分类器而非语音转写器，因此 UI 不显示伪造的�
 保持现有 ES8389、合成器和蓝牙 A2DP 的 44.1 kHz、16-bit、双声道配置。ESP-SR 所需的 16 kHz 数据由 ESP32-S31 硬件 ASRC 生成：
 
 ```text
-双麦 44.1 kHz ─→ ASRC0 ─→ 16 kHz 双麦 ─┐
-                                        ├→ AFE MMNR → WakeNet / MultiNet7
-扬声器最终 PCM ─→ ASRC1 ─→ 16 kHz 参考 ─┘
+双麦 44.1 kHz ─→ ASRC0（选左声道）─→ 16 kHz 单麦 ─┐
+                                                   ├→ AFE MR → WakeNet / MultiNet7
+扬声器最终 PCM ─→ CPU 混为单声道 ─→ ASRC1 ─→ 16 kHz 参考 ─┘
 ```
 
-- 麦克风链路保留双声道，转换后提供两个 `M` 通道。
+- Codec 麦克风输入保持双声道，ASRC 选择左声道后提供一个 `M` 通道；这是 S31 AEC 的 1 麦克风限制。
 - AEC 参考取自效果器处理后、写入 Codec 前的最终立体声 PCM，混合为参考通道并转换至 16 kHz。
-- AFE 输入排列使用 `MMNR`：双麦、空通道、播放参考。
+- AFE 输入排列使用 `MR`：单麦、播放参考。
 - 没有播放数据时参考通道填零。
 - 保留可调的 AEC 参考延迟，处理 Codec、DMA 和缓冲带来的实际时延。
 
@@ -191,11 +191,11 @@ MultiNet 是命令分类器而非语音转写器，因此 UI 不显示伪造的�
 
 现有分区表包含：
 
-- `factory`：9 MB
-- `model`：6 MB，起始地址 `0x910000`
+- `factory`：11.5 MB
+- `model`：3.5 MB，起始地址 `0xB90000`
 - `storage`：960 KB
 
-启用 WakeNet 与 MultiNet 后，构建必须验证模型镜像不超过 6 MB。首次启用或模型发生变化时需要烧录 bootloader、分区表、应用和模型镜像；模型稳定后，普通 UI/逻辑迭代仍可继续只烧录 `0x10000` 的 App 镜像。
+启用 WakeNet 与 MultiNet 后，构建必须验证模型镜像不超过 3.5 MB。首次启用或模型发生变化时需要烧录 bootloader、分区表、应用和模型镜像；模型稳定后，普通 UI/逻辑迭代仍可继续只烧录 `0x10000` 的 App 镜像。
 
 ## 10. 验证策略
 

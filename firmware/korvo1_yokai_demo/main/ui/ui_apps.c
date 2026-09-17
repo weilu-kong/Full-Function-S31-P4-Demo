@@ -1,7 +1,9 @@
 #include "ui/ui_apps.h"
 #include "ui/ui_theme.h"
 #include "ui/ui_drawer.h"
+#include "synth_service.h"
 #include "esp_log.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,21 +40,22 @@ static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_ho
 /* -------------------------------------------------------------
  * 1. Voice Shrine Screen (言霊の神社)
  * ------------------------------------------------------------- */
-static lv_obj_t *s_lbl_voice_status = NULL;
-static bool s_voice_listening = false;
+static lv_obj_t *s_lbl_voice_state = NULL;
+static lv_obj_t *s_lbl_voice_result = NULL;
+static lv_obj_t *s_lbl_voice_detail = NULL;
+static lv_timer_t *s_voice_reset_timer = NULL;
 
-static void voice_btn_cb(lv_event_t *e)
+static void voice_reset_timer_cb(lv_timer_t *t)
 {
-    (void)e;
-    s_voice_listening = !s_voice_listening;
-    if (s_lbl_voice_status) {
-        if (s_voice_listening) {
-            lv_label_set_text(s_lbl_voice_status, "音声認識中… 「妖怪」「雪女」を待機しています");
-            lv_obj_set_style_text_color(s_lbl_voice_status, UI_COLOR_CYAN_ACCENT, 0);
-        } else {
-            lv_label_set_text(s_lbl_voice_status, "待機中 (ESP-SR 準備完了)");
-            lv_obj_set_style_text_color(s_lbl_voice_status, UI_COLOR_TEXT_SUB, 0);
-        }
+    (void)t;
+    if (s_lbl_voice_state && s_lbl_voice_result && s_lbl_voice_detail) {
+        lv_label_set_text(s_lbl_voice_state, "常時認識中");
+        lv_label_set_text(s_lbl_voice_result, "英語または日本語の命令を待っています");
+        lv_label_set_text(s_lbl_voice_detail, "WakeNet: Hi ESP / 言霊の社内はウェイクワード不要です");
+        lv_obj_set_style_text_color(s_lbl_voice_state, UI_COLOR_CYAN_ACCENT, 0);
+    }
+    if (s_voice_reset_timer) {
+        lv_timer_pause(s_voice_reset_timer);
     }
 }
 
@@ -63,49 +66,177 @@ lv_obj_t *ui_voice_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_bg_color(scr, UI_COLOR_BG_DARK, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
-    create_screen_header(scr, "言霊の神社 (Voice Shrine)", home_cb);
+    create_screen_header(scr, "言霊の社 (Voice Shrine)", home_cb);
 
     lv_obj_t *card = lv_obj_create(scr);
     lv_obj_add_style(card, &ui_style_glass_card, 0);
     lv_obj_set_size(card, 768, 412);
     lv_obj_set_pos(card, 16, 56);
+    lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Altar Orb Motif */
-    lv_obj_t *orb = lv_obj_create(card);
-    lv_obj_set_size(orb, 140, 140);
-    lv_obj_set_pos(orb, 314, 40);
-    lv_obj_set_style_radius(orb, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(orb, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_bg_opa(orb, LV_OPA_30, 0);
-    lv_obj_set_style_border_color(orb, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_border_width(orb, 2, 0);
+    lv_obj_t *status = lv_obj_create(card);
+    lv_obj_add_style(status, &ui_style_glass_card, 0);
+    lv_obj_set_size(status, 744, 76);
+    lv_obj_set_pos(status, 12, 10);
+    lv_obj_set_style_pad_all(status, 0, 0);
+    lv_obj_remove_flag(status, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(status, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *lbl_shrine = lv_label_create(card);
-    lv_label_set_text(lbl_shrine, "言霊奉納祭壇");
-    lv_obj_set_style_text_color(lbl_shrine, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_shrine, UI_FONT_TITLE, 0);
-    lv_obj_set_pos(lbl_shrine, 324, 195);
+    s_lbl_voice_state = lv_label_create(status);
+    lv_label_set_text(s_lbl_voice_state, "常時認識中");
+    lv_obj_set_style_text_color(s_lbl_voice_state, UI_COLOR_CYAN_ACCENT, 0);
+    lv_obj_set_style_text_font(s_lbl_voice_state, UI_FONT_REGULAR, 0);
+    lv_obj_set_pos(s_lbl_voice_state, 16, 10);
 
-    s_lbl_voice_status = lv_label_create(card);
-    lv_label_set_text(s_lbl_voice_status, "待機中 (ESP-SR 準備完了)");
-    lv_obj_set_style_text_color(s_lbl_voice_status, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(s_lbl_voice_status, UI_FONT_REGULAR, 0);
-    lv_obj_align(s_lbl_voice_status, LV_ALIGN_TOP_MID, 0, 240);
+    s_lbl_voice_result = lv_label_create(status);
+    lv_label_set_text(s_lbl_voice_result, "英語または日本語の命令を待っています");
+    lv_obj_set_style_text_color(s_lbl_voice_result, UI_COLOR_TEXT_TITLE, 0);
+    lv_obj_set_style_text_font(s_lbl_voice_result, UI_FONT_SMALL, 0);
+    lv_obj_set_width(s_lbl_voice_result, 530);
+    lv_obj_set_pos(s_lbl_voice_result, 160, 12);
 
-    lv_obj_t *btn_rec = lv_button_create(card);
-    lv_obj_add_style(btn_rec, &ui_style_pill_badge, 0);
-    lv_obj_set_size(btn_rec, 200, 50);
-    lv_obj_set_pos(btn_rec, 284, 290);
-    lv_obj_set_style_bg_color(btn_rec, UI_COLOR_RED_ACCENT, 0);
-    lv_obj_add_event_cb(btn_rec, voice_btn_cb, LV_EVENT_CLICKED, NULL);
+    s_lbl_voice_detail = lv_label_create(status);
+    lv_label_set_text(s_lbl_voice_detail, "WakeNet: Hi ESP / 言霊の社内はウェイクワード不要です");
+    lv_obj_set_style_text_color(s_lbl_voice_detail, UI_COLOR_TEXT_SUB, 0);
+    lv_obj_set_style_text_font(s_lbl_voice_detail, UI_FONT_SMALL, 0);
+    lv_obj_set_width(s_lbl_voice_detail, 710);
+    lv_obj_set_pos(s_lbl_voice_detail, 16, 44);
 
-    lv_obj_t *lbl_rec = lv_label_create(btn_rec);
-    lv_label_set_text(lbl_rec, "言霊を唱える");
-    lv_obj_set_style_text_font(lbl_rec, UI_FONT_REGULAR, 0);
-    lv_obj_center(lbl_rec);
+    lv_obj_t *list = lv_obj_create(card);
+    lv_obj_set_size(list, 744, 308);
+    lv_obj_set_pos(list, 12, 94);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_style_pad_all(list, 0, 0);
+    lv_obj_set_style_pad_row(list, 6, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_AUTO);
+
+    for (voice_command_t command = VOICE_COMMAND_SYNTH;
+         command < VOICE_COMMAND_COUNT; ++command) {
+        const voice_command_info_t *info = voice_service_command_info(command);
+        if (!info) continue;
+        lv_obj_t *row = lv_obj_create(list);
+        lv_obj_set_size(row, 720, 46);
+        lv_obj_set_style_radius(row, 8, 0);
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x111A28), 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_hor(row, 12, 0);
+        lv_obj_set_style_pad_ver(row, 0, 0);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);
+
+        lv_obj_t *feature = lv_label_create(row);
+        lv_label_set_text(feature, info->feature);
+        lv_obj_set_width(feature, 130);
+        lv_obj_set_style_text_font(feature, UI_FONT_SMALL, 0);
+        lv_obj_set_style_text_color(feature, UI_COLOR_GOLD_ACCENT, 0);
+        lv_obj_align(feature, LV_ALIGN_LEFT_MID, 0, 0);
+
+        lv_obj_t *english = lv_label_create(row);
+        lv_label_set_text(english, info->english);
+        lv_obj_set_width(english, 390);
+        lv_obj_set_style_text_font(english, UI_FONT_SMALL, 0);
+        lv_obj_set_style_text_color(english, UI_COLOR_TEXT_TITLE, 0);
+        lv_obj_align(english, LV_ALIGN_LEFT_MID, 140, 0);
+
+        lv_obj_t *japanese = lv_label_create(row);
+        lv_label_set_text(japanese, info->japanese);
+        lv_obj_set_width(japanese, 150);
+        lv_obj_set_style_text_font(japanese, UI_FONT_SMALL, 0);
+        lv_obj_set_style_text_color(japanese, UI_COLOR_CYAN_ACCENT, 0);
+        lv_obj_set_style_text_align(japanese, LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_align(japanese, LV_ALIGN_RIGHT_MID, 0, 0);
+    }
+
+    if (!s_voice_reset_timer) {
+        s_voice_reset_timer = lv_timer_create(voice_reset_timer_cb, 2000, NULL);
+        lv_timer_pause(s_voice_reset_timer);
+    }
+
+    ui_voice_screen_update(NULL, synth_service_get_master_volume(),
+                           voice_service_is_ready(), voice_service_error());
 
     return scr;
+}
+
+void ui_voice_screen_update(const voice_result_t *result, int volume,
+                            bool service_ready, const char *error_text)
+{
+    if (!s_lbl_voice_state || !s_lbl_voice_result || !s_lbl_voice_detail) return;
+    if (!service_ready) {
+        lv_label_set_text(s_lbl_voice_state, "音声認識を利用できません");
+        lv_label_set_text(s_lbl_voice_result, "ESP-SR 初期化エラー");
+        lv_label_set_text(s_lbl_voice_detail, error_text ? error_text : "Unknown error");
+        lv_obj_set_style_text_color(s_lbl_voice_state, UI_COLOR_RED_ACCENT, 0);
+        if (s_voice_reset_timer) lv_timer_pause(s_voice_reset_timer);
+        return;
+    }
+
+    lv_obj_set_style_text_color(s_lbl_voice_state, UI_COLOR_CYAN_ACCENT, 0);
+    if (!result) {
+        lv_label_set_text(s_lbl_voice_state, "常時認識中");
+        lv_label_set_text(s_lbl_voice_result, "英語または日本語の命令を待っています");
+        return;
+    }
+
+    const voice_command_info_t *info = voice_service_command_info(result->command);
+    char detail[96];
+    switch (result->event) {
+    case VOICE_EVENT_WAKE:
+        lv_label_set_text(s_lbl_voice_state, "御用でしょうか");
+        lv_label_set_text(s_lbl_voice_result, "WakeNet 起動");
+        lv_label_set_text(s_lbl_voice_detail, "5 秒以内に命令を話してください");
+        break;
+    case VOICE_EVENT_LISTENING:
+        lv_label_set_text(s_lbl_voice_state, "常時認識中");
+        lv_label_set_text(s_lbl_voice_result, "英語または日本語の命令を待っています");
+        lv_label_set_text(s_lbl_voice_detail, "WakeNet: Hi ESP / 言霊の社内はウェイクワード不要です");
+        break;
+    case VOICE_EVENT_COMMAND:
+        if (!info) break;
+        lv_label_set_text(s_lbl_voice_state, info->feature);
+        lv_label_set_text(s_lbl_voice_result, result->language == VOICE_LANGUAGE_JAPANESE
+                          ? info->japanese : info->english);
+        int confidence = (int)(result->confidence * 100.0f + 0.5f);
+        if (confidence < 0) confidence = 0;
+        if (confidence > 100) confidence = 100;
+        if (info->target == VOICE_TARGET_VOLUME) {
+            snprintf(detail, sizeof(detail), "%s / 信頼度 %d%% / 音量 %d%%",
+                     result->language == VOICE_LANGUAGE_JAPANESE ? "日本語" : "English",
+                     confidence, volume);
+        } else {
+            snprintf(detail, sizeof(detail), "%s / 信頼度 %d%%",
+                     result->language == VOICE_LANGUAGE_JAPANESE ? "日本語" : "English",
+                     confidence);
+        }
+        lv_label_set_text(s_lbl_voice_detail, detail);
+        if (s_voice_reset_timer) {
+            lv_timer_reset(s_voice_reset_timer);
+            lv_timer_resume(s_voice_reset_timer);
+        }
+        break;
+    case VOICE_EVENT_RETRY:
+        lv_label_set_text(s_lbl_voice_state, "もう一度");
+        lv_label_set_text(s_lbl_voice_result, "命令を確認できませんでした");
+        lv_label_set_text(s_lbl_voice_detail, "もう一度話してください");
+        if (s_voice_reset_timer) {
+            lv_timer_reset(s_voice_reset_timer);
+            lv_timer_resume(s_voice_reset_timer);
+        }
+        break;
+    case VOICE_EVENT_ERROR:
+        lv_label_set_text(s_lbl_voice_state, "音声認識を利用できません");
+        lv_label_set_text(s_lbl_voice_result, "ESP-SR 実行エラー");
+        lv_label_set_text(s_lbl_voice_detail, error_text ? error_text : "Unknown error");
+        lv_obj_set_style_text_color(s_lbl_voice_state, UI_COLOR_RED_ACCENT, 0);
+        break;
+    default:
+        lv_label_set_text(s_lbl_voice_state, "常時認識中");
+        break;
+    }
 }
 
 /* -------------------------------------------------------------
@@ -196,10 +327,37 @@ static lv_obj_t *s_fireworks_area = NULL;
 static lv_obj_t *s_lbl_fw_count = NULL;
 static int s_fw_count = 0;
 
+static void fw_anim_del_cb(lv_anim_t *a)
+{
+    lv_obj_t *obj = (lv_obj_t *)a->var;
+    if (obj) {
+        lv_obj_delete(obj);
+    }
+}
+
+static void fw_anim_opa_cb(lv_anim_t *a, int32_t val)
+{
+    lv_obj_t *obj = (lv_obj_t *)a->var;
+    if (obj) {
+        lv_obj_set_style_bg_opa(obj, val, 0);
+    }
+}
+
+static void fw_anim_size_cb(lv_anim_t *a, int32_t val)
+{
+    lv_obj_t *obj = (lv_obj_t *)a->var;
+    if (obj) {
+        int32_t cx = (int32_t)(intptr_t)lv_obj_get_user_data(obj) >> 16;
+        int32_t cy = (int32_t)(int16_t)(intptr_t)lv_obj_get_user_data(obj);
+        lv_obj_set_size(obj, val, val);
+        lv_obj_set_pos(obj, cx - val / 2, cy - val / 2);
+    }
+}
+
 static void fireworks_touch_cb(lv_event_t *e)
 {
     lv_indev_t *indev = lv_indev_active();
-    if (!indev) return;
+    if (!indev || !s_fireworks_area) return;
     lv_point_t pt;
     lv_indev_get_point(indev, &pt);
 
@@ -210,15 +368,42 @@ static void fireworks_touch_cb(lv_event_t *e)
         lv_label_set_text(s_lbl_fw_count, buf);
     }
 
-    /* Spawn a momentary particle flower */
+    int32_t rel_x = pt.x - 16;
+    int32_t rel_y = pt.y - 56;
+
     lv_obj_t *p = lv_obj_create(s_fireworks_area);
-    lv_obj_set_size(p, 40, 40);
-    lv_obj_set_pos(p, pt.x - 20 - 16, pt.y - 20 - 56);
+    lv_obj_set_size(p, 10, 10);
+    lv_obj_set_pos(p, rel_x - 5, rel_y - 5);
     lv_obj_set_style_radius(p, LV_RADIUS_CIRCLE, 0);
     lv_color_t colors[3] = {UI_COLOR_RED_ACCENT, UI_COLOR_GOLD_ACCENT, UI_COLOR_CYAN_ACCENT};
     lv_obj_set_style_bg_color(p, colors[s_fw_count % 3], 0);
     lv_obj_set_style_border_width(p, 0, 0);
     lv_obj_remove_flag(p, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+
+    intptr_t coords = ((rel_x & 0xFFFF) << 16) | (rel_y & 0xFFFF);
+    lv_obj_set_user_data(p, (void *)coords);
+
+    /* Animate expansion */
+    lv_anim_t a_size;
+    lv_anim_init(&a_size);
+    lv_anim_set_var(&a_size, p);
+    lv_anim_set_values(&a_size, 10, 70);
+    lv_anim_set_duration(&a_size, 550);
+    lv_anim_set_path_cb(&a_size, lv_anim_path_ease_out);
+    lv_anim_set_custom_exec_cb(&a_size, fw_anim_size_cb);
+    lv_anim_start(&a_size);
+
+    /* Animate fade out and auto delete */
+    lv_anim_t a_opa;
+    lv_anim_init(&a_opa);
+    lv_anim_set_var(&a_opa, p);
+    lv_anim_set_values(&a_opa, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_duration(&a_opa, 550);
+    lv_anim_set_path_cb(&a_opa, lv_anim_path_ease_out);
+    lv_anim_set_custom_exec_cb(&a_opa, fw_anim_opa_cb);
+    lv_anim_set_completed_cb(&a_opa, fw_anim_del_cb);
+    lv_anim_start(&a_opa);
 }
 
 lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb)
@@ -351,7 +536,7 @@ static void calc_btn_cb(lv_event_t *e)
     const char *key = (const char *)lv_event_get_user_data(e);
     if (!key) return;
 
-    if (strcmp(key, "C") == 0) {
+    if (strcmp(key, "AC") == 0) {
         strcpy(s_calc_buf, "0");
         s_calc_val = 0.0;
         s_calc_op = '\0';
@@ -365,6 +550,13 @@ static void calc_btn_cb(lv_event_t *e)
                 strcat(s_calc_buf, key);
             }
         }
+    } else if (strcmp(key, ".") == 0) {
+        if (s_calc_new_num) {
+            strcpy(s_calc_buf, "0.");
+            s_calc_new_num = false;
+        } else if (!strchr(s_calc_buf, '.') && strlen(s_calc_buf) < 13) {
+            strcat(s_calc_buf, ".");
+        }
     } else if (key[0] == '+' || key[0] == '-' || key[0] == '*' || key[0] == '/') {
         s_calc_val = atof(s_calc_buf);
         s_calc_op = key[0];
@@ -375,8 +567,26 @@ static void calc_btn_cb(lv_event_t *e)
         if (s_calc_op == '+') res = s_calc_val + cur;
         else if (s_calc_op == '-') res = s_calc_val - cur;
         else if (s_calc_op == '*') res = s_calc_val * cur;
-        else if (s_calc_op == '/' && cur != 0.0) res = s_calc_val / cur;
-        snprintf(s_calc_buf, sizeof(s_calc_buf), "%.2f", res);
+        else if (s_calc_op == '/') {
+            if (fabs(cur) < 1e-9) {
+                strcpy(s_calc_buf, "0");
+                s_calc_val = 0.0;
+                s_calc_op = '\0';
+                s_calc_new_num = true;
+                if (s_lbl_calc_screen) lv_label_set_text(s_lbl_calc_screen, "エラー");
+                return;
+            }
+            res = s_calc_val / cur;
+        }
+        snprintf(s_calc_buf, sizeof(s_calc_buf), "%.4f", res);
+        char *p = strchr(s_calc_buf, '.');
+        if (p) {
+            char *end = s_calc_buf + strlen(s_calc_buf) - 1;
+            while (end > p && *end == '0') {
+                *end-- = '\0';
+            }
+            if (end == p) *p = '\0';
+        }
         s_calc_new_num = true;
         s_calc_op = '\0';
     }
@@ -403,7 +613,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
 
     /* Calculator LCD Display */
     lv_obj_t *screen_box = lv_obj_create(card);
-    lv_obj_set_size(screen_box, 480, 60);
+    lv_obj_set_size(screen_box, 360, 60);
     lv_obj_set_pos(screen_box, 10, 10);
     lv_obj_set_style_bg_color(screen_box, lv_color_hex(0x06090E), 0);
     lv_obj_set_style_border_color(screen_box, UI_COLOR_GOLD_ACCENT, 0);
@@ -416,12 +626,27 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(s_lbl_calc_screen, UI_FONT_LARGE, 0);
     lv_obj_align(s_lbl_calc_screen, LV_ALIGN_RIGHT_MID, -12, 0);
 
+    /* Dedicated AC Button next to LCD */
+    lv_obj_t *btn_ac = lv_button_create(card);
+    lv_obj_set_size(btn_ac, 110, 60);
+    lv_obj_set_pos(btn_ac, 382, 10);
+    lv_obj_set_style_radius(btn_ac, 8, 0);
+    lv_obj_set_style_bg_color(btn_ac, UI_COLOR_RED_ACCENT, 0);
+    lv_obj_set_style_border_width(btn_ac, 0, 0);
+    lv_obj_add_event_cb(btn_ac, calc_btn_cb, LV_EVENT_CLICKED, (void *)"AC");
+
+    lv_obj_t *lbl_ac = lv_label_create(btn_ac);
+    lv_label_set_text(lbl_ac, "AC");
+    lv_obj_set_style_text_font(lbl_ac, UI_FONT_TITLE, 0);
+    lv_obj_set_style_text_color(lbl_ac, lv_color_hex(0x0C0F17), 0);
+    lv_obj_center(lbl_ac);
+
     /* 4x4 Keypad */
     const char *keys[16] = {
         "7", "8", "9", "/",
         "4", "5", "6", "*",
         "1", "2", "3", "-",
-        "C", "0", "=", "+"
+        "0", ".", "=", "+"
     };
 
     for (int r = 0; r < 4; r++) {
@@ -431,7 +656,14 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
             lv_obj_set_size(btn, 110, 60);
             lv_obj_set_pos(btn, 10 + c * 124, 85 + r * 72);
             lv_obj_set_style_radius(btn, 8, 0);
-            lv_obj_set_style_bg_color(btn, UI_COLOR_KEY_WHITE, 0);
+            if (keys[idx][0] == '=') {
+                lv_obj_set_style_bg_color(btn, UI_COLOR_GOLD_ACCENT, 0);
+            } else if (keys[idx][0] == '+' || keys[idx][0] == '-' ||
+                       keys[idx][0] == '*' || keys[idx][0] == '/') {
+                lv_obj_set_style_bg_color(btn, lv_color_hex(0x1F2937), 0);
+            } else {
+                lv_obj_set_style_bg_color(btn, UI_COLOR_KEY_WHITE, 0);
+            }
             lv_obj_set_style_border_width(btn, 1, 0);
             lv_obj_set_style_border_color(btn, lv_color_hex(0x2D3748), 0);
             lv_obj_add_event_cb(btn, calc_btn_cb, LV_EVENT_CLICKED, (void *)keys[idx]);
@@ -439,7 +671,11 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
             lv_obj_t *lbl = lv_label_create(btn);
             lv_label_set_text(lbl, keys[idx]);
             lv_obj_set_style_text_font(lbl, UI_FONT_LARGE, 0);
-            lv_obj_set_style_text_color(lbl, UI_COLOR_TEXT_TITLE, 0);
+            if (keys[idx][0] == '=') {
+                lv_obj_set_style_text_color(lbl, lv_color_hex(0x0C0F17), 0);
+            } else {
+                lv_obj_set_style_text_color(lbl, UI_COLOR_TEXT_TITLE, 0);
+            }
             lv_obj_center(lbl);
         }
     }
@@ -514,6 +750,13 @@ void ui_apps_tick_periodic(void)
         if (localtime_r(&now, &local) != NULL && local.tm_year >= 120) {
             snprintf(time_buf, sizeof(time_buf), "%02d:%02d:%02d",
                      local.tm_hour, local.tm_min, local.tm_sec);
+        } else {
+            uint32_t sec = lv_tick_get() / 1000;
+            uint32_t s = sec % 60;
+            uint32_t m = (sec / 60) % 60;
+            uint32_t h = (12 + sec / 3600) % 24;
+            snprintf(time_buf, sizeof(time_buf), "%02u:%02u:%02u",
+                     (unsigned)h, (unsigned)m, (unsigned)s);
         }
         lv_label_set_text(s_lbl_clock_big, time_buf);
     }

@@ -2,6 +2,7 @@
 
 #include "lvgl.h"
 #include "ui/ui_weather.h" /* for ui_home_btn_cb_t */
+#include "voice_service.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,6 +14,9 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb);
 lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb);
 lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb);
 lv_obj_t *ui_food_screen_create(ui_home_btn_cb_t home_cb);
+
+void ui_voice_screen_update(const voice_result_t *result, int volume,
+                            bool service_ready, const char *error_text);
 
 /** Periodic hook for clock and timer updates */
 void ui_apps_tick_periodic(void);

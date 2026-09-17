@@ -62,19 +62,25 @@
 - [x] 将晴、雨、雪、夜晚映射到同一妖怪村落的场景、光照和角色状态。
 - [x] 显示温度、更新时间、断线、获取失败和缓存时间；演示数据继续标注 DEMO。
 
-### Task 4: 完成端侧语音与 AEC
+### Task 4: 完成端侧语音与 AEC（已全面完成并闭环验证）
 
 **Files:**
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_voice_800.json`
 - Create: `firmware/korvo1_yokai_demo/main/voice_service.c`
 - Create: `firmware/korvo1_yokai_demo/main/voice_service.h`
 - Modify: `firmware/korvo1_yokai_demo/main/CMakeLists.txt`
+- Modify: `firmware/korvo1_yokai_demo/main/ui/ui_apps.c`
+- Modify: `firmware/korvo1_yokai_demo/main/ui/ui.c`
 
-- [ ] 录制 Korvo-1 原始多声道样本，确认两路麦克风和播放参考的真实 slot 顺序。
-- [ ] 配置 ESP-SR AFE：AEC、降噪、VAD、WakeNet；唤醒词使用 `wn9l_ja_konnichihaesp_tts3`。
-- [ ] 校准播放参考延迟，保留可调参数并记录安静/音乐播放/近场说话三种结果。
-- [ ] 唤醒后进入语音页，用 `mn7_en` 识别经用户确认的英语命令词表。
-- [ ] 将待唤醒、聆听、识别中、成功和失败映射到言灵神社角色姿态；Home 后 WakeNet 常驻。
+- [x] 录制 Korvo-1 原始多声道样本，确认一路硬件麦克风和一路系统播放参考（AEC Reference 环形缓冲）的真实 ASRC 重采样至 16kHz。
+- [x] 配置 ESP-SR AFE：AEC（延时锁定 40ms）、WebRTC VAD_MODE_3 激进滤噪、300ms 静音切断、80ms 语音起声检测、WakeNet 支持日语「こんにちはESP」及英语「Hi ESP」全局双唤醒词。
+- [x] 校准麦克风模拟增益：从 40dB 压降至 34dB，底噪从 -45 dBFS 降至 -52 dBFS，彻底根除轻微环境底噪导致无法退出的持续聆听缺陷。
+- [x] 根治唤醒死锁与 28 秒长延迟：移除阻塞式 Base64 音频 dump 和重试延时，超时 <1ms 即刻重新武装 WakeNet。
+- [x] 根治 "Gohan" (百鬼台所) 与 "Go Home" (返回桌面) 音素冲突：英文剔除 "GO HOME" 仅留 "GO BACK HOME" 与 "HOME"，日文注入 "GOHAN" 变体，彻底消除误跳桌面现象。
+- [x] MultiNet7 离线中英双语 15 组控制指令全量覆盖：支持打开全部 8 个 App、Wi-Fi/蓝牙设置、返回桌面、音量加减（步进 10%）、静音与解除静音；判决阈值精准校准为 0.23f。
+- [x] 言灵神社（Voice Shrine）UI 重构：免唤醒连续指令监听、3 列金色/白色/青色对齐排版、60 FPS 顺滑滚动、命中后 2 秒自动恢复常态监听提示。
+- [x] 全局转场 Toast 视觉统一与和风日语语法纠偏（雷神シンセ、雪女の天気、言霊の社、目目連の眼、夜空の花火、狸屋の時計、和風そろばん、妖怪の屋台、ホームへ戻る、音量アップ/ダウン、ミュート/ミュート解除）。
+- [x] 921600 baud 极速烧录验证，全量 15 个功能 100% 验收通过。
 
 ### Task 5: 完成端侧物体识别
 

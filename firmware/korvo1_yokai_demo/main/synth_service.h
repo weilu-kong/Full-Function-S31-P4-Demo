@@ -144,6 +144,9 @@ bool synth_service_get_bt_device_info(char *dev_name, size_t max_len, char *bda_
  */
 void synth_service_bt_disconnect(void);
 
+/** Play a short acknowledgement tone on the existing speaker path. */
+void synth_service_play_feedback_tone(void);
+
 #ifdef __cplusplus
 }
 #endif

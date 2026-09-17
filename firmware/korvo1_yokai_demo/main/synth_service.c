@@ -5,6 +5,7 @@
  */
 
 #include "synth_service.h"
+#include "voice_service.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -61,6 +62,7 @@ static bool s_bt_inited = false;
 static volatile bool s_bt_connected = false;
 static volatile bool s_bt_streaming = false;
 static bool s_bt_enabled = true;
+static volatile bool s_feedback_tone_pending = false;
 static esp_bd_addr_t s_remote_bda = {0};
 static float s_bt_volume = 0.75f;
 static int s_master_volume = 80;
@@ -421,6 +423,11 @@ void synth_service_bt_disconnect(void)
     }
 }
 
+void synth_service_play_feedback_tone(void)
+{
+    s_feedback_tone_pending = true;
+}
+
 void synth_service_set_active(bool active)
 {
     if (s_synth_mutex == NULL) {
@@ -613,8 +620,16 @@ static void synth_audio_task(void *arg)
 {
     ESP_LOGI(TAG, "Groovebox real-time audio task running @ %d Hz", SYNTH_SAMPLE_RATE);
 
+    int feedback_samples_left = 0;
+    float feedback_phase = 0.0f;
+
     while (1) {
-        if (!s_active) {
+        if (s_feedback_tone_pending) {
+            s_feedback_tone_pending = false;
+            feedback_samples_left = SYNTH_SAMPLE_RATE * 60 / 1000;
+            feedback_phase = 0.0f;
+        }
+        if (!s_active && feedback_samples_left == 0) {
             vTaskDelay(pdMS_TO_TICKS(25));
             continue;
         }
@@ -649,6 +664,20 @@ static void synth_audio_task(void *arg)
                 memset(s_synth_buf, 0, sizeof(s_synth_buf));
             }
             xSemaphoreGive(s_synth_mutex);
+        }
+
+        if (feedback_samples_left > 0) {
+            for (int s = 0; s < SYNTH_CHUNK_SAMPLES && feedback_samples_left > 0; ++s) {
+                int32_t tone = (int32_t)(sinf(feedback_phase) * 5000.0f);
+                feedback_phase += 2.0f * (float)M_PI * 880.0f / (float)SYNTH_SAMPLE_RATE;
+                for (int ch = 0; ch < SYNTH_CHANNELS; ++ch) {
+                    int32_t mixed = (int32_t)s_synth_buf[s * SYNTH_CHANNELS + ch] + tone;
+                    s_synth_buf[s * SYNTH_CHANNELS + ch] =
+                        (int16_t)(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
+                }
+                --feedback_samples_left;
+            }
+            has_active_voice = true;
         }
 
         /* 2. Retrieve Bluetooth A2DP accompaniment stream from ring buffer */
@@ -704,6 +733,7 @@ static void synth_audio_task(void *arg)
             }
 
             if (s_speaker_dev != NULL) {
+                voice_service_feed_playback(s_chunk_buf, SYNTH_CHUNK_SAMPLES);
                 esp_codec_dev_write(s_speaker_dev, s_chunk_buf, sizeof(s_chunk_buf));
             } else {
                 vTaskDelay(pdMS_TO_TICKS(10));
@@ -711,6 +741,7 @@ static void synth_audio_task(void *arg)
         } else {
             memset(s_chunk_buf, 0, sizeof(s_chunk_buf));
             if (s_speaker_dev != NULL) {
+                voice_service_feed_playback(s_chunk_buf, SYNTH_CHUNK_SAMPLES);
                 esp_codec_dev_write(s_speaker_dev, s_chunk_buf, sizeof(s_chunk_buf));
             } else {
                 vTaskDelay(pdMS_TO_TICKS(15));

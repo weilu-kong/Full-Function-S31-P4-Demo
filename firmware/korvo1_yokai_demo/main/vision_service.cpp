@@ -326,6 +326,29 @@ static TaskHandle_t s_infer_task_handle = NULL;
 
 static HumanFaceDetect *s_face_detect = nullptr;
 static HumanFaceRecognizer *s_face_recognizer = nullptr;
+static bool s_mfn_loaded = false;
+
+#define MFN_SAFE_LARGEST_BLOCK (900 * 1024)
+
+static size_t log_psram(const char *stage)
+{
+    size_t free_bytes = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    size_t simd_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD);
+    ESP_LOGI(TAG, "PSRAM %s: free=%u largest=%u SIMD_largest=%u", stage,
+             (unsigned)free_bytes, (unsigned)largest, (unsigned)simd_largest);
+    return std::min(largest, simd_largest);
+}
+
+static bool mfn_memory_ready(const char *stage)
+{
+    if (s_mfn_loaded) return true;
+    size_t largest = log_psram(stage);
+    if (largest >= MFN_SAFE_LARGEST_BLOCK) return true;
+    ESP_LOGE(TAG, "MFN load blocked: largest compatible PSRAM block %u < %u",
+             (unsigned)largest, (unsigned)MFN_SAFE_LARGEST_BLOCK);
+    return false;
+}
 
 static void vision_capture_task(void *arg)
 {
@@ -406,6 +429,7 @@ static void vision_capture_task(void *arg)
 
         /* Immediately release DMA buffer back to driver */
         vision_camera_release(&frame);
+        vTaskDelay(1);
     }
 
     ESP_LOGI(TAG, "Vision capture task exiting");
@@ -431,6 +455,7 @@ static void vision_inference_task(void *arg)
     (void)arg;
     ESP_LOGI(TAG, "Vision inference task running (Priority 4)");
     uint32_t last_recog_time = 0;
+    bool logged_first_inference = false;
 
     while (s_infer_running) {
         if (!s_infer_sem || xSemaphoreTake(s_infer_sem, pdMS_TO_TICKS(100)) != pdTRUE) {
@@ -538,7 +563,7 @@ static void vision_inference_task(void *arg)
                 ESP_LOGI(TAG, "Instantiating HumanFaceDetect model...");
                 s_face_detect = new HumanFaceDetect();
             }
-            if (!s_face_recognizer) {
+            if (!s_face_recognizer && (s_people_file.person_count > 0 || s_enroll_txn.active)) {
                 ESP_LOGI(TAG, "Instantiating HumanFaceRecognizer model (MFN_S8_V1)...");
                 s_face_recognizer = new HumanFaceRecognizer(VISION_FACE_DB_PATH, HumanFaceFeat::MFN_S8_V1, true);
                 /* Recover any interrupted enrollment from previous boot (Section 40) */
@@ -573,6 +598,10 @@ static void vision_inference_task(void *arg)
             auto &faces = s_face_detect->run(img);
             int64_t t1 = esp_timer_get_time();
             uint32_t infer_ms = (uint32_t)((t1 - t0) / 1000);
+            if (!logged_first_inference) {
+                ESP_LOGI(TAG, "First face detection: %u ms, faces=%u", (unsigned)infer_ms, (unsigned)faces.size());
+                logged_first_inference = true;
+            }
 
             vision_result_t res;
             memset(&res, 0, sizeof(res));
@@ -629,10 +658,21 @@ static void vision_inference_task(void *arg)
                         snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s", get_enroll_pose_prompt(s_enroll_txn.accepted_count));
                     } else if (now_ms - s_enroll_txn.last_sample_ms >= 350) {
                         /* Accepted sample! Run feature extraction & enroll */
+                        if (!mfn_memory_ready("before first enrollment/MFN load")) {
+                            s_enroll_txn.active = false;
+                            s_enroll_txn.state = VISION_ENROLL_ERROR;
+                            s_enroll_txn.last_error = ESP_ERR_NO_MEM;
+                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "認識用メモリが不足しています");
+                            continue;
+                        }
                         std::list<dl::detect::result_t> single_face;
                         single_face.push_back(f);
 
                         esp_err_t enr_err = s_face_recognizer->enroll(img, single_face);
+                        if (!s_mfn_loaded) {
+                            s_mfn_loaded = (enr_err == ESP_OK);
+                            log_psram("after first enrollment/MFN load");
+                        }
                         if (enr_err == ESP_OK) {
                             /* Preferred B: query top match to retrieve exact assigned feature ID */
                             uint16_t feat_id = 0;
@@ -714,10 +754,9 @@ static void vision_inference_task(void *arg)
             } else {
                 /* --- Normal Face Recognition Pipeline (Sections 18 & 19) --- */
                 uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
-                int num_feats = s_face_recognizer->get_num_feats();
-
                 /* DB-Empty Fast Path (Section 18) */
-                if (num_feats == 0 || s_people_file.person_count == 0) {
+                if (s_people_file.person_count == 0 ||
+                    !s_face_recognizer || s_face_recognizer->get_num_feats() == 0) {
                     for (size_t i = 0; i < faces.size() && i < VISION_MAX_DETECTIONS; i++) {
                         res.boxes[i].match_state = VISION_FACE_MATCH_UNKNOWN;
                         res.boxes[i].person_slot = -1;
@@ -741,9 +780,14 @@ static void vision_inference_task(void *arg)
                     for (auto &f : faces) {
                         if (f_idx >= VISION_MAX_DETECTIONS) break;
                         if (f.keypoint.size() == 10) {
+                            if (!mfn_memory_ready("before first recognition/MFN load")) break;
                             std::list<dl::detect::result_t> single_face;
                             single_face.push_back(f);
                             auto matches = s_face_recognizer->recognize(img, single_face);
+                            if (!s_mfn_loaded) {
+                                s_mfn_loaded = true;
+                                log_psram("after first recognition/MFN load");
+                            }
 
                             if (!matches.empty()) {
                                 auto &top = matches.front();
@@ -811,6 +855,7 @@ static void vision_inference_task(void *arg)
                 xQueueSend(s_result_queue, &res, 0);
             }
         }
+        vTaskDelay(1);
     }
 
     ESP_LOGI(TAG, "Vision inference task exiting");
@@ -934,6 +979,7 @@ extern "C" esp_err_t vision_service_start(void)
     ESP_LOGI(TAG, "Starting vision service in mode %d", s_mode);
 
 #ifndef HOST_TEST
+    log_psram("before Vision start");
     esp_err_t cam_err = vision_camera_start();
     if (cam_err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start camera hardware: %s", esp_err_to_name(cam_err));
@@ -941,6 +987,7 @@ extern "C" esp_err_t vision_service_start(void)
         xSemaphoreGive(s_lock);
         return cam_err;
     }
+    log_psram("after Camera start");
 
     s_capture_running = true;
     BaseType_t task_ret = xTaskCreate(

@@ -564,28 +564,28 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_label_set_text(s_lbl_vision_status, "常時顔認識中");
     lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_text_font(s_lbl_vision_status, UI_FONT_REGULAR, 0);
-    lv_obj_set_width(s_lbl_vision_status, 195);
-    lv_obj_set_pos(s_lbl_vision_status, 555, 48);
+    lv_obj_set_width(s_lbl_vision_status, 185);
+    lv_obj_set_pos(s_lbl_vision_status, 550, 48);
 
     s_lbl_vision_target = lv_label_create(card);
     lv_label_set_text(s_lbl_vision_target, "探索中…");
     lv_obj_set_style_text_color(s_lbl_vision_target, UI_COLOR_TEXT_TITLE, 0);
     lv_obj_set_style_text_font(s_lbl_vision_target, UI_FONT_TITLE, 0);
-    lv_obj_set_width(s_lbl_vision_target, 195);
-    lv_obj_set_pos(s_lbl_vision_target, 555, 78);
+    lv_obj_set_width(s_lbl_vision_target, 185);
+    lv_obj_set_pos(s_lbl_vision_target, 550, 78);
 
     s_lbl_vision_perf = lv_label_create(card);
     lv_label_set_text(s_lbl_vision_perf, "カメラ準備中");
     lv_obj_set_style_text_color(s_lbl_vision_perf, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_text_font(s_lbl_vision_perf, UI_FONT_SMALL, 0);
-    lv_obj_set_width(s_lbl_vision_perf, 195);
-    lv_obj_set_pos(s_lbl_vision_perf, 555, 115);
+    lv_obj_set_width(s_lbl_vision_perf, 185);
+    lv_obj_set_pos(s_lbl_vision_perf, 550, 115);
 
     /* In-Progress Enrollment HUD Box */
     s_box_enroll_hud = lv_obj_create(card);
     lv_obj_add_style(s_box_enroll_hud, &ui_style_glass_card, 0);
-    lv_obj_set_size(s_box_enroll_hud, 195, 165);
-    lv_obj_set_pos(s_box_enroll_hud, 555, 155);
+    lv_obj_set_size(s_box_enroll_hud, 185, 165);
+    lv_obj_set_pos(s_box_enroll_hud, 550, 155);
     lv_obj_set_style_border_color(s_box_enroll_hud, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_border_width(s_box_enroll_hud, 1, 0);
     lv_obj_set_style_pad_all(s_box_enroll_hud, 6, 0);
@@ -603,12 +603,12 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(s_lbl_enroll_prompt, UI_FONT_SMALL, 0);
     lv_obj_set_style_text_color(s_lbl_enroll_prompt, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_text_align(s_lbl_enroll_prompt, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_width(s_lbl_enroll_prompt, 180);
+    lv_obj_set_width(s_lbl_enroll_prompt, 170);
     lv_obj_align(s_lbl_enroll_prompt, LV_ALIGN_TOP_MID, 0, 36);
 
     s_btn_enroll_cancel = lv_button_create(s_box_enroll_hud);
     lv_obj_add_style(s_btn_enroll_cancel, &ui_style_pill_badge, 0);
-    lv_obj_set_size(s_btn_enroll_cancel, 170, 38);
+    lv_obj_set_size(s_btn_enroll_cancel, 160, 38);
     lv_obj_align(s_btn_enroll_cancel, LV_ALIGN_BOTTOM_MID, 0, -4);
     lv_obj_set_style_bg_color(s_btn_enroll_cancel, UI_COLOR_RED_ACCENT, 0);
     lv_obj_add_event_cb(s_btn_enroll_cancel, enroll_stop_active_btn_cb, LV_EVENT_CLICKED, NULL);
@@ -622,8 +622,8 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     /* Action Buttons (Visible when not enrolling) */
     s_btn_enroll_start = lv_button_create(card);
     lv_obj_add_style(s_btn_enroll_start, &ui_style_pill_badge, 0);
-    lv_obj_set_size(s_btn_enroll_start, 190, 44);
-    lv_obj_set_pos(s_btn_enroll_start, 555, 175);
+    lv_obj_set_size(s_btn_enroll_start, 180, 44);
+    lv_obj_set_pos(s_btn_enroll_start, 550, 175);
     lv_obj_set_style_bg_color(s_btn_enroll_start, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_add_event_cb(s_btn_enroll_start, enroll_open_btn_cb, LV_EVENT_CLICKED, NULL);
 
@@ -635,8 +635,8 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
 
     s_btn_manage_open = lv_button_create(card);
     lv_obj_add_style(s_btn_manage_open, &ui_style_glass_card, 0);
-    lv_obj_set_size(s_btn_manage_open, 190, 44);
-    lv_obj_set_pos(s_btn_manage_open, 555, 235);
+    lv_obj_set_size(s_btn_manage_open, 180, 44);
+    lv_obj_set_pos(s_btn_manage_open, 550, 235);
     lv_obj_set_style_border_color(s_btn_manage_open, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_border_width(s_btn_manage_open, 1, 0);
     lv_obj_add_event_cb(s_btn_manage_open, manage_open_btn_cb, LV_EVENT_CLICKED, NULL);
@@ -649,8 +649,8 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
 
     s_btn_scan = lv_button_create(card);
     lv_obj_add_style(s_btn_scan, &ui_style_glass_card, 0);
-    lv_obj_set_size(s_btn_scan, 190, 40);
-    lv_obj_set_pos(s_btn_scan, 555, 295);
+    lv_obj_set_size(s_btn_scan, 180, 40);
+    lv_obj_set_pos(s_btn_scan, 550, 295);
     lv_obj_set_style_border_color(s_btn_scan, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_border_width(s_btn_scan, 1, 0);
     lv_obj_add_event_cb(s_btn_scan, vision_btn_cb, LV_EVENT_CLICKED, NULL);
@@ -684,13 +684,14 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
 
     s_ta_enroll_name = lv_textarea_create(enroll_panel);
     lv_textarea_set_one_line(s_ta_enroll_name, true);
-    lv_textarea_set_placeholder_text(s_ta_enroll_name, "名前を入力 (例: Alice)");
+    lv_textarea_set_placeholder_text(s_ta_enroll_name, "名前を入力 (Alice)");
     lv_textarea_set_max_length(s_ta_enroll_name, 24);
     lv_obj_set_size(s_ta_enroll_name, 430, 44);
     lv_obj_set_pos(s_ta_enroll_name, 20, 55);
     lv_obj_set_style_bg_color(s_ta_enroll_name, UI_COLOR_KEY_WHITE, 0);
     lv_obj_set_style_text_color(s_ta_enroll_name, UI_COLOR_TEXT_TITLE, 0);
     lv_obj_set_style_text_font(s_ta_enroll_name, UI_FONT_REGULAR, 0);
+    lv_obj_set_style_pad_ver(s_ta_enroll_name, 1, 0);
 
     lv_obj_t *btn_start = lv_button_create(enroll_panel);
     lv_obj_add_style(btn_start, &ui_style_pill_badge, 0);
@@ -908,7 +909,7 @@ void ui_vision_screen_update(void)
 
                     if (s_lbl_vision_perf) {
                         char perf_buf[64];
-                        snprintf(perf_buf, sizeof(perf_buf), "%d人検知 / 推論 %lums / 認識 %lums",
+                        snprintf(perf_buf, sizeof(perf_buf), "%d人 / 検出 %lums / 認識 %lums",
                                  res.count, (unsigned long)res.inference_ms, (unsigned long)res.recognition_ms);
                         lv_label_set_text(s_lbl_vision_perf, perf_buf);
                     }

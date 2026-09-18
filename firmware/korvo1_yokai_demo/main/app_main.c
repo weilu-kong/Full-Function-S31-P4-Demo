@@ -10,11 +10,9 @@
 
 static const char *TAG = "yokai_demo";
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_heap_caps.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
+#include "esp_heap_caps.h"
 #include "esp_lv_adapter.h"
 #include "bsp/esp32_s31_korvo_1.h"
 
@@ -73,5 +71,8 @@ void app_main(void)
     app_state_init(&state);
     ESP_ERROR_CHECK(board_ui_start(&state));
     ESP_LOGI(TAG, "Korvo-1 Yokai demo UI started");
+    ESP_LOGI(TAG, "PSRAM boot/UI ready: free=%u largest=%u SIMD_largest=%u",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD));
 }
-

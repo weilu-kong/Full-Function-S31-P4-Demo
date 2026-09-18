@@ -3,6 +3,7 @@
 #include "ui/ui_lottie_assets.h"
 #include "ui/ui_drawer.h"
 #include "ui/ui_wifi_signal.h"
+#include "ui/ui_image_loader.h"
 #include "esp_lv_lottie.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -254,22 +255,14 @@ void ui_weather_screen_update(const weather_info_t *info)
     }
 
     /* 1. Dynamic Background Image Switch based on weather condition & day/night */
-    const lv_image_dsc_t *bg_img = &ui_img_weather_sunny;
     bool is_rain = (info->condition == WEATHER_COND_RAINY || info->condition == WEATHER_COND_THUNDER);
     bool is_snow = (info->condition == WEATHER_COND_SNOWY);
 
-    if (is_rain) {
-        bg_img = &ui_img_weather_rain;
-    } else if (is_snow || !info->is_day) {
-        bg_img = &ui_img_weather_night;
-    } else if (info->condition == WEATHER_COND_CLOUDY) {
-        bg_img = &ui_img_weather_cloudy;
-    } else {
-        bg_img = &ui_img_weather_sunny;
-    }
-
     if (s_img_bg) {
-        lv_image_set_src(s_img_bg, bg_img);
+        if (ui_weather_background_load(info->condition, info->is_day) == ESP_OK) {
+            lv_image_set_src(s_img_bg, &ui_img_weather_sunny);
+            lv_obj_invalidate(s_img_bg);
+        }
     }
 
     /* 2. Dynamic Precipitation Effect: Rain vs Snow vs Clear */

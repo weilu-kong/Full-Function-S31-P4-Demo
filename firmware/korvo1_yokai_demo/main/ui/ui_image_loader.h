@@ -2,6 +2,7 @@
 
 #include <esp_err.h>
 #include "lvgl.h"
+#include "weather_service.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,6 +18,9 @@ extern "C" {
  * @return ESP_OK on success, or an error code.
  */
 esp_err_t ui_images_init(void);
+
+/** Decode the requested weather background into the shared 800x480 buffer. */
+esp_err_t ui_weather_background_load(weather_cond_t condition, bool is_day);
 
 #ifdef __cplusplus
 }

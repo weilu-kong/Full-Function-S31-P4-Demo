@@ -7,6 +7,7 @@ board = (root / "main/board_ui.c").read_text()
 ui = (root / "main/ui/ui.c").read_text()
 wifi = (root / "main/ui/ui_wifi.c").read_text()
 weather = (root / "main/ui/ui_weather.c").read_text()
+image_loader = (root / "main/ui/ui_image_loader.c").read_text()
 home = (root / "main/ui/ui_home.c").read_text()
 partitions = (root / "partitions.csv").read_text()
 
@@ -25,6 +26,8 @@ assert "board_ui_wifi_is_saved" in wifi
 assert "ui_weather_screen_create" in weather
 assert "ui_weather_screen_update" in weather
 assert "weather_service_trigger_refresh" in weather
+assert "ui_weather_background_load(info->condition, info->is_day)" in weather
+assert "ui_img_weather_night = ui_img_weather_sunny" not in image_loader
 assert "ui_home_screen_create" in home
 assert "ui_drawer_create" in ui
 assert "ui_switch_screen" in ui

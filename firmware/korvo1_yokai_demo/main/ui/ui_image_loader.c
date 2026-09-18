@@ -4,8 +4,10 @@
 #include "esp_jpeg_dec.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "misc/cache/lv_cache.h"
 
 static const char *TAG = "ui_image_loader";
+static int s_weather_background = -1;
 
 /* Raw embedded JPEG buffers defined in ui_img_*.c */
 extern const uint8_t ui_img_home_p1_jpg[];
@@ -60,11 +62,23 @@ static esp_err_t decode_jpeg_to_dsc(const char *name, const uint8_t *jpg_data, s
         out_len = info.width * info.height * 2;
     }
 
-    uint8_t *out_buf = (uint8_t *)heap_caps_aligned_alloc(16, out_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!out_buf) {
-        ESP_LOGE(TAG, "[%s] Failed to allocate %d bytes in PSRAM", name, out_len);
-        jpeg_dec_close(dec);
-        return ESP_ERR_NO_MEM;
+    uint8_t *out_buf = (uint8_t *)dsc->data;
+    bool allocated = false;
+    if (out_buf) {
+        if (dsc->data_size < (uint32_t)out_len) {
+            ESP_LOGE(TAG, "[%s] Existing buffer is too small (%u < %d)", name,
+                     (unsigned)dsc->data_size, out_len);
+            jpeg_dec_close(dec);
+            return ESP_ERR_INVALID_SIZE;
+        }
+    } else {
+        out_buf = (uint8_t *)heap_caps_aligned_alloc(16, out_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!out_buf) {
+            ESP_LOGE(TAG, "[%s] Failed to allocate %d bytes in PSRAM", name, out_len);
+            jpeg_dec_close(dec);
+            return ESP_ERR_NO_MEM;
+        }
+        allocated = true;
     }
 
     io.outbuf = out_buf;
@@ -73,7 +87,9 @@ static esp_err_t decode_jpeg_to_dsc(const char *name, const uint8_t *jpg_data, s
 
     if (ret != JPEG_ERR_OK) {
         ESP_LOGE(TAG, "[%s] jpeg_dec_process failed: %d", name, ret);
-        heap_caps_free(out_buf);
+        if (allocated) {
+            heap_caps_free(out_buf);
+        }
         return ESP_FAIL;
     }
 
@@ -106,14 +122,48 @@ esp_err_t ui_images_init(void)
     ret = decode_jpeg_to_dsc("ui_img_home_p2", ui_img_home_p2_jpg, ui_img_home_p2_jpg_len, &ui_img_home_p2);
     if (ret != ESP_OK) return ret;
 
-    /* Decode primary weather background; share 750KB PSRAM buffer across all weather states */
+    /* Decode the initial weather background; later states reuse this 750KB buffer. */
     ret = decode_jpeg_to_dsc("ui_img_weather_sunny", ui_img_weather_sunny_jpg, ui_img_weather_sunny_jpg_len, &ui_img_weather_sunny);
     if (ret != ESP_OK) return ret;
 
-    ui_img_weather_cloudy = ui_img_weather_sunny;
-    ui_img_weather_rain = ui_img_weather_sunny;
-    ui_img_weather_night = ui_img_weather_sunny;
+    s_weather_background = 0;
 
     ESP_LOGI(TAG, "Background images decompressed (shared weather buffer: saved 2.3MB PSRAM)");
     return ESP_OK;
+}
+
+esp_err_t ui_weather_background_load(weather_cond_t condition, bool is_day)
+{
+    int background = 0;
+    const char *name = "ui_img_weather_sunny";
+    const uint8_t *jpg = ui_img_weather_sunny_jpg;
+    size_t jpg_len = ui_img_weather_sunny_jpg_len;
+
+    if (condition == WEATHER_COND_RAINY || condition == WEATHER_COND_THUNDER) {
+        background = 2;
+        name = "ui_img_weather_rain";
+        jpg = ui_img_weather_rain_jpg;
+        jpg_len = ui_img_weather_rain_jpg_len;
+    } else if (condition == WEATHER_COND_SNOWY || !is_day) {
+        background = 3;
+        name = "ui_img_weather_night";
+        jpg = ui_img_weather_night_jpg;
+        jpg_len = ui_img_weather_night_jpg_len;
+    } else if (condition == WEATHER_COND_CLOUDY) {
+        background = 1;
+        name = "ui_img_weather_cloudy";
+        jpg = ui_img_weather_cloudy_jpg;
+        jpg_len = ui_img_weather_cloudy_jpg_len;
+    }
+
+    if (background == s_weather_background) {
+        return ESP_OK;
+    }
+
+    esp_err_t ret = decode_jpeg_to_dsc(name, jpg, jpg_len, &ui_img_weather_sunny);
+    if (ret == ESP_OK) {
+        s_weather_background = background;
+        lv_image_cache_drop(&ui_img_weather_sunny);
+    }
+    return ret;
 }

@@ -12,6 +12,7 @@ extern "C" {
 #define UI_COLOR_GLASS_CARD     lv_color_hex(0x161B26) /* 濃藍 (Deep Indigo Glass) */
 #define UI_COLOR_GOLD_ACCENT    lv_color_hex(0xD4A373) /* 金箔 (Gold Leaf) */
 #define UI_COLOR_RED_ACCENT     lv_color_hex(0xE63946) /* 茜色 (Crimson Vermilion) */
+#define UI_COLOR_GREEN_ACCENT   lv_color_hex(0x2EC4B6) /* 常盤緑 (Emerald Mint) */
 #define UI_COLOR_CYAN_ACCENT    lv_color_hex(0x48CAE4) /* 浅葱色 (Pale Cyan) */
 #define UI_COLOR_TEXT_TITLE     lv_color_hex(0xF8F9FA) /* 純白 (Pure White) */
 #define UI_COLOR_TEXT_SUB       lv_color_hex(0x8D99AE) /* 錫色 (Pewter Gray) */

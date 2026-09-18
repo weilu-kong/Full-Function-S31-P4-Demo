@@ -5,13 +5,16 @@
  */
 
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
 #include <algorithm>
+#include <cmath>
+#include <vector>
 #include "vision_service.h"
 #include "vision_camera.h"
 
 #ifdef HOST_TEST
-#include <stdio.h>
-#include <stdlib.h>
 #define LOG_TAG "vision_service"
 #define ESP_LOGI(t, f, ...) printf("[%s] " f "\n", t, ##__VA_ARGS__)
 #define ESP_LOGW(t, f, ...) printf("[%s][WARN] " f "\n", t, ##__VA_ARGS__)
@@ -25,6 +28,7 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "human_face_detect.hpp"
+#include "human_face_recognition.hpp"
 #endif
 
 static const char *TAG = "vision_service";
@@ -43,15 +47,285 @@ static volatile bool s_preview_dirty = false;
 static volatile bool s_capture_running = false;
 static volatile bool s_infer_running = false;
 
+/* --- Metadata and Storage Models (Sections 11 & 12) --- */
+#define VISION_PEOPLE_META_MAGIC   0x59464D44 /* "YFMD" */
+#define VISION_PEOPLE_META_VERSION 1
+#define VISION_PEOPLE_META_PATH    "/storage/face_people.meta"
+#define VISION_PEOPLE_TMP_PATH     "/storage/face_people.tmp"
+#define VISION_FACE_DB_PATH        "/storage/face_db.bin"
+
+typedef struct {
+    bool active;
+    uint8_t slot;
+    char name[VISION_FACE_NAME_MAX_BYTES + 1];
+    uint8_t feature_count;
+    uint16_t feature_ids[VISION_FACE_SAMPLES_PER_PERSON];
+    uint32_t created_at_seq;
+} vision_person_record_t;
+
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t record_size;
+    uint32_t generation;
+    uint8_t person_count;
+    uint8_t reserved[3];
+    vision_person_record_t persons[VISION_MAX_PERSONS];
+    uint32_t crc32;
+} vision_people_file_t;
+
+static vision_people_file_t s_people_file;
+static float s_match_threshold = VISION_FACE_MATCH_THRESHOLD_INITIAL;
+
+/* Standard CRC32 */
+static uint32_t calc_crc32(const uint8_t *data, size_t length)
+{
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < length; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+        }
+    }
+    return ~crc;
+}
+
+static void face_people_init_empty(void)
+{
+    memset(&s_people_file, 0, sizeof(s_people_file));
+    s_people_file.magic = VISION_PEOPLE_META_MAGIC;
+    s_people_file.version = VISION_PEOPLE_META_VERSION;
+    s_people_file.record_size = sizeof(vision_person_record_t);
+    s_people_file.generation = 1;
+    s_people_file.person_count = 0;
+    for (int i = 0; i < VISION_MAX_PERSONS; i++) {
+        s_people_file.persons[i].slot = (uint8_t)i;
+        s_people_file.persons[i].active = false;
+    }
+    s_people_file.crc32 = calc_crc32((const uint8_t *)&s_people_file,
+                                     offsetof(vision_people_file_t, crc32));
+}
+
+static bool face_people_validate(const vision_people_file_t *file)
+{
+    if (!file) return false;
+    if (file->magic != VISION_PEOPLE_META_MAGIC) return false;
+    if (file->version != VISION_PEOPLE_META_VERSION) return false;
+    if (file->record_size != sizeof(vision_person_record_t)) return false;
+    if (file->person_count > VISION_MAX_PERSONS) return false;
+
+    uint32_t expected_crc = calc_crc32((const uint8_t *)file,
+                                       offsetof(vision_people_file_t, crc32));
+    if (file->crc32 != expected_crc) {
+        ESP_LOGE(TAG, "Metadata CRC mismatch: expected 0x%08lx, got 0x%08lx",
+                 (unsigned long)expected_crc, (unsigned long)file->crc32);
+        return false;
+    }
+
+    uint8_t active_count = 0;
+    for (int i = 0; i < VISION_MAX_PERSONS; i++) {
+        if (file->persons[i].active) {
+            active_count++;
+            if (file->persons[i].slot != i) return false;
+            if (file->persons[i].feature_count != VISION_FACE_SAMPLES_PER_PERSON) return false;
+            if (strnlen(file->persons[i].name, VISION_FACE_NAME_MAX_BYTES + 1) > VISION_FACE_NAME_MAX_BYTES) return false;
+        }
+    }
+    return (active_count == file->person_count);
+}
+
+static esp_err_t face_people_save_atomic(void)
+{
+    s_people_file.generation++;
+    s_people_file.crc32 = calc_crc32((const uint8_t *)&s_people_file,
+                                     offsetof(vision_people_file_t, crc32));
+
+    FILE *f = fopen(VISION_PEOPLE_TMP_PATH, "wb");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open %s for writing", VISION_PEOPLE_TMP_PATH);
+        return ESP_FAIL;
+    }
+
+    size_t written = fwrite(&s_people_file, sizeof(s_people_file), 1, f);
+    fflush(f);
+    fclose(f);
+
+    if (written != 1) {
+        ESP_LOGE(TAG, "Failed to write complete metadata to %s", VISION_PEOPLE_TMP_PATH);
+        remove(VISION_PEOPLE_TMP_PATH);
+        return ESP_FAIL;
+    }
+
+    /* Atomic rename tmp -> meta */
+    if (rename(VISION_PEOPLE_TMP_PATH, VISION_PEOPLE_META_PATH) != 0) {
+        ESP_LOGE(TAG, "Failed to rename %s to %s", VISION_PEOPLE_TMP_PATH, VISION_PEOPLE_META_PATH);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Saved %d people metadata (gen=%lu) to %s",
+             s_people_file.person_count, (unsigned long)s_people_file.generation, VISION_PEOPLE_META_PATH);
+    return ESP_OK;
+}
+
+static esp_err_t face_people_load(void)
+{
+    FILE *f = fopen(VISION_PEOPLE_META_PATH, "rb");
+    if (!f) {
+        ESP_LOGI(TAG, "No existing people metadata at %s, initializing empty", VISION_PEOPLE_META_PATH);
+        face_people_init_empty();
+        return ESP_OK;
+    }
+
+    vision_people_file_t candidate;
+    size_t n = fread(&candidate, sizeof(candidate), 1, f);
+    fclose(f);
+
+    if (n == 1 && face_people_validate(&candidate)) {
+        s_people_file = candidate;
+        ESP_LOGI(TAG, "Successfully loaded metadata: %d people (gen=%lu)",
+                 s_people_file.person_count, (unsigned long)s_people_file.generation);
+        return ESP_OK;
+    }
+
+    ESP_LOGW(TAG, "Corrupt or invalid metadata at %s, keeping existing without overwriting", VISION_PEOPLE_META_PATH);
+    face_people_init_empty();
+    return ESP_FAIL;
+}
+
+static const vision_person_record_t *find_person_by_feature_id(uint16_t id)
+{
+    if (id == 0) return NULL;
+    for (int i = 0; i < VISION_MAX_PERSONS; i++) {
+        if (!s_people_file.persons[i].active) continue;
+        for (int s = 0; s < s_people_file.persons[i].feature_count; s++) {
+            if (s_people_file.persons[i].feature_ids[s] == id) {
+                return &s_people_file.persons[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+static const vision_person_record_t *find_person_by_name(const char *name)
+{
+    if (!name || name[0] == '\0') return NULL;
+    for (int i = 0; i < VISION_MAX_PERSONS; i++) {
+        if (s_people_file.persons[i].active && strcmp(s_people_file.persons[i].name, name) == 0) {
+            return &s_people_file.persons[i];
+        }
+    }
+    return NULL;
+}
+
+static int find_free_person_slot(void)
+{
+    for (int i = 0; i < VISION_MAX_PERSONS; i++) {
+        if (!s_people_file.persons[i].active) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Helper to trim leading & trailing whitespace */
+static void trim_whitespace(char *str)
+{
+    if (!str) return;
+    char *start = str;
+    while (*start && isspace((unsigned char)*start)) start++;
+    if (start != str) {
+        memmove(str, start, strlen(start) + 1);
+    }
+    size_t len = strlen(str);
+    while (len > 0 && isspace((unsigned char)str[len - 1])) {
+        str[--len] = '\0';
+    }
+}
+
+/* --- Concurrency Protection Command Queue (Section 51 & 52) --- */
+typedef enum {
+    VISION_CMD_NONE = 0,
+    VISION_CMD_BEGIN_ENROLL,
+    VISION_CMD_CANCEL_ENROLL,
+    VISION_CMD_DELETE_PERSON,
+    VISION_CMD_REREGISTER_PERSON,
+    VISION_CMD_CLEAR_ALL,
+} vision_cmd_type_t;
+
+typedef struct {
+    vision_cmd_type_t type;
+    uint8_t slot;
+    char name[VISION_FACE_NAME_MAX_BYTES + 1];
+} vision_cmd_t;
+
+/* Transaction Journal for Power-Loss Recovery (Section 40) */
+#define VISION_ENROLL_TXN_MAGIC 0x54584E46 /* "TXNF" */
+#define VISION_ENROLL_TXN_PATH  "/storage/face_enroll.txn"
+
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint8_t slot;
+    uint8_t accepted_count;
+    char name[VISION_FACE_NAME_MAX_BYTES + 1];
+    uint16_t feature_ids[VISION_FACE_SAMPLES_PER_PERSON];
+    uint32_t crc32;
+} vision_enroll_journal_t;
+
+static void enroll_journal_save(const char *name, uint8_t slot, uint8_t count, const uint16_t *feats)
+{
+    vision_enroll_journal_t j;
+    memset(&j, 0, sizeof(j));
+    j.magic = VISION_ENROLL_TXN_MAGIC;
+    j.version = 1;
+    j.slot = slot;
+    j.accepted_count = count;
+    snprintf(j.name, sizeof(j.name), "%s", name);
+    for (int i = 0; i < count && i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
+        j.feature_ids[i] = feats[i];
+    }
+    j.crc32 = calc_crc32((const uint8_t *)&j, offsetof(vision_enroll_journal_t, crc32));
+    FILE *f = fopen(VISION_ENROLL_TXN_PATH, "wb");
+    if (f) {
+        fwrite(&j, sizeof(j), 1, f);
+        fflush(f);
+        fclose(f);
+    }
+}
+
+static void enroll_journal_remove(void)
+{
+    remove(VISION_ENROLL_TXN_PATH);
+}
+
+/* Pending Enrollment Transaction (Section 38) */
+typedef struct {
+    bool active;
+    bool is_reregister;
+    uint8_t target_slot;
+    char name[VISION_FACE_NAME_MAX_BYTES + 1];
+    uint8_t accepted_count;
+    uint16_t new_feature_ids[VISION_FACE_SAMPLES_PER_PERSON];
+    uint16_t old_feature_ids[VISION_FACE_SAMPLES_PER_PERSON];
+    uint32_t last_sample_ms;
+    vision_enroll_state_t state;
+    char prompt[64];
+    esp_err_t last_error;
+} vision_enroll_txn_t;
+
+static vision_enroll_txn_t s_enroll_txn = {};
+
 #ifndef HOST_TEST
 static SemaphoreHandle_t s_lock = NULL;
 static SemaphoreHandle_t s_infer_sem = NULL;
 static SemaphoreHandle_t s_preview_mutex = NULL;
 static QueueHandle_t s_result_queue = NULL;
+static QueueHandle_t s_cmd_queue = NULL;
 static TaskHandle_t s_capture_task_handle = NULL;
 static TaskHandle_t s_infer_task_handle = NULL;
 
 static HumanFaceDetect *s_face_detect = nullptr;
+static HumanFaceRecognizer *s_face_recognizer = nullptr;
 
 static void vision_capture_task(void *arg)
 {
@@ -139,10 +413,24 @@ static void vision_capture_task(void *arg)
     vTaskDelete(NULL);
 }
 
+/* Pose guidance prompt generator */
+static const char *get_enroll_pose_prompt(uint8_t sample_idx)
+{
+    switch (sample_idx) {
+        case 0: return "正面を向いてください";
+        case 1: return "正面を向いてください";
+        case 2: return "少し左を向いてください";
+        case 3: return "少し右を向いてください";
+        case 4: return "正面を向いてください";
+        default: return "登録中…";
+    }
+}
+
 static void vision_inference_task(void *arg)
 {
     (void)arg;
     ESP_LOGI(TAG, "Vision inference task running (Priority 4)");
+    uint32_t last_recog_time = 0;
 
     while (s_infer_running) {
         if (!s_infer_sem || xSemaphoreTake(s_infer_sem, pdMS_TO_TICKS(100)) != pdTRUE) {
@@ -150,6 +438,94 @@ static void vision_inference_task(void *arg)
         }
         if (!s_infer_running) {
             break;
+        }
+
+        /* Process any asynchronous commands from UI thread (Section 51 & 52) */
+        vision_cmd_t cmd;
+        while (s_cmd_queue && xQueueReceive(s_cmd_queue, &cmd, 0) == pdTRUE) {
+            switch (cmd.type) {
+                case VISION_CMD_BEGIN_ENROLL: {
+                    int slot = find_free_person_slot();
+                    if (slot < 0 || s_people_file.person_count >= VISION_MAX_PERSONS) {
+                        s_enroll_txn.state = VISION_ENROLL_ERROR;
+                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "登録数が上限(10名)です");
+                        s_enroll_txn.last_error = ESP_ERR_NO_MEM;
+                        ESP_LOGW(TAG, "Enrollment rejected: max persons reached");
+                        break;
+                    }
+                    memset(&s_enroll_txn, 0, sizeof(s_enroll_txn));
+                    s_enroll_txn.active = true;
+                    s_enroll_txn.target_slot = (uint8_t)slot;
+                    snprintf(s_enroll_txn.name, sizeof(s_enroll_txn.name), "%s", cmd.name);
+                    s_enroll_txn.state = VISION_ENROLL_WAIT_FACE;
+                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s", get_enroll_pose_prompt(0));
+                    ESP_LOGI(TAG, "Starting enrollment for '%s' in slot %d", s_enroll_txn.name, slot);
+                    break;
+                }
+                case VISION_CMD_CANCEL_ENROLL: {
+                    if (s_enroll_txn.active) {
+                        /* Rollback any partially enrolled feature IDs (Section 39) */
+                        if (s_face_recognizer) {
+                            for (int i = 0; i < s_enroll_txn.accepted_count; i++) {
+                                if (s_enroll_txn.new_feature_ids[i] > 0) {
+                                    s_face_recognizer->delete_feat(s_enroll_txn.new_feature_ids[i]);
+                                }
+                            }
+                        }
+                        enroll_journal_remove();
+                        s_enroll_txn.active = false;
+                        s_enroll_txn.state = VISION_ENROLL_CANCELLED;
+                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "登録を中止しました");
+                        ESP_LOGI(TAG, "Enrollment cancelled & rolled back");
+                    }
+                    break;
+                }
+                case VISION_CMD_DELETE_PERSON: {
+                    if (cmd.slot < VISION_MAX_PERSONS && s_people_file.persons[cmd.slot].active) {
+                        if (s_face_recognizer) {
+                            for (int i = 0; i < s_people_file.persons[cmd.slot].feature_count; i++) {
+                                s_face_recognizer->delete_feat(s_people_file.persons[cmd.slot].feature_ids[i]);
+                            }
+                        }
+                        s_people_file.persons[cmd.slot].active = false;
+                        s_people_file.person_count--;
+                        face_people_save_atomic();
+                        ESP_LOGI(TAG, "Deleted person slot %d", cmd.slot);
+                    }
+                    break;
+                }
+                case VISION_CMD_REREGISTER_PERSON: {
+                    if (cmd.slot < VISION_MAX_PERSONS && s_people_file.persons[cmd.slot].active) {
+                        memset(&s_enroll_txn, 0, sizeof(s_enroll_txn));
+                        s_enroll_txn.active = true;
+                        s_enroll_txn.is_reregister = true;
+                        s_enroll_txn.target_slot = cmd.slot;
+                        snprintf(s_enroll_txn.name, sizeof(s_enroll_txn.name), "%s",
+                                 cmd.name[0] != '\0' ? cmd.name : s_people_file.persons[cmd.slot].name);
+                        for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
+                            s_enroll_txn.old_feature_ids[i] = s_people_file.persons[cmd.slot].feature_ids[i];
+                        }
+                        s_enroll_txn.state = VISION_ENROLL_WAIT_FACE;
+                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s", get_enroll_pose_prompt(0));
+                        ESP_LOGI(TAG, "Starting re-registration for '%s' in slot %d", s_enroll_txn.name, cmd.slot);
+                    }
+                    break;
+                }
+                case VISION_CMD_CLEAR_ALL: {
+                    if (s_face_recognizer) {
+                        s_face_recognizer->clear_all_feats();
+                    }
+                    enroll_journal_remove();
+                    face_people_init_empty();
+                    face_people_save_atomic();
+                    s_enroll_txn.active = false;
+                    s_enroll_txn.state = VISION_ENROLL_IDLE;
+                    ESP_LOGI(TAG, "Cleared all people and face database");
+                    break;
+                }
+                default:
+                    break;
+            }
         }
 
         int cur_idx = s_ready_idx;
@@ -161,6 +537,29 @@ static void vision_inference_task(void *arg)
             if (!s_face_detect) {
                 ESP_LOGI(TAG, "Instantiating HumanFaceDetect model...");
                 s_face_detect = new HumanFaceDetect();
+            }
+            if (!s_face_recognizer) {
+                ESP_LOGI(TAG, "Instantiating HumanFaceRecognizer model (MFN_S8_V1)...");
+                s_face_recognizer = new HumanFaceRecognizer(VISION_FACE_DB_PATH, HumanFaceFeat::MFN_S8_V1, true);
+                /* Recover any interrupted enrollment from previous boot (Section 40) */
+                FILE *jf = fopen(VISION_ENROLL_TXN_PATH, "rb");
+                if (jf) {
+                    vision_enroll_journal_t j;
+                    size_t jn = fread(&j, sizeof(j), 1, jf);
+                    fclose(jf);
+                    if (jn == 1 && j.magic == VISION_ENROLL_TXN_MAGIC && j.version == 1) {
+                        uint32_t exp_crc = calc_crc32((const uint8_t *)&j, offsetof(vision_enroll_journal_t, crc32));
+                        if (j.crc32 == exp_crc) {
+                            ESP_LOGW(TAG, "Recovering power-loss journal for '%s' (%d features)", j.name, j.accepted_count);
+                            for (int i = 0; i < j.accepted_count; i++) {
+                                if (j.feature_ids[i] > 0) {
+                                    s_face_recognizer->delete_feat(j.feature_ids[i]);
+                                }
+                            }
+                        }
+                    }
+                    enroll_journal_remove();
+                }
             }
 
             dl::image::img_t img = {
@@ -181,7 +580,10 @@ static void vision_inference_task(void *arg)
             res.mode = VISION_MODE_FACE;
             res.inference_ms = infer_ms;
             res.count = (uint8_t)std::min(faces.size(), (size_t)VISION_MAX_DETECTIONS);
+            res.primary_person_slot = -1;
+            res.primary_match_state = VISION_FACE_MATCH_NONE;
 
+            /* Base coordinate mapping */
             int b_idx = 0;
             for (auto &f : faces) {
                 if (b_idx >= VISION_MAX_DETECTIONS) break;
@@ -191,27 +593,214 @@ static void vision_inference_task(void *arg)
                 res.boxes[b_idx].h = (int16_t)(f.box[3] - f.box[1]);
                 res.boxes[b_idx].confidence = f.score;
                 res.boxes[b_idx].class_id = (int16_t)f.category;
-                snprintf(res.boxes[b_idx].label, sizeof(res.boxes[b_idx].label), "Face (%.0f%%)", f.score * 100.0f);
+                res.boxes[b_idx].person_slot = -1;
+                res.boxes[b_idx].match_state = VISION_FACE_MATCH_UNKNOWN;
+                snprintf(res.boxes[b_idx].label, sizeof(res.boxes[b_idx].label), "未登録");
                 b_idx++;
             }
 
-            res.face_known = false;
-            res.face_id = faces.empty() ? -1 : 0;
+            /* --- Enrollment State Machine Path (Mutually Exclusive: Section 50) --- */
+            if (s_enroll_txn.active) {
+                res.enroll_state = s_enroll_txn.state;
+                res.enroll_sample_count = s_enroll_txn.accepted_count;
+                res.enroll_target_count = VISION_FACE_SAMPLES_PER_PERSON;
+                snprintf(res.enroll_name, sizeof(res.enroll_name), "%s", s_enroll_txn.name);
+                snprintf(res.enroll_prompt, sizeof(res.enroll_prompt), "%s", s_enroll_txn.prompt);
+
+                uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+
+                if (faces.empty()) {
+                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を映してください");
+                } else if (faces.size() > 1) {
+                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "一人だけ映してください");
+                } else {
+                    auto &f = faces.front();
+                    int bw = f.box[2] - f.box[0];
+                    int bh = f.box[3] - f.box[1];
+                    int cx = (f.box[0] + f.box[2]) / 2;
+                    int cy = (f.box[1] + f.box[3]) / 2;
+
+                    /* Sample acceptance gates (Section 35) */
+                    if (bw < 60 || bh < 60) {
+                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "もう少し近づいてください");
+                    } else if (cx < 64 || cx > (VISION_PREVIEW_WIDTH - 64) || cy < 48 || cy > (VISION_PREVIEW_HEIGHT - 48)) {
+                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を中央に合わせてください");
+                    } else if (f.score < 0.70f) {
+                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s", get_enroll_pose_prompt(s_enroll_txn.accepted_count));
+                    } else if (now_ms - s_enroll_txn.last_sample_ms >= 350) {
+                        /* Accepted sample! Run feature extraction & enroll */
+                        std::list<dl::detect::result_t> single_face;
+                        single_face.push_back(f);
+
+                        esp_err_t enr_err = s_face_recognizer->enroll(img, single_face);
+                        if (enr_err == ESP_OK) {
+                            /* Preferred B: query top match to retrieve exact assigned feature ID */
+                            uint16_t feat_id = 0;
+                            auto matches = s_face_recognizer->recognize(img, single_face);
+                            if (!matches.empty() && matches.front().id > 0) {
+                                feat_id = matches.front().id;
+                            } else {
+                                feat_id = (uint16_t)s_face_recognizer->get_num_feats();
+                            }
+
+                            s_enroll_txn.new_feature_ids[s_enroll_txn.accepted_count] = feat_id;
+                            s_enroll_txn.accepted_count++;
+                            s_enroll_txn.last_sample_ms = now_ms;
+                            s_enroll_txn.state = VISION_ENROLL_SAMPLING;
+                            enroll_journal_save(s_enroll_txn.name, s_enroll_txn.target_slot,
+                                                s_enroll_txn.accepted_count, s_enroll_txn.new_feature_ids);
+
+                            ESP_LOGI(TAG, "Enroll sample %d/5 accepted (feature_id=%u)",
+                                     s_enroll_txn.accepted_count, feat_id);
+
+                            if (s_enroll_txn.accepted_count >= VISION_FACE_SAMPLES_PER_PERSON) {
+                                /* All 5 samples collected: Commit metadata (Section 41) */
+                                s_enroll_txn.state = VISION_ENROLL_COMMITTING;
+                                uint8_t slot = s_enroll_txn.target_slot;
+
+                                if (s_enroll_txn.is_reregister) {
+                                    /* Delete old features upon successful re-enrollment */
+                                    for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
+                                        if (s_enroll_txn.old_feature_ids[i] > 0) {
+                                            s_face_recognizer->delete_feat(s_enroll_txn.old_feature_ids[i]);
+                                        }
+                                    }
+                                } else {
+                                    s_people_file.person_count++;
+                                }
+
+                                s_people_file.persons[slot].active = true;
+                                s_people_file.persons[slot].slot = slot;
+                                snprintf(s_people_file.persons[slot].name, sizeof(s_people_file.persons[slot].name), "%s", s_enroll_txn.name);
+                                s_people_file.persons[slot].feature_count = VISION_FACE_SAMPLES_PER_PERSON;
+                                for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
+                                    s_people_file.persons[slot].feature_ids[i] = s_enroll_txn.new_feature_ids[i];
+                                }
+
+                                esp_err_t save_err = face_people_save_atomic();
+                                if (save_err == ESP_OK) {
+                                    enroll_journal_remove();
+                                    s_enroll_txn.state = VISION_ENROLL_SUCCESS;
+                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "登録しました");
+                                    ESP_LOGI(TAG, "Successfully committed person '%s' (slot=%d)",
+                                             s_enroll_txn.name, slot);
+                                } else {
+                                    /* Rollback on metadata save failure */
+                                    for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
+                                        s_face_recognizer->delete_feat(s_enroll_txn.new_feature_ids[i]);
+                                    }
+                                    enroll_journal_remove();
+                                    if (!s_enroll_txn.is_reregister) {
+                                        s_people_file.persons[slot].active = false;
+                                        s_people_file.person_count--;
+                                    }
+                                    s_enroll_txn.state = VISION_ENROLL_ERROR;
+                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "登録データを保存できません");
+                                }
+                                s_enroll_txn.active = false;
+                            } else {
+                                snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s (%d/5)",
+                                         get_enroll_pose_prompt(s_enroll_txn.accepted_count),
+                                         s_enroll_txn.accepted_count);
+                            }
+                        } else {
+                            ESP_LOGW(TAG, "Enroll feature extraction failed");
+                        }
+                    }
+                }
+                snprintf(res.enroll_prompt, sizeof(res.enroll_prompt), "%s", s_enroll_txn.prompt);
+                res.enroll_state = s_enroll_txn.state;
+                res.enroll_sample_count = s_enroll_txn.accepted_count;
+            } else {
+                /* --- Normal Face Recognition Pipeline (Sections 18 & 19) --- */
+                uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+                int num_feats = s_face_recognizer->get_num_feats();
+
+                /* DB-Empty Fast Path (Section 18) */
+                if (num_feats == 0 || s_people_file.person_count == 0) {
+                    for (size_t i = 0; i < faces.size() && i < VISION_MAX_DETECTIONS; i++) {
+                        res.boxes[i].match_state = VISION_FACE_MATCH_UNKNOWN;
+                        res.boxes[i].person_slot = -1;
+                        res.boxes[i].similarity = 0.0f;
+                        snprintf(res.boxes[i].label, sizeof(res.boxes[i].label), "未登録");
+                    }
+                    if (!faces.empty()) {
+                        res.primary_match_state = VISION_FACE_MATCH_UNKNOWN;
+                        res.primary_person_slot = -1;
+                        snprintf(res.primary_name, sizeof(res.primary_name), "未登録の人物");
+                    }
+                } else if (!faces.empty() && (now_ms - last_recog_time >= VISION_RECOGNITION_MIN_INTERVAL_MS)) {
+                    /* Execute per-face multi-face recognition (Section 5 & 19) */
+                    int64_t tr0 = esp_timer_get_time();
+                    last_recog_time = now_ms;
+
+                    float best_known_sim = 0.0f;
+                    int best_known_idx = -1;
+
+                    size_t f_idx = 0;
+                    for (auto &f : faces) {
+                        if (f_idx >= VISION_MAX_DETECTIONS) break;
+                        if (f.keypoint.size() == 10) {
+                            std::list<dl::detect::result_t> single_face;
+                            single_face.push_back(f);
+                            auto matches = s_face_recognizer->recognize(img, single_face);
+
+                            if (!matches.empty()) {
+                                auto &top = matches.front();
+                                res.boxes[f_idx].matched_feature_id = top.id;
+                                res.boxes[f_idx].similarity = top.similarity;
+
+                                const vision_person_record_t *p = find_person_by_feature_id(top.id);
+                                if (p && top.similarity >= s_match_threshold) {
+                                    res.boxes[f_idx].match_state = VISION_FACE_MATCH_KNOWN;
+                                    res.boxes[f_idx].person_slot = p->slot;
+                                    snprintf(res.boxes[f_idx].name, sizeof(res.boxes[f_idx].name), "%s", p->name);
+                                    int pct = (int)lroundf(std::clamp(top.similarity, 0.0f, 1.0f) * 100.0f);
+                                    snprintf(res.boxes[f_idx].label, sizeof(res.boxes[f_idx].label), "%s %d%%", p->name, pct);
+
+                                    if (top.similarity > best_known_sim) {
+                                        best_known_sim = top.similarity;
+                                        best_known_idx = (int)f_idx;
+                                    }
+                                    s_diag.recognition_known++;
+                                } else {
+                                    res.boxes[f_idx].match_state = VISION_FACE_MATCH_UNKNOWN;
+                                    snprintf(res.boxes[f_idx].label, sizeof(res.boxes[f_idx].label), "未登録");
+                                    s_diag.recognition_unknown++;
+                                }
+                            } else {
+                                res.boxes[f_idx].match_state = VISION_FACE_MATCH_UNKNOWN;
+                                snprintf(res.boxes[f_idx].label, sizeof(res.boxes[f_idx].label), "未登録");
+                                s_diag.recognition_unknown++;
+                            }
+                        }
+                        f_idx++;
+                    }
+
+                    int64_t tr1 = esp_timer_get_time();
+                    res.recognition_ms = (uint32_t)((tr1 - tr0) / 1000);
+                    s_diag.face_recognitions++;
+                    s_diag.avg_recognition_ms = (s_diag.avg_recognition_ms == 0)
+                        ? res.recognition_ms
+                        : (s_diag.avg_recognition_ms * 3 + res.recognition_ms) / 4;
+
+                    /* Select Primary Face for Side HUD (Section 20) */
+                    if (best_known_idx >= 0) {
+                        res.primary_match_state = VISION_FACE_MATCH_KNOWN;
+                        res.primary_person_slot = res.boxes[best_known_idx].person_slot;
+                        res.primary_feature_id = res.boxes[best_known_idx].matched_feature_id;
+                        res.primary_similarity = res.boxes[best_known_idx].similarity;
+                        snprintf(res.primary_name, sizeof(res.primary_name), "%s", res.boxes[best_known_idx].name);
+                    } else if (!faces.empty()) {
+                        res.primary_match_state = VISION_FACE_MATCH_UNKNOWN;
+                        res.primary_person_slot = -1;
+                        snprintf(res.primary_name, sizeof(res.primary_name), "未登録の人物");
+                    }
+                }
+            }
 
             s_diag.face_inferences++;
             s_diag.avg_face_ms = (s_diag.avg_face_ms == 0) ? infer_ms : (s_diag.avg_face_ms * 3 + infer_ms) / 4;
-
-            if (!faces.empty()) {
-                ESP_LOGI(TAG, "Face detected! count=%d, latency=%lums, score=%.2f, box=[%d,%d,%d,%d]",
-                         (int)faces.size(), (unsigned long)infer_ms,
-                         faces.front().score,
-                         faces.front().box[0], faces.front().box[1],
-                         faces.front().box[2] - faces.front().box[0],
-                         faces.front().box[3] - faces.front().box[1]);
-            } else if (s_diag.face_inferences % 30 == 0) {
-                ESP_LOGI(TAG, "Face inference heartbeat: count=%lu, avg_latency=%lums",
-                         (unsigned long)s_diag.face_inferences, (unsigned long)s_diag.avg_face_ms);
-            }
 
             /* Push latest result to result queue (discard oldest if full) */
             if (s_result_queue) {
@@ -265,9 +854,23 @@ extern "C" esp_err_t vision_service_init(void)
         return ESP_ERR_NO_MEM;
     }
 
+    s_cmd_queue = xQueueCreate(8, sizeof(vision_cmd_t));
+    if (!s_cmd_queue) {
+        ESP_LOGE(TAG, "Failed to create command queue");
+        vSemaphoreDelete(s_result_queue);
+        s_result_queue = NULL;
+        vSemaphoreDelete(s_infer_sem);
+        s_infer_sem = NULL;
+        vSemaphoreDelete(s_lock);
+        s_lock = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
     s_preview_mutex = xSemaphoreCreateMutex();
     if (!s_preview_mutex) {
         ESP_LOGE(TAG, "Failed to create preview mutex");
+        vQueueDelete(s_cmd_queue);
+        s_cmd_queue = NULL;
         vSemaphoreDelete(s_result_queue);
         s_result_queue = NULL;
         vSemaphoreDelete(s_infer_sem);
@@ -291,6 +894,9 @@ extern "C" esp_err_t vision_service_init(void)
     s_preview_buf[1] = s_host_preview_buf;
 #endif
 
+    /* Load persistent people metadata */
+    face_people_load();
+
     s_disp_idx = 0;
     s_ready_idx = 0;
     s_preview_dirty = false;
@@ -299,8 +905,8 @@ extern "C" esp_err_t vision_service_init(void)
     memset(&s_diag, 0, sizeof(s_diag));
     s_inited = true;
 
-    ESP_LOGI(TAG, "Vision service initialized (Preview: %dx%d)",
-             VISION_PREVIEW_WIDTH, VISION_PREVIEW_HEIGHT);
+    ESP_LOGI(TAG, "Vision service initialized (Preview: %dx%d, People: %d)",
+             VISION_PREVIEW_WIDTH, VISION_PREVIEW_HEIGHT, s_people_file.person_count);
     return ESP_OK;
 }
 
@@ -358,7 +964,7 @@ extern "C" esp_err_t vision_service_start(void)
     BaseType_t infer_ret = xTaskCreate(
         vision_inference_task,
         "vis_infer",
-        8192,
+        12288, /* 12KB stack for model inference */
         NULL,
         4, /* Priority 4: below capture 5, below LVGL 6 */
         &s_infer_task_handle
@@ -379,19 +985,20 @@ extern "C" esp_err_t vision_service_start(void)
 
 extern "C" void vision_service_stop(void)
 {
-    if (!s_inited) {
+    if (!s_inited || s_state == VISION_STATE_OFF) {
         return;
     }
 
+    ESP_LOGI(TAG, "Stopping vision service...");
+
 #ifndef HOST_TEST
-    if (s_lock && xSemaphoreTake(s_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(500)) == pdTRUE) {
         s_capture_running = false;
         s_infer_running = false;
         if (s_infer_sem) {
             xSemaphoreGive(s_infer_sem);
         }
 
-        /* Wait for capture task and inference task to cleanly exit BEFORE stopping camera */
         int wait_ms = 0;
         while ((s_capture_task_handle != NULL || s_infer_task_handle != NULL) && wait_ms < 500) {
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -527,22 +1134,179 @@ extern "C" bool vision_service_poll_result(vision_result_t *result)
 #endif
 }
 
+extern "C" esp_err_t vision_service_begin_enrollment(const char *utf8_name)
+{
+    if (!utf8_name) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char clean_name[VISION_FACE_NAME_MAX_BYTES + 1];
+    snprintf(clean_name, sizeof(clean_name), "%s", utf8_name);
+    trim_whitespace(clean_name);
+
+    if (clean_name[0] == '\0') {
+        ESP_LOGW(TAG, "Enrollment name empty after trim");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (find_person_by_name(clean_name) != NULL) {
+        ESP_LOGW(TAG, "Duplicate name '%s' already registered", clean_name);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (s_people_file.person_count >= VISION_MAX_PERSONS) {
+        ESP_LOGW(TAG, "Cannot enroll: Maximum 10 persons reached");
+        return ESP_ERR_NO_MEM;
+    }
+
+#ifndef HOST_TEST
+    if (!s_cmd_queue) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    vision_cmd_t cmd = {};
+    cmd.type = VISION_CMD_BEGIN_ENROLL;
+    snprintf(cmd.name, sizeof(cmd.name), "%s", clean_name);
+    if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+#else
+    s_enroll_txn.active = true;
+    s_enroll_txn.target_slot = (uint8_t)find_free_person_slot();
+    snprintf(s_enroll_txn.name, sizeof(s_enroll_txn.name), "%s", clean_name);
+    s_enroll_txn.state = VISION_ENROLL_WAIT_FACE;
+#endif
+    return ESP_OK;
+}
+
+extern "C" esp_err_t vision_service_cancel_enrollment(void)
+{
+#ifndef HOST_TEST
+    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    vision_cmd_t cmd = {};
+    cmd.type = VISION_CMD_CANCEL_ENROLL;
+    if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+#else
+    s_enroll_txn.active = false;
+    s_enroll_txn.state = VISION_ENROLL_CANCELLED;
+#endif
+    return ESP_OK;
+}
+
+extern "C" esp_err_t vision_service_delete_person(uint8_t person_slot)
+{
+    if (person_slot >= VISION_MAX_PERSONS) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+#ifndef HOST_TEST
+    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    vision_cmd_t cmd = {};
+    cmd.type = VISION_CMD_DELETE_PERSON;
+    cmd.slot = person_slot;
+    if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+#else
+    if (s_people_file.persons[person_slot].active) {
+        s_people_file.persons[person_slot].active = false;
+        s_people_file.person_count--;
+    }
+#endif
+    return ESP_OK;
+}
+
+extern "C" esp_err_t vision_service_reregister_person(uint8_t person_slot, const char *utf8_name)
+{
+    if (person_slot >= VISION_MAX_PERSONS) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_people_file.persons[person_slot].active) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+#ifndef HOST_TEST
+    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    vision_cmd_t cmd = {};
+    cmd.type = VISION_CMD_REREGISTER_PERSON;
+    cmd.slot = person_slot;
+    if (utf8_name && utf8_name[0] != '\0') {
+        snprintf(cmd.name, sizeof(cmd.name), "%s", utf8_name);
+        trim_whitespace(cmd.name);
+    } else {
+        snprintf(cmd.name, sizeof(cmd.name), "%s", s_people_file.persons[person_slot].name);
+    }
+    if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+#else
+    s_enroll_txn.active = true;
+    s_enroll_txn.is_reregister = true;
+    s_enroll_txn.target_slot = person_slot;
+    snprintf(s_enroll_txn.name, sizeof(s_enroll_txn.name), "%s",
+             (utf8_name && utf8_name[0] != '\0') ? utf8_name : s_people_file.persons[person_slot].name);
+    s_enroll_txn.state = VISION_ENROLL_WAIT_FACE;
+#endif
+    return ESP_OK;
+}
+
+extern "C" esp_err_t vision_service_clear_all_people(void)
+{
+#ifndef HOST_TEST
+    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    vision_cmd_t cmd = {};
+    cmd.type = VISION_CMD_CLEAR_ALL;
+    if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+#else
+    face_people_init_empty();
+#endif
+    return ESP_OK;
+}
+
+extern "C" int vision_service_get_enrolled_count(void)
+{
+    return s_people_file.person_count;
+}
+
+extern "C" esp_err_t vision_service_get_people_summary(vision_person_summary_t *out, size_t capacity, size_t *out_count)
+{
+    if (!out || !out_count) return ESP_ERR_INVALID_ARG;
+    size_t count = 0;
+    for (int i = 0; i < VISION_MAX_PERSONS && count < capacity; i++) {
+        if (s_people_file.persons[i].active) {
+            out[count].slot = s_people_file.persons[i].slot;
+            snprintf(out[count].name, sizeof(out[count].name), "%s", s_people_file.persons[i].name);
+            out[count].feature_count = s_people_file.persons[i].feature_count;
+            count++;
+        }
+    }
+    *out_count = count;
+    return ESP_OK;
+}
+
 extern "C" esp_err_t vision_service_enroll_face(void)
 {
-    ESP_LOGI(TAG, "Face enrollment requested (Phase 6)");
-    return ESP_OK;
+    char default_name[32];
+    snprintf(default_name, sizeof(default_name), "Face %02d", s_people_file.person_count + 1);
+    return vision_service_begin_enrollment(default_name);
 }
 
 extern "C" esp_err_t vision_service_delete_last_face(void)
 {
-    ESP_LOGI(TAG, "Delete last face requested (Phase 6)");
+    for (int i = VISION_MAX_PERSONS - 1; i >= 0; i--) {
+        if (s_people_file.persons[i].active) {
+            return vision_service_delete_person((uint8_t)i);
+        }
+    }
     return ESP_OK;
 }
 
 extern "C" esp_err_t vision_service_clear_faces(void)
 {
-    ESP_LOGI(TAG, "Clear all faces requested (Phase 6)");
-    return ESP_OK;
+    return vision_service_clear_all_people();
 }
 
 extern "C" void vision_service_get_diag(vision_diag_t *diag)

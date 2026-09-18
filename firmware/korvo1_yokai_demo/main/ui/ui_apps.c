@@ -2,6 +2,7 @@
 #include "ui/ui_theme.h"
 #include "ui/ui_drawer.h"
 #include "synth_service.h"
+#include "vision_service.h"
 #include "esp_log.h"
 #include <math.h>
 #include <stdio.h>
@@ -243,6 +244,22 @@ void ui_voice_screen_update(const voice_result_t *result, int volume,
  * 2. Vision AI Screen (目目連の眼)
  * ------------------------------------------------------------- */
 static lv_obj_t *s_lbl_vision_det = NULL;
+static lv_obj_t *s_vf_img = NULL;
+static lv_obj_t *s_lbl_vf_target = NULL;
+static lv_obj_t *s_face_boxes[VISION_MAX_DETECTIONS] = {NULL};
+static lv_obj_t *s_face_labels[VISION_MAX_DETECTIONS] = {NULL};
+static lv_image_dsc_t s_preview_img_dsc = {
+    .header = {
+        .magic = LV_IMAGE_HEADER_MAGIC,
+        .cf = LV_COLOR_FORMAT_RGB565,
+        .flags = 0,
+        .w = VISION_PREVIEW_WIDTH,
+        .h = VISION_PREVIEW_HEIGHT,
+        .stride = VISION_PREVIEW_WIDTH * 2,
+    },
+    .data_size = VISION_PREVIEW_WIDTH * VISION_PREVIEW_HEIGHT * 2,
+    .data = NULL,
+};
 static int s_vision_step = 0;
 
 static void vision_btn_cb(lv_event_t *e)
@@ -282,12 +299,49 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_border_color(vf, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_border_width(vf, 2, 0);
     lv_obj_set_style_radius(vf, 10, 0);
+    lv_obj_set_style_pad_all(vf, 0, 0);
+    lv_obj_set_style_clip_corner(vf, true, 0);
+    lv_obj_remove_flag(vf, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *lbl_target = lv_label_create(vf);
-    lv_label_set_text(lbl_target, "[ 霊視ビューファインダー / ESP-DL ]");
-    lv_obj_set_style_text_color(lbl_target, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_style_text_font(lbl_target, UI_FONT_REGULAR, 0);
-    lv_obj_center(lbl_target);
+    s_lbl_vf_target = lv_label_create(vf);
+    lv_label_set_text(s_lbl_vf_target, "[ 霊視ビューファインダー / ESP-DL ]");
+    lv_obj_set_style_text_color(s_lbl_vf_target, UI_COLOR_TEXT_SUB, 0);
+    lv_obj_set_style_text_font(s_lbl_vf_target, UI_FONT_REGULAR, 0);
+    lv_obj_center(s_lbl_vf_target);
+
+    /* Real-time camera preview image (fills 520x310 viewfinder frame) */
+    s_vf_img = lv_image_create(vf);
+    lv_obj_set_pos(s_vf_img, 0, 0);
+    lv_obj_set_size(s_vf_img, 520, 310);
+    lv_image_set_inner_align(s_vf_img, LV_IMAGE_ALIGN_STRETCH);
+    lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
+
+    /* Real-time Face Detection Bounding Boxes & Tracking Labels */
+    for (int i = 0; i < VISION_MAX_DETECTIONS; i++) {
+        s_face_boxes[i] = lv_obj_create(vf);
+        lv_obj_remove_flag(s_face_boxes[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(s_face_boxes[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_bg_opa(s_face_boxes[i], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_color(s_face_boxes[i], UI_COLOR_CYAN_ACCENT, 0);
+        lv_obj_set_style_border_width(s_face_boxes[i], 2, 0);
+        lv_obj_set_style_radius(s_face_boxes[i], 4, 0);
+        lv_obj_set_style_pad_all(s_face_boxes[i], 0, 0);
+        lv_obj_add_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
+
+        s_face_labels[i] = lv_label_create(vf);
+        lv_obj_remove_flag(s_face_labels[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(s_face_labels[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_bg_color(s_face_labels[i], lv_color_hex(0x0C1524), 0);
+        lv_obj_set_style_bg_opa(s_face_labels[i], LV_OPA_80, 0);
+        lv_obj_set_style_border_color(s_face_labels[i], UI_COLOR_CYAN_ACCENT, 0);
+        lv_obj_set_style_border_width(s_face_labels[i], 1, 0);
+        lv_obj_set_style_radius(s_face_labels[i], 4, 0);
+        lv_obj_set_style_pad_hor(s_face_labels[i], 6, 0);
+        lv_obj_set_style_pad_ver(s_face_labels[i], 2, 0);
+        lv_obj_set_style_text_color(s_face_labels[i], UI_COLOR_CYAN_ACCENT, 0);
+        lv_obj_set_style_text_font(s_face_labels[i], UI_FONT_SMALL, 0);
+        lv_obj_add_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);
+    }
 
     /* Right Control Area */
     lv_obj_t *lbl_info = lv_label_create(card);
@@ -318,6 +372,112 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_center(lbl_scan);
 
     return scr;
+}
+
+static bool s_vision_active = false;
+
+void ui_vision_set_active(bool active)
+{
+    s_vision_active = active;
+    if (s_lbl_vision_det) {
+        if (active) {
+            lv_label_set_text(s_lbl_vision_det, "カメラ準備中…");
+        } else {
+            lv_label_set_text(s_lbl_vision_det, "[顔検知] 停止中");
+            if (s_vf_img) {
+                lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
+            }
+            if (s_lbl_vf_target) {
+                lv_obj_remove_flag(s_lbl_vf_target, LV_OBJ_FLAG_HIDDEN);
+            }
+            for (int i = 0; i < VISION_MAX_DETECTIONS; i++) {
+                if (s_face_boxes[i]) {
+                    lv_obj_add_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
+                }
+                if (s_face_labels[i]) {
+                    lv_obj_add_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);
+                }
+            }
+        }
+    }
+}
+
+void ui_vision_screen_update(void)
+{
+    if (!s_vision_active) {
+        return;
+    }
+
+    /* 1. Consume fresh camera preview frame */
+    const uint8_t *frame_data = NULL;
+    uint16_t fw = 0, fh = 0;
+    if (vision_service_get_preview_frame(&frame_data, &fw, &fh)) {
+        if (s_vf_img && frame_data) {
+            s_preview_img_dsc.data = frame_data;
+            lv_image_set_src(s_vf_img, &s_preview_img_dsc);
+            lv_obj_remove_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
+            if (s_lbl_vf_target) {
+                lv_obj_add_flag(s_lbl_vf_target, LV_OBJ_FLAG_HIDDEN);
+            }
+            lv_obj_invalidate(s_vf_img);
+        }
+    }
+
+    /* 2. Poll inference detection results */
+    vision_result_t res;
+    while (vision_service_poll_result(&res)) {
+        if (!s_lbl_vision_det) break;
+        if (res.mode == VISION_MODE_FACE) {
+            if (res.count == 0) {
+                lv_label_set_text(s_lbl_vision_det, "[顔検知] 探索中…");
+                for (int i = 0; i < VISION_MAX_DETECTIONS; i++) {
+                    if (s_face_boxes[i]) lv_obj_add_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
+                    if (s_face_labels[i]) lv_obj_add_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);
+                }
+            } else {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "[顔検知] %d人検知 (%lums)",
+                         res.count, (unsigned long)res.inference_ms);
+                lv_label_set_text(s_lbl_vision_det, buf);
+
+                for (int i = 0; i < VISION_MAX_DETECTIONS; i++) {
+                    if (!s_face_boxes[i] || !s_face_labels[i]) continue;
+                    if (i < res.count) {
+                        /* Scale detector coordinates (320x240) to viewfinder (520x310) */
+                        int bx = (res.boxes[i].x * 520) / VISION_PREVIEW_WIDTH;
+                        int by = (res.boxes[i].y * 310) / VISION_PREVIEW_HEIGHT;
+                        int bw = (res.boxes[i].w * 520) / VISION_PREVIEW_WIDTH;
+                        int bh = (res.boxes[i].h * 310) / VISION_PREVIEW_HEIGHT;
+                        if (bw < 10) bw = 10;
+                        if (bh < 10) bh = 10;
+                        if (bx < 0) bx = 0;
+                        if (by < 0) by = 0;
+                        if (bx + bw > 520) bw = 520 - bx;
+                        if (by + bh > 310) bh = 310 - by;
+
+                        lv_obj_set_pos(s_face_boxes[i], bx, by);
+                        lv_obj_set_size(s_face_boxes[i], bw, bh);
+
+                        /* Place label pill badge above box or inside top if near top boundary */
+                        int lbl_y = by - 24;
+                        if (lbl_y < 2) {
+                            lbl_y = by + 4;
+                        }
+                        int lbl_x = bx;
+                        if (lbl_x > 400) lbl_x = 400; /* Prevent badge overflow on far right */
+                        lv_obj_set_pos(s_face_labels[i], lbl_x, lbl_y);
+                        lv_label_set_text(s_face_labels[i], res.boxes[i].label);
+
+                        lv_obj_remove_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
+                        lv_obj_remove_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);
+                    } else {
+                        lv_obj_add_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
+                        lv_obj_add_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /* -------------------------------------------------------------

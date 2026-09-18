@@ -804,4 +804,27 @@ bool voice_service_receive(voice_result_t *result)
            xQueueReceive(s_result_queue, result, 0) == pdTRUE;
 }
 
+bool voice_service_inject_command(voice_command_t command)
+{
+    if (!s_result_queue) {
+        return false;
+    }
+    voice_result_t result = {
+        .event = VOICE_EVENT_COMMAND,
+        .command = command,
+        .language = VOICE_LANGUAGE_JAPANESE,
+        .confidence = 1.0f,
+    };
+    return xQueueSend(s_result_queue, &result, 0) == pdTRUE;
+}
+
+#else
+
+bool voice_service_inject_command(voice_command_t command)
+{
+    (void)command;
+    return true;
+}
+
 #endif
+

@@ -34,6 +34,11 @@ typedef struct {
 /** Initialize the Korvo-1 RGB panel, GT1151 touch controller, and Yokai UI. */
 esp_err_t board_ui_start(app_state_t *state);
 
+#include "ui/ui.h"
+
+/** Switch Yokai UI screen under LVGL lock. */
+esp_err_t board_ui_switch_screen(ui_screen_t target);
+
 /** Ensure Wi-Fi STA subsystem is initialized and ready for scan or connection. */
 esp_err_t board_ui_wifi_ensure_started(void);
 

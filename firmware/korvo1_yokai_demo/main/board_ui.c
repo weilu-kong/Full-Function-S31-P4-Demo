@@ -525,3 +525,13 @@ esp_err_t board_ui_start(app_state_t *state)
     ESP_LOGI(TAG, "Korvo-1 LVGL v9 + ThorVG Yokai UI successfully started");
     return ESP_OK;
 }
+
+esp_err_t board_ui_switch_screen(ui_screen_t target)
+{
+    if (esp_lv_adapter_lock(-1) == ESP_OK) {
+        ui_switch_screen(target);
+        esp_lv_adapter_unlock();
+        return ESP_OK;
+    }
+    return ESP_FAIL;
+}

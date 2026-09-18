@@ -87,4 +87,5 @@ const char *voice_service_error(void);
 void voice_service_set_mode(voice_mode_t mode);
 voice_mode_t voice_service_get_mode(void);
 bool voice_service_receive(voice_result_t *result);
+bool voice_service_inject_command(voice_command_t command);
 void voice_service_feed_playback(const int16_t *stereo, size_t frames);

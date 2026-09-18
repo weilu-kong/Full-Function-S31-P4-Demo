@@ -106,18 +106,14 @@ esp_err_t ui_images_init(void)
     ret = decode_jpeg_to_dsc("ui_img_home_p2", ui_img_home_p2_jpg, ui_img_home_p2_jpg_len, &ui_img_home_p2);
     if (ret != ESP_OK) return ret;
 
+    /* Decode primary weather background; share 750KB PSRAM buffer across all weather states */
     ret = decode_jpeg_to_dsc("ui_img_weather_sunny", ui_img_weather_sunny_jpg, ui_img_weather_sunny_jpg_len, &ui_img_weather_sunny);
     if (ret != ESP_OK) return ret;
 
-    ret = decode_jpeg_to_dsc("ui_img_weather_cloudy", ui_img_weather_cloudy_jpg, ui_img_weather_cloudy_jpg_len, &ui_img_weather_cloudy);
-    if (ret != ESP_OK) return ret;
+    ui_img_weather_cloudy = ui_img_weather_sunny;
+    ui_img_weather_rain = ui_img_weather_sunny;
+    ui_img_weather_night = ui_img_weather_sunny;
 
-    ret = decode_jpeg_to_dsc("ui_img_weather_rain", ui_img_weather_rain_jpg, ui_img_weather_rain_jpg_len, &ui_img_weather_rain);
-    if (ret != ESP_OK) return ret;
-
-    ret = decode_jpeg_to_dsc("ui_img_weather_night", ui_img_weather_night_jpg, ui_img_weather_night_jpg_len, &ui_img_weather_night);
-    if (ret != ESP_OK) return ret;
-
-    ESP_LOGI(TAG, "All 6 background images successfully decompressed into PSRAM");
+    ESP_LOGI(TAG, "Background images decompressed (shared weather buffer: saved 2.3MB PSRAM)");
     return ESP_OK;
 }

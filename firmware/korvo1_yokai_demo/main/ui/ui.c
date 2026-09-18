@@ -12,6 +12,7 @@
 #include "weather_service.h"
 #include "synth_service.h"
 #include "voice_service.h"
+#include "vision_service.h"
 #include "esp_log.h"
 #include <time.h>
 #include <stdio.h>
@@ -298,6 +299,9 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             weather_info_t info;
             weather_service_get_info(&info);
             ui_weather_screen_update(&info);
+        } else if (s_pending_target == UI_SCREEN_VISION) {
+            ui_vision_set_active(true);
+            vision_service_start();
         }
     }
     if (card) {
@@ -331,6 +335,10 @@ void ui_switch_screen(ui_screen_t target)
     }
     if (prev == UI_SCREEN_WEATHER && target != UI_SCREEN_WEATHER) {
         ui_weather_set_active(false);
+    }
+    if (prev == UI_SCREEN_VISION && target != UI_SCREEN_VISION) {
+        vision_service_stop();
+        ui_vision_set_active(false);
     }
 
     /*
@@ -428,7 +436,12 @@ void ui_tick_periodic(void)
     /* 6. Update Remaining Apps (Clock / Timer, etc.) */
     ui_apps_tick_periodic();
 
-    /* 7. Consume speech results only on the LVGL thread. */
+    /* 7. Update Vision Screen */
+    if (s_current_screen == UI_SCREEN_VISION) {
+        ui_vision_screen_update();
+    }
+
+    /* 8. Consume speech results only on the LVGL thread. */
     voice_result_t result;
     while (voice_service_receive(&result)) {
         if (result.event == VOICE_EVENT_WAKE) {

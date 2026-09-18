@@ -6,8 +6,17 @@
 #include "synth_service.h"
 #include "voice_service.h"
 #include "weather_service.h"
+#include "vision_service.h"
 
 static const char *TAG = "yokai_demo";
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_heap_caps.h"
+#include "driver/i2c_master.h"
+#include "driver/ledc.h"
+#include "esp_lv_adapter.h"
+#include "bsp/esp32_s31_korvo_1.h"
 
 void app_main(void)
 {
@@ -28,9 +37,16 @@ void app_main(void)
     /* Initialize weather service with SNTP & Open-Meteo polling */
     ESP_ERROR_CHECK(weather_service_init());
 
+    /* Initialize vision service skeleton (Camera/AI deferred to UI entry) */
+    esp_err_t vision_err = vision_service_init();
+    if (vision_err != ESP_OK) {
+        ESP_LOGW(TAG, "Vision service init failed: %s", esp_err_to_name(vision_err));
+    }
+
     /* board_ui keeps this pointer after app_main returns. */
     static app_state_t state;
     app_state_init(&state);
     ESP_ERROR_CHECK(board_ui_start(&state));
     ESP_LOGI(TAG, "Korvo-1 Yokai demo UI started");
 }
+

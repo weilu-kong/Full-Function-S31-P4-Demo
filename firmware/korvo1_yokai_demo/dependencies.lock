@@ -446,7 +446,7 @@ dependencies:
       type: service
     version: 1.0.0
   espressif/human_face_detect:
-    component_hash: a413ff0571a9823e82cc391e633bedae5f43cb950611e5ed3439a77ab754808b
+    component_hash: b6f898ba69e0355641db0f2974f5810fb26c265ab3e1b1a03a37469976ad4591
     dependencies:
     - name: espressif/esp-dl
       registry_url: https://components.espressif.com
@@ -455,7 +455,18 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 0.5.0
+    version: 0.4.2
+  espressif/human_face_recognition:
+    component_hash: ebdce22800621739386c8c5ae0e974cd5ee59f9d3d0735bf6cfe4c8040313ae4
+    dependencies:
+    - name: espressif/human_face_detect
+      registry_url: https://components.espressif.com
+      require: private
+      version: ~0.4.1
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.3.2
   espressif/knob:
     component_hash: b56694054cd34a683ac2a6f3661963ba00b1dab741a4f3bb59ed6666cbc9f3fb
     dependencies:
@@ -578,7 +589,7 @@ dependencies:
       type: idf
     version: 6.2.0
   lvgl/lvgl:
-    component_hash: d5e723db3a3feca71e34e333a6598b7624e3822577d374e1d44f0e18374952e1
+    component_hash: 7d82410747bbfb319531449749e940f440f8414f041f9eaba13f0d1dd7f58cdd
     dependencies:
     - name: espressif/freetype
       registry_url: https://components.espressif.com
@@ -607,7 +618,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 9.6.0
+    version: 9.6.0~1
 direct_dependencies:
 - espressif/esp-sr
 - espressif/esp32_s31_korvo_1_noglib
@@ -617,9 +628,10 @@ direct_dependencies:
 - espressif/esp_lvgl_adapter
 - espressif/esp_new_jpeg
 - espressif/human_face_detect
+- espressif/human_face_recognition
 - espressif/thorvg
 - idf
 - lvgl/lvgl
-manifest_hash: 906329abc7d6ead021134f1f0b71f9903d1075c36a8a75d2e3dd516900572805
+manifest_hash: 6ad37ce5055e90fcb6b57510a0e82fa164c7c8829745dfd4ba2b7f6816b7ec0c
 target: esp32s31
 version: 3.0.0

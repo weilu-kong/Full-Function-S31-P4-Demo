@@ -5,7 +5,7 @@
   "swipe": false,
   "screen_bg": "#171331",
   "font": "../assets/fonts/NotoSansCJKjp-Regular.otf",
-  "font_charset": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~…℃○●♩　、。「」いかがきくけこさしじすせだちってでとなにのはまみもらりるれわをんイカクケシジセタットバペホポマムメョラン・ー上中付体作信備像具切列卓台合周喪器固声天太好妖守定室察屋屏左幕形待怪態戻所接提揺操新明映時晴暮更期材村機次残気河波済準火灯照物状狸理画盤目知確社神祭空童算管紋紫続良花行要見観言計設話認識辺通連道量金閉限雲雷電霊青面音食鼓",
+  "font_charset": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~…℃○●♩　、。「」いかがきくけこさしじすせだちってでとなにのはまみもらりるれわをんイカクケシジセタットバペホポマムメョラン・ー上中付体作信備像具切列卓台合周喪器固声天太好妖守定室察屋屏左右幕形待怪態戻所接提揺操新明映時晴暮更期材村機次残気河波済準火灯照物状狸理画盤目知確社神祭空童算管紋紫続良花行要見観言計設話認識辺通連道量金閉限雲雷電霊青面音食鼓むゆよ（）東京雨雪度未取得同夜風降静白ネワ忘",
   "default_font_size": 20,
   "objects": [
     {
@@ -344,74 +344,72 @@
       "knob_color": "#F6EBCB"
     },
     {
-      "type": "container",
-      "parent": 21,
-      "name": "wifi_card",
-      "x": 32,
-      "y": 210,
-      "w": 270,
-      "h": 64,
-      "text": "Wi-Fi　通信",
-      "text_align": "center",
-      "font_size": 20,
-      "fg_color": "#E5F8FF",
-      "bg_color": "#22345F",
-      "border_color": "#58D0DE",
-      "border_width": 2,
-      "radius": 12,
-      "events": [
-        {
-          "event": "click",
-          "action": "call",
-          "target_name": "wifi_details"
-        }
-      ]
-    },
-    {
-      "type": "checkbox",
+      "type": "toggle",
       "parent": 21,
       "name": "wifi_enabled",
-      "x": 44,
-      "y": 224,
-      "w": 36,
-      "h": 36,
-      "checked": true,
-      "fg_color": "#58D0DE"
+      "x": 32,
+      "y": 223,
+      "w": 76,
+      "h": 38,
+      "checked": false,
+      "bg_color": "#283446",
+      "fg_color": "#22C55E",
+      "knob_color": "#FFFFFF",
+      "callback": "wifi_toggle"
     },
     {
-      "type": "container",
+      "type": "button",
       "parent": 21,
-      "name": "bluetooth_card",
-      "x": 324,
+      "name": "wifi_card",
+      "x": 114,
       "y": 210,
-      "w": 284,
+      "w": 188,
       "h": 64,
-      "text": "Bluetooth",
-      "text_align": "center",
+      "text": "Wi-Fi 通信",
       "font_size": 20,
-      "fg_color": "#FFE0F0",
-      "bg_color": "#35294F",
-      "border_color": "#E0A5C5",
+      "bg_color": "#141C2B",
+      "fg_color": "#E5F8FF",
+      "border_color": "#3B82F6",
       "border_width": 2,
       "radius": 12,
-      "events": [
-        {
-          "event": "click",
-          "action": "call",
-          "target_name": "bluetooth_details"
-        }
-      ]
+      "callback": "wifi_details",
+      "enabled": false,
+      "disabled_opacity": 90,
+      "disabled_color": "#1A2035"
     },
     {
-      "type": "checkbox",
+      "type": "toggle",
       "parent": 21,
       "name": "bluetooth_enabled",
-      "x": 340,
-      "y": 224,
-      "w": 36,
-      "h": 36,
+      "x": 336,
+      "y": 223,
+      "w": 76,
+      "h": 38,
       "checked": false,
-      "fg_color": "#E0A5C5"
+      "bg_color": "#283446",
+      "fg_color": "#22C55E",
+      "knob_color": "#FFFFFF",
+      "callback": "bluetooth_toggle"
+    },
+    {
+      "type": "button",
+      "parent": 21,
+      "name": "bluetooth_card",
+      "x": 418,
+      "y": 210,
+      "w": 190,
+      "h": 64,
+      "text": "Bluetooth",
+      "font_size": 20,
+      "bg_color": "#141C2B",
+      "fg_color": "#E5F8FF",
+      "border_color": "#3B82F6",
+      "border_width": 2,
+      "radius": 12,
+      "callback": "bluetooth_details",
+      "enabled": false,
+      "disabled_opacity": 90,
+      "disabled_color": "#1A2035"
     },
     {
       "type": "label",

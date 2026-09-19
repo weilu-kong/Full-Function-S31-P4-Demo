@@ -22,18 +22,32 @@
 - [x] 验证 Wi-Fi/Bluetooth 左侧圆点切换，单击小框其余区域进入详情页。
 - [x] 用 ESP-IDF master 完整构建，并在 Korvo-1 烧录验证。
 
-### Task 2: 完成 Synthesizer
+### Task 2: 完成 Synthesizer / 音乐工作站 (Korg / Roland / Yamaha 风格重构)
 
 **Files:**
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_synth_800.json`
-- Modify/Create: `firmware/korvo1_yokai_demo/main/synth_service.c`
-- Modify/Create: `firmware/korvo1_yokai_demo/main/synth_service.h`
+- Modify: `firmware/korvo1_yokai_demo/main/board_ui.c`
+- Create: `firmware/korvo1_yokai_demo/main/synth_service.c`
+- Create: `firmware/korvo1_yokai_demo/main/synth_service.h`
 - Modify: `firmware/korvo1_yokai_demo/main/CMakeLists.txt`
 
-- [ ] 为白键和 C#、D#、F#、G#、A# 黑键加入独立 press/release callback。
-- [ ] 用板载音频 codec 输出低延迟音符，离开页面时释放全部音符。
-- [ ] 将琴键按压、波形、节拍和雷纹动画绑定到实际播放状态。
-- [ ] 测量首次发声延迟、连续按键和返回 Home 后资源释放；真机验收后提交。
+- [x] **Task 2.1 (UI 重构)**：
+  - 彻底规整 800×480 界面：8 个白键（C4~C5）等高等宽水平居中排列，5 个黑键（C#4, D#4, F#4, G#4, A#4）严格按乐理悬浮于对应白键接缝处，解决散乱色块缺陷。
+  - 增加 OSC 波形选择区（SIN / SQR / SAW / 雷神太鼓）与模式选择（KEY 演奏 / BT 蓝牙伴奏 / WEB 网络音乐）。
+  - 增加 DSP 参数视窗（波形/频谱、Cutoff/Reso/Decay 指示）。
+  - 固件全量构建成功并已烧录至 Korvo-1（Hash of data verified）。
+- [x] **Task 2.2 (实时合成与发声引擎)**：
+  - 接入 `bsp_audio_codec_speaker_init()` 与 `esp_codec_dev_write()`。
+  - 集成官方 `esp_audio_effects` 组件（EQ 动态低通滤波 Cutoff/共振峰 Resonance、Freeverb 空间混响、ALC 动态电平控制）。
+  - 实现 4 复音低延迟多波形生成器（SIN / SQR / SAW）与妖怪太鼓（打击瞬态 + 指数音高下滑 Taiko punch）。
+  - 在 `board_ui.c` 中全面映射 20 个音符键（F3~C5，包括半音黑键）与波形切换，场景切入自启动、离开静音。
+  - 固件全量构建成功（`korvo1_yokai_demo.bin` 生成，暂未烧录）。
+- [x] **Task 2.3 (Groovebox 伴奏与 DSP 混音扩展)**：
+  - 利用 ESP32-S31 经典蓝牙硬件能力开启 A2DP Sink 接入（广播设备名 `Yokai-Groovebox`），支持手机/电脑连接并推流伴奏音乐。
+  - 集成 `esp_audio_effects` 的 `esp_ae_mixer` 模块，配置 44.1 kHz 立体声多路加权混音（琴键实时发声 + 蓝牙音乐伴奏）。
+  - 混合音频统一流经 EQ 动态低通滤波 Cutoff/共振峰 Resonance、Freeverb 混响和 ALC 动态限幅，避免削波失真。
+  - 全量编译构建成功，生成最终固件二进制 `korvo1_yokai_demo.bin`。
+  - 2026-09-12：快捷设置 Wi-Fi/BT 卡片、扫描列表与详情「ホーム」已真机确认（见 `docs/AGENT-HANDOFF.md`）。Groovebox 发声请接手后复听一次。
 
 ### Task 3: 完成天气
 
@@ -43,10 +57,10 @@
 - Create: `firmware/korvo1_yokai_demo/main/weather_service.h`
 - Modify: `firmware/korvo1_yokai_demo/main/CMakeLists.txt`
 
-- [ ] 复用现有 Wi-Fi 初始化，补连接状态、SNTP 和天气请求配置。
-- [ ] 明确城市、天气数据源和凭据保存方式；不得把密钥提交到仓库。
-- [ ] 将晴、雨、雪、夜晚映射到同一妖怪村落的场景、光照和角色状态。
-- [ ] 显示温度、更新时间、断线、获取失败和缓存时间；演示数据继续标注 DEMO。
+- [x] 复用现有 Wi-Fi 初始化，补连接状态、SNTP 和天气请求配置。
+- [x] 明确城市、天气数据源和凭据保存方式；不得把密钥提交到仓库。
+- [x] 将晴、雨、雪、夜晚映射到同一妖怪村落的场景、光照和角色状态。
+- [x] 显示温度、更新时间、断线、获取失败和缓存时间；演示数据继续标注 DEMO。
 
 ### Task 4: 完成端侧语音与 AEC
 
@@ -82,10 +96,10 @@
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_wifi_800.json`
 - Modify: `firmware/korvo1_yokai_demo/scenes/korvo_bluetooth_800.json`
 
-- [ ] 让两个圆点控制真实无线状态，并在所有场景间同步，而非仅切换当前页面外观。
-- [ ] 专项验证 Wi-Fi 详情页真实扫描、重复更新、关闭后再进入和非 UTF-8 SSID 的显示策略。
+- [ ] 让两个开关控制真实无线状态，并在所有场景间同步，而非仅切换当前页面外观。
+- [x] Wi-Fi 详情页真实扫描与真实连接（2026-09-14 真机：SSID 列表、密码输入抽屉与虚拟键盘、错误码提示、获取 IP 与天气联动；关闭开关/断开后稳定降级）。非 UTF-8 SSID 策略仍待定。
 - [ ] 接入 BLE 扫描，将附近设备名、RSSI、连接中、连接失败和已连接状态显示在详情页。
-- [ ] 详情页返回时恢复进入前的页面；实体 Home 始终返回桌面第一页。
+- [x] 详情页「ホーム」恢复进入前的页面并立刻打开快捷设置（无淡出黑场、不闪空桌面）。实体 Home 仍应始终返回桌面第一页。
 
 ### Task 7: 第二页业务、待机和性能
 

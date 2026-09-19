@@ -1,0 +1,27 @@
+menu "Yokai Demo Configuration"
+
+    config YOKAI_WIFI_SSID
+        string "WiFi SSID"
+        default ""
+        help
+            SSID for Wi-Fi station connection to fetch weather and sync SNTP.
+
+    config YOKAI_WIFI_PASSWORD
+        string "WiFi Password"
+        default ""
+        help
+            Password for Wi-Fi station.
+
+    config YOKAI_WEATHER_LATITUDE
+        string "Weather Latitude"
+        default "35.6895"
+        help
+            Latitude for weather query (default Tokyo 35.6895).
+
+    config YOKAI_WEATHER_LONGITUDE
+        string "Weather Longitude"
+        default "139.6917"
+        help
+            Longitude for weather query (default Tokyo 139.6917).
+
+endmenu

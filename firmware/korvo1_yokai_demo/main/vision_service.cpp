@@ -345,6 +345,27 @@ static volatile uint32_t s_infer_progress_ms = 0;
 #define VISION_EVT_INFER_EXITED   BIT1
 #define VISION_EVT_ALL_EXITED (VISION_EVT_CAPTURE_EXITED | VISION_EVT_INFER_EXITED)
 
+static void release_infer_buffer(int idx)
+{
+    if (s_preview_mutex) {
+        xSemaphoreTake(s_preview_mutex, portMAX_DELAY);
+    }
+    if (s_infer_idx == idx) {
+        s_infer_idx = -1;
+    }
+    if (s_preview_mutex) {
+        xSemaphoreGive(s_preview_mutex);
+    }
+}
+
+class InferBufferLease {
+public:
+    explicit InferBufferLease(int idx) : idx_(idx) {}
+    ~InferBufferLease() { release_infer_buffer(idx_); }
+private:
+    int idx_;
+};
+
 static HumanFaceDetect *s_face_detect = nullptr;
 static HumanFaceRecognizer *s_face_recognizer = nullptr;
 static bool s_mfn_loaded = false;
@@ -659,6 +680,7 @@ static void vision_inference_task(void *arg)
         if (cur_idx < 0 || !s_preview_buf[cur_idx]) {
             continue;
         }
+        InferBufferLease infer_lease(cur_idx);
 
         if (s_mode == VISION_MODE_FACE) {
             if (!s_face_detect) {
@@ -957,10 +979,6 @@ static void vision_inference_task(void *arg)
                 xQueueSend(s_result_queue, &res, 0);
             }
         }
-        if (s_preview_mutex && xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            s_infer_idx = -1;
-            xSemaphoreGive(s_preview_mutex);
-        }
         s_infer_progress_ms = (uint32_t)(esp_timer_get_time() / 1000);
         vTaskDelay(1);
     }
@@ -973,6 +991,19 @@ static void vision_inference_task(void *arg)
 static vision_result_t s_host_result_slot;
 static bool s_host_result_valid = false;
 static uint8_t s_host_preview_buf[PREVIEW_FRAME_SIZE];
+
+static void release_infer_buffer(int idx)
+{
+    if (s_infer_idx == idx) s_infer_idx = -1;
+}
+
+class InferBufferLease {
+public:
+    explicit InferBufferLease(int idx) : idx_(idx) {}
+    ~InferBufferLease() { release_infer_buffer(idx_); }
+private:
+    int idx_;
+};
 #endif
 
 extern "C" esp_err_t vision_service_init(void)

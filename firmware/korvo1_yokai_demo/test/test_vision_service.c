@@ -121,6 +121,14 @@ int main(void)
     /* 11. Start and Stop */
     assert(vision_service_start() == ESP_OK);
     assert(vision_service_get_state() == VISION_STATE_RUNNING);
+
+    /* Inference ownership is released even on an early scope exit. */
+    s_infer_idx = 1;
+    {
+        InferBufferLease lease(1);
+    }
+    assert(s_infer_idx == -1);
+
     vision_service_stop();
     assert(vision_service_get_state() == VISION_STATE_OFF);
 

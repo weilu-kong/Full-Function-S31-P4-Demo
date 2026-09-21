@@ -414,10 +414,14 @@ static void vision_health_task(void *arg)
         size_t simd_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD);
         UBaseType_t cap_stack = s_capture_task_handle ? uxTaskGetStackHighWaterMark(s_capture_task_handle) : 0;
         UBaseType_t infer_stack = s_infer_task_handle ? uxTaskGetStackHighWaterMark(s_infer_task_handle) : 0;
-        uint32_t cap_age = s_capture_progress_ms && now >= s_capture_progress_ms ? now - s_capture_progress_ms : 0;
-        uint32_t infer_age = s_infer_progress_ms && now >= s_infer_progress_ms ? now - s_infer_progress_ms : 0;
-        uint32_t pub_age = s_preview_last_publish_ms && now >= s_preview_last_publish_ms ? now - s_preview_last_publish_ms : 0;
-        uint32_t consume_age = s_preview_last_consume_ms && now >= s_preview_last_consume_ms ? now - s_preview_last_consume_ms : 0;
+        uint32_t cap_progress_ms = s_capture_progress_ms;
+        uint32_t infer_progress_ms = s_infer_progress_ms;
+        uint32_t last_publish_ms = s_preview_last_publish_ms;
+        uint32_t last_consume_ms = s_preview_last_consume_ms;
+        uint32_t cap_age = cap_progress_ms && now >= cap_progress_ms ? now - cap_progress_ms : 0;
+        uint32_t infer_age = infer_progress_ms && now >= infer_progress_ms ? now - infer_progress_ms : 0;
+        uint32_t pub_age = last_publish_ms && now >= last_publish_ms ? now - last_publish_ms : 0;
+        uint32_t consume_age = last_consume_ms && now >= last_consume_ms ? now - last_consume_ms : 0;
         ESP_LOGI(TAG,
                  "[HEALTH] up=%u vstate=%u mode=%u tasks=%u int_free=%u int_min=%u int_largest=%u psram_free=%u psram_min=%u psram_largest=%u simd_largest=%u cap=%u pub=%u consume_calls=%u consumed=%u infer=%u cam_err=%u dirty_miss=%u consume_lock_busy=%u writer_lock_busy=%u publish_lock_busy=%u no_free_buf=%u ready_idx=%d disp_idx=%d infer_idx=%d write_idx=%d dirty=%u cap_stack=%u infer_stack=%u cap_age=%u infer_age=%u pub_age=%u consume_age=%u",
                  (unsigned)now, (unsigned)s_state, (unsigned)s_mode, (unsigned)uxTaskGetNumberOfTasks(),

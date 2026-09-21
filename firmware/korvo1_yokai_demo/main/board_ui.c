@@ -57,8 +57,10 @@ static void ui_health_task(void *arg)
     (void)arg;
     for (;;) {
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        uint32_t enter_age = s_ui_last_enter_ms && now >= s_ui_last_enter_ms ? now - s_ui_last_enter_ms : 0;
-        uint32_t exit_age = s_ui_last_exit_ms && now >= s_ui_last_exit_ms ? now - s_ui_last_exit_ms : 0;
+        uint32_t last_enter_ms = s_ui_last_enter_ms;
+        uint32_t last_exit_ms = s_ui_last_exit_ms;
+        uint32_t enter_age = last_enter_ms && now >= last_enter_ms ? now - last_enter_ms : 0;
+        uint32_t exit_age = last_exit_ms && now >= last_exit_ms ? now - last_exit_ms : 0;
         ui_screen_t screen = ui_get_current_screen();
         vision_state_t vision_state = vision_service_get_state();
         ESP_LOGI(TAG,

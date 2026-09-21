@@ -137,6 +137,18 @@ int main(void)
     s_write_idx = -1;
     assert(find_free_preview_buffer() == 2);
 
+    /* Consume each published sequence exactly once. */
+    const uint8_t *preview = NULL;
+    uint16_t preview_w = 0;
+    uint16_t preview_h = 0;
+    s_ready_idx = 1;
+    s_preview_publish_seq = 1;
+    s_preview_consumed_seq = 0;
+    assert(vision_service_get_preview_frame(&preview, &preview_w, &preview_h) == true);
+    assert(vision_service_get_preview_frame(&preview, &preview_w, &preview_h) == false);
+    s_preview_publish_seq = 2;
+    assert(vision_service_get_preview_frame(&preview, &preview_w, &preview_h) == true);
+
     vision_service_stop();
     assert(vision_service_get_state() == VISION_STATE_OFF);
 

@@ -45,8 +45,8 @@ static uint8_t *s_preview_buf[3] = {NULL, NULL, NULL};
 static volatile int s_disp_idx = 0;   /* Buffer currently displayed by LVGL */
 static volatile int s_ready_idx = 0;  /* Buffer with latest complete camera frame */
 static volatile int s_infer_idx = -1; /* Buffer owned by ESP-DL */
+static volatile int s_write_idx = -1; /* Buffer reserved by the capture task */
 static volatile bool s_preview_dirty = false;
-static volatile int s_observed_write_idx = -1; /* Telemetry only; not ownership yet. */
 static volatile uint32_t s_preview_publish_count = 0;
 static volatile uint32_t s_preview_consume_call_count = 0;
 static volatile uint32_t s_preview_consume_ok_count = 0;
@@ -59,6 +59,14 @@ static volatile uint32_t s_preview_last_publish_ms = 0;
 static volatile uint32_t s_preview_last_consume_ms = 0;
 static volatile bool s_capture_running = false;
 static volatile bool s_infer_running = false;
+
+static int find_free_preview_buffer(void)
+{
+    for (int i = 0; i < 3; ++i) {
+        if (i != s_disp_idx && i != s_infer_idx && i != s_write_idx) return i;
+    }
+    return -1;
+}
 
 /* --- Metadata and Storage Models (Sections 11 & 12) --- */
 #define VISION_PEOPLE_META_MAGIC   0x59464D44 /* "YFMD" */
@@ -420,7 +428,7 @@ static void vision_health_task(void *arg)
                  (unsigned)s_preview_dirty_miss_count, (unsigned)s_preview_consume_lock_busy_count,
                  (unsigned)s_preview_writer_lock_busy_count, (unsigned)s_preview_publish_lock_busy_count,
                  (unsigned)s_preview_no_free_buffer_count, s_ready_idx, s_disp_idx, s_infer_idx,
-                 s_observed_write_idx, (unsigned)s_preview_dirty,
+                 s_write_idx, (unsigned)s_preview_dirty,
                  (unsigned)cap_stack, (unsigned)infer_stack,
                  (unsigned)cap_age, (unsigned)infer_age, (unsigned)pub_age, (unsigned)consume_age);
         if (s_state == VISION_STATE_RUNNING && s_capture_progress_ms && cap_age > 5000) {
@@ -434,7 +442,7 @@ static void vision_health_task(void *arg)
             ESP_LOGE(TAG,
                      "PREVIEW CONSUMER STALL: consume_age=%u ready=%d disp=%d infer=%d write=%d dirty=%u pub=%u consumed=%u consume_lock_busy=%u",
                      (unsigned)consume_age, s_ready_idx, s_disp_idx, s_infer_idx,
-                     s_observed_write_idx, (unsigned)s_preview_dirty,
+                     s_write_idx, (unsigned)s_preview_dirty,
                      (unsigned)s_preview_publish_count, (unsigned)s_preview_consume_ok_count,
                      (unsigned)s_preview_consume_lock_busy_count);
         }
@@ -462,13 +470,8 @@ static void vision_capture_task(void *arg)
         bool writer_lock_acquired = false;
         if (s_preview_mutex && xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             writer_lock_acquired = true;
-            for (int i = 0; i < 3; ++i) {
-                if (i != s_disp_idx && i != s_infer_idx) {
-                    write_idx = i;
-                    break;
-                }
-            }
-            s_observed_write_idx = write_idx;
+            write_idx = find_free_preview_buffer();
+            s_write_idx = write_idx;
             xSemaphoreGive(s_preview_mutex);
         } else {
             s_preview_writer_lock_busy_count = s_preview_writer_lock_busy_count + 1;
@@ -519,29 +522,29 @@ static void vision_capture_task(void *arg)
 
             /* Publish only a fully written frame. */
             if (s_preview_mutex) {
-                if (xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                    s_ready_idx = write_idx;
-                    s_preview_dirty = true;
-                    s_preview_publish_count = s_preview_publish_count + 1;
-                    s_preview_last_publish_ms = (uint32_t)(esp_timer_get_time() / 1000);
-                    s_observed_write_idx = -1;
-                    xSemaphoreGive(s_preview_mutex);
-                } else {
-                    s_preview_publish_lock_busy_count = s_preview_publish_lock_busy_count + 1;
-                    s_observed_write_idx = -1;
-                }
+                xSemaphoreTake(s_preview_mutex, portMAX_DELAY);
+                s_ready_idx = write_idx;
+                s_preview_dirty = true;
+                s_preview_publish_count = s_preview_publish_count + 1;
+                s_preview_last_publish_ms = (uint32_t)(esp_timer_get_time() / 1000);
+                s_write_idx = -1;
+                xSemaphoreGive(s_preview_mutex);
             } else {
                 s_ready_idx = write_idx;
                 s_preview_dirty = true;
                 s_preview_publish_count = s_preview_publish_count + 1;
                 s_preview_last_publish_ms = (uint32_t)(esp_timer_get_time() / 1000);
-                s_observed_write_idx = -1;
+                s_write_idx = -1;
             }
 
             /* Trigger inference task if ready */
             if (s_infer_sem && s_infer_running) {
                 xSemaphoreGive(s_infer_sem);
             }
+        } else if (write_idx >= 0 && s_preview_mutex) {
+            xSemaphoreTake(s_preview_mutex, portMAX_DELAY);
+            if (s_write_idx == write_idx) s_write_idx = -1;
+            xSemaphoreGive(s_preview_mutex);
         }
 
         /* Immediately release DMA buffer back to driver */
@@ -1092,6 +1095,7 @@ extern "C" esp_err_t vision_service_init(void)
     s_disp_idx = 0;
     s_ready_idx = 0;
     s_infer_idx = -1;
+    s_write_idx = -1;
     s_preview_dirty = false;
     s_state = VISION_STATE_OFF;
     s_mode = VISION_MODE_FACE;
@@ -1147,7 +1151,7 @@ extern "C" esp_err_t vision_service_start(void)
     }
 
     s_state = VISION_STATE_STARTING;
-    s_observed_write_idx = -1;
+    s_write_idx = -1;
     s_preview_last_publish_ms = 0;
     s_preview_last_consume_ms = 0;
     ESP_LOGI(TAG, "Starting vision service in mode %d", s_mode);
@@ -1248,6 +1252,7 @@ extern "C" void vision_service_stop(void)
     s_capture_task_handle = NULL;
     s_infer_task_handle = NULL;
     s_infer_idx = -1;
+    s_write_idx = -1;
     s_preview_dirty = false;
     if (s_result_queue) xQueueReset(s_result_queue);
     if (s_cmd_queue) xQueueReset(s_cmd_queue);

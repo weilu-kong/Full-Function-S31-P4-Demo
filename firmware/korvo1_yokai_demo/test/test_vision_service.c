@@ -129,6 +129,14 @@ int main(void)
     }
     assert(s_infer_idx == -1);
 
+    /* A reserved writer is excluded until publication releases it. */
+    s_disp_idx = 0;
+    s_infer_idx = 1;
+    s_write_idx = 2;
+    assert(find_free_preview_buffer() == -1);
+    s_write_idx = -1;
+    assert(find_free_preview_buffer() == 2);
+
     vision_service_stop();
     assert(vision_service_get_state() == VISION_STATE_OFF);
 

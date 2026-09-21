@@ -14,7 +14,11 @@
 #include "esp_event.h"
 #include "weather_service.h"
 #include "synth_service.h"
+#include "vision_service.h"
 #include "nvs_flash.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_timer.h"
 #include <string.h>
 
 static const char *TAG = "board_ui";
@@ -35,11 +39,53 @@ static board_wifi_state_t s_wifi_state = BOARD_WIFI_DISCONNECTED;
 static char s_connecting_ssid[33] = {0};
 static char s_connected_ip[16] = {0};
 
+static volatile uint32_t s_ui_tick_enter_count = 0;
+static volatile uint32_t s_ui_tick_exit_count = 0;
+static volatile uint32_t s_ui_last_enter_ms = 0;
+static volatile uint32_t s_ui_last_exit_ms = 0;
+static volatile uint32_t s_ui_max_tick_us = 0;
+static volatile ui_health_stage_t s_ui_stage = UI_HEALTH_STAGE_IDLE;
+static TaskHandle_t s_ui_health_task_handle = NULL;
+
+void board_ui_health_set_stage(ui_health_stage_t stage)
+{
+    s_ui_stage = stage;
+}
+
+static void ui_health_task(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        uint32_t enter_age = s_ui_last_enter_ms && now >= s_ui_last_enter_ms ? now - s_ui_last_enter_ms : 0;
+        uint32_t exit_age = s_ui_last_exit_ms && now >= s_ui_last_exit_ms ? now - s_ui_last_exit_ms : 0;
+        ui_screen_t screen = ui_get_current_screen();
+        vision_state_t vision_state = vision_service_get_state();
+        ESP_LOGI(TAG,
+                 "[UI_HEALTH] up=%u enter=%u exit=%u enter_age=%u exit_age=%u stage=%u max_us=%u screen=%u vstate=%u",
+                 (unsigned)now, (unsigned)s_ui_tick_enter_count, (unsigned)s_ui_tick_exit_count,
+                 (unsigned)enter_age, (unsigned)exit_age, (unsigned)s_ui_stage,
+                 (unsigned)s_ui_max_tick_us, (unsigned)screen, (unsigned)vision_state);
+        if (screen == UI_SCREEN_VISION && vision_state == VISION_STATE_RUNNING &&
+            s_ui_last_exit_ms && exit_age > 2000) {
+            ESP_LOGE(TAG, "UI/LVGL STALL: exit_age=%u ms stage=%u enter=%u exit=%u",
+                     (unsigned)exit_age, (unsigned)s_ui_stage,
+                     (unsigned)s_ui_tick_enter_count, (unsigned)s_ui_tick_exit_count);
+        }
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+
 static void ui_lv_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
+    int64_t started_us = esp_timer_get_time();
+    s_ui_tick_enter_count++;
+    s_ui_last_enter_ms = (uint32_t)(started_us / 1000);
+    s_ui_stage = UI_HEALTH_STAGE_TIMER_ENTER;
 
     /* Global pull-down drawer gesture detection across all screens */
+    s_ui_stage = UI_HEALTH_STAGE_TOUCH;
     if (s_touch_indev) {
         static bool s_pull_tracking = false;
         static lv_point_t s_pull_start = {0, 0};
@@ -83,7 +129,15 @@ static void ui_lv_timer_cb(lv_timer_t *timer)
         }
     }
 
+    s_ui_stage = UI_HEALTH_STAGE_UI_PERIODIC;
     ui_tick_periodic();
+
+    s_ui_stage = UI_HEALTH_STAGE_TIMER_EXIT;
+    uint32_t elapsed_us = (uint32_t)(esp_timer_get_time() - started_us);
+    if (elapsed_us > s_ui_max_tick_us) s_ui_max_tick_us = elapsed_us;
+    s_ui_tick_exit_count++;
+    s_ui_last_exit_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    s_ui_stage = UI_HEALTH_STAGE_IDLE;
 }
 
 static void on_board_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
@@ -517,6 +571,11 @@ esp_err_t board_ui_start(app_state_t *state)
     } else {
         ESP_LOGE(TAG, "failed to acquire esp_lv_adapter_lock");
         return ESP_FAIL;
+    }
+
+    if (xTaskCreate(ui_health_task, "ui_health", 3072, NULL, 1,
+                    &s_ui_health_task_handle) != pdPASS) {
+        ESP_LOGW(TAG, "UI health telemetry task unavailable");
     }
 
     /* 8. Ensure Wi-Fi STA is started in background */

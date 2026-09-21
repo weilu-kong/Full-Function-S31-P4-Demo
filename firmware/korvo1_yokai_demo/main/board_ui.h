@@ -19,6 +19,16 @@ typedef enum {
     BOARD_WIFI_FAILED,
 } board_wifi_state_t;
 
+typedef enum {
+    UI_HEALTH_STAGE_IDLE = 0,
+    UI_HEALTH_STAGE_TIMER_ENTER,
+    UI_HEALTH_STAGE_TOUCH,
+    UI_HEALTH_STAGE_UI_PERIODIC,
+    UI_HEALTH_STAGE_VISION,
+    UI_HEALTH_STAGE_VOICE,
+    UI_HEALTH_STAGE_TIMER_EXIT,
+} ui_health_stage_t;
+
 typedef struct {
     board_wifi_state_t state;
     char connected_ssid[33];
@@ -38,6 +48,9 @@ esp_err_t board_ui_start(app_state_t *state);
 
 /** Switch Yokai UI screen under LVGL lock. */
 esp_err_t board_ui_switch_screen(ui_screen_t target);
+
+/** Diagnostic-only marker for locating a stalled LVGL timer callback. */
+void board_ui_health_set_stage(ui_health_stage_t stage);
 
 /** Ensure Wi-Fi STA subsystem is initialized and ready for scan or connection. */
 esp_err_t board_ui_wifi_ensure_started(void);

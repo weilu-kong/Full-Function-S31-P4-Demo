@@ -438,10 +438,13 @@ void ui_tick_periodic(void)
 
     /* 7. Update Vision Screen */
     if (s_current_screen == UI_SCREEN_VISION) {
+        board_ui_health_set_stage(UI_HEALTH_STAGE_VISION);
         ui_vision_screen_update();
+        board_ui_health_set_stage(UI_HEALTH_STAGE_UI_PERIODIC);
     }
 
     /* 8. Consume speech results only on the LVGL thread. */
+    board_ui_health_set_stage(UI_HEALTH_STAGE_VOICE);
     voice_result_t result;
     while (voice_service_receive(&result)) {
         if (result.event == VOICE_EVENT_WAKE) {
@@ -466,4 +469,5 @@ void ui_tick_periodic(void)
         ui_voice_screen_update(&result, synth_service_get_master_volume(),
                                voice_service_is_ready(), voice_service_error());
     }
+    board_ui_health_set_stage(UI_HEALTH_STAGE_UI_PERIODIC);
 }

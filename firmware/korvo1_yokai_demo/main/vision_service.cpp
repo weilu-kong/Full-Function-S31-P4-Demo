@@ -46,6 +46,17 @@ static volatile int s_disp_idx = 0;   /* Buffer currently displayed by LVGL */
 static volatile int s_ready_idx = 0;  /* Buffer with latest complete camera frame */
 static volatile int s_infer_idx = -1; /* Buffer owned by ESP-DL */
 static volatile bool s_preview_dirty = false;
+static volatile int s_observed_write_idx = -1; /* Telemetry only; not ownership yet. */
+static volatile uint32_t s_preview_publish_count = 0;
+static volatile uint32_t s_preview_consume_call_count = 0;
+static volatile uint32_t s_preview_consume_ok_count = 0;
+static volatile uint32_t s_preview_dirty_miss_count = 0;
+static volatile uint32_t s_preview_consume_lock_busy_count = 0;
+static volatile uint32_t s_preview_writer_lock_busy_count = 0;
+static volatile uint32_t s_preview_publish_lock_busy_count = 0;
+static volatile uint32_t s_preview_no_free_buffer_count = 0;
+static volatile uint32_t s_preview_last_publish_ms = 0;
+static volatile uint32_t s_preview_last_consume_ms = 0;
 static volatile bool s_capture_running = false;
 static volatile bool s_infer_running = false;
 
@@ -375,22 +386,38 @@ static void vision_health_task(void *arg)
         UBaseType_t infer_stack = s_infer_task_handle ? uxTaskGetStackHighWaterMark(s_infer_task_handle) : 0;
         uint32_t cap_age = s_capture_progress_ms && now >= s_capture_progress_ms ? now - s_capture_progress_ms : 0;
         uint32_t infer_age = s_infer_progress_ms && now >= s_infer_progress_ms ? now - s_infer_progress_ms : 0;
+        uint32_t pub_age = s_preview_last_publish_ms && now >= s_preview_last_publish_ms ? now - s_preview_last_publish_ms : 0;
+        uint32_t consume_age = s_preview_last_consume_ms && now >= s_preview_last_consume_ms ? now - s_preview_last_consume_ms : 0;
         ESP_LOGI(TAG,
-                 "[HEALTH] up=%u vstate=%u mode=%u tasks=%u int_free=%u int_min=%u int_largest=%u psram_free=%u psram_min=%u psram_largest=%u simd_largest=%u cap_frame=%u displayed=%u infer=%u cam_err=%u cap_stack=%u infer_stack=%u cap_age=%u infer_age=%u",
+                 "[HEALTH] up=%u vstate=%u mode=%u tasks=%u int_free=%u int_min=%u int_largest=%u psram_free=%u psram_min=%u psram_largest=%u simd_largest=%u cap=%u pub=%u consume_calls=%u consumed=%u infer=%u cam_err=%u dirty_miss=%u consume_lock_busy=%u writer_lock_busy=%u publish_lock_busy=%u no_free_buf=%u ready_idx=%d disp_idx=%d infer_idx=%d write_idx=%d dirty=%u cap_stack=%u infer_stack=%u cap_age=%u infer_age=%u pub_age=%u consume_age=%u",
                  (unsigned)now, (unsigned)s_state, (unsigned)s_mode, (unsigned)uxTaskGetNumberOfTasks(),
                  (unsigned)int_free, (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL), (unsigned)int_largest,
                  (unsigned)psram_free, (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
                  (unsigned)psram_largest, (unsigned)simd_largest, (unsigned)s_diag.frames_captured,
-                 (unsigned)s_diag.frames_displayed, (unsigned)s_diag.face_inferences, (unsigned)s_diag.camera_errors,
+                 (unsigned)s_preview_publish_count, (unsigned)s_preview_consume_call_count,
+                 (unsigned)s_preview_consume_ok_count, (unsigned)s_diag.face_inferences, (unsigned)s_diag.camera_errors,
+                 (unsigned)s_preview_dirty_miss_count, (unsigned)s_preview_consume_lock_busy_count,
+                 (unsigned)s_preview_writer_lock_busy_count, (unsigned)s_preview_publish_lock_busy_count,
+                 (unsigned)s_preview_no_free_buffer_count, s_ready_idx, s_disp_idx, s_infer_idx,
+                 s_observed_write_idx, (unsigned)s_preview_dirty,
                  (unsigned)cap_stack, (unsigned)infer_stack,
-                 (unsigned)cap_age, (unsigned)infer_age);
+                 (unsigned)cap_age, (unsigned)infer_age, (unsigned)pub_age, (unsigned)consume_age);
         if (s_state == VISION_STATE_RUNNING && s_capture_progress_ms && cap_age > 5000) {
             ESP_LOGE(TAG, "CAPTURE STALL: age=%u ms", (unsigned)cap_age);
         }
         if (s_state == VISION_STATE_RUNNING && s_infer_progress_ms && infer_age > 5000) {
             ESP_LOGE(TAG, "INFERENCE STALL: age=%u ms", (unsigned)infer_age);
         }
-        vTaskDelay(pdMS_TO_TICKS(30000));
+        if (s_state == VISION_STATE_RUNNING && cap_age < 2000 && infer_age < 2000 &&
+            pub_age < 2000 && s_preview_last_consume_ms && consume_age > 2000) {
+            ESP_LOGE(TAG,
+                     "PREVIEW CONSUMER STALL: consume_age=%u ready=%d disp=%d infer=%d write=%d dirty=%u pub=%u consumed=%u consume_lock_busy=%u",
+                     (unsigned)consume_age, s_ready_idx, s_disp_idx, s_infer_idx,
+                     s_observed_write_idx, (unsigned)s_preview_dirty,
+                     (unsigned)s_preview_publish_count, (unsigned)s_preview_consume_ok_count,
+                     (unsigned)s_preview_consume_lock_busy_count);
+        }
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
 
@@ -411,14 +438,22 @@ static void vision_capture_task(void *arg)
         s_diag.frames_captured++;
 
         int write_idx = -1;
+        bool writer_lock_acquired = false;
         if (s_preview_mutex && xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            writer_lock_acquired = true;
             for (int i = 0; i < 3; ++i) {
                 if (i != s_disp_idx && i != s_infer_idx) {
                     write_idx = i;
                     break;
                 }
             }
+            s_observed_write_idx = write_idx;
             xSemaphoreGive(s_preview_mutex);
+        } else {
+            s_preview_writer_lock_busy_count = s_preview_writer_lock_busy_count + 1;
+        }
+        if (writer_lock_acquired && write_idx < 0) {
+            s_preview_no_free_buffer_count = s_preview_no_free_buffer_count + 1;
         }
         if (write_idx >= 0 && s_preview_buf[write_idx] && frame.data) {
             uint16_t *dst = (uint16_t *)s_preview_buf[write_idx];
@@ -466,11 +501,20 @@ static void vision_capture_task(void *arg)
                 if (xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                     s_ready_idx = write_idx;
                     s_preview_dirty = true;
+                    s_preview_publish_count = s_preview_publish_count + 1;
+                    s_preview_last_publish_ms = (uint32_t)(esp_timer_get_time() / 1000);
+                    s_observed_write_idx = -1;
                     xSemaphoreGive(s_preview_mutex);
+                } else {
+                    s_preview_publish_lock_busy_count = s_preview_publish_lock_busy_count + 1;
+                    s_observed_write_idx = -1;
                 }
             } else {
                 s_ready_idx = write_idx;
                 s_preview_dirty = true;
+                s_preview_publish_count = s_preview_publish_count + 1;
+                s_preview_last_publish_ms = (uint32_t)(esp_timer_get_time() / 1000);
+                s_observed_write_idx = -1;
             }
 
             /* Trigger inference task if ready */
@@ -1072,6 +1116,9 @@ extern "C" esp_err_t vision_service_start(void)
     }
 
     s_state = VISION_STATE_STARTING;
+    s_observed_write_idx = -1;
+    s_preview_last_publish_ms = 0;
+    s_preview_last_consume_ms = 0;
     ESP_LOGI(TAG, "Starting vision service in mode %d", s_mode);
 
 #ifndef HOST_TEST
@@ -1227,17 +1274,20 @@ extern "C" vision_state_t vision_service_get_state(void)
 
 extern "C" bool vision_service_get_preview_frame(const uint8_t **out_data, uint16_t *out_w, uint16_t *out_h)
 {
+    s_preview_consume_call_count = s_preview_consume_call_count + 1;
     if (!out_data || !out_w || !out_h || !s_inited || s_state != VISION_STATE_RUNNING) {
         return false;
     }
 
     if (!s_preview_dirty) {
+        s_preview_dirty_miss_count = s_preview_dirty_miss_count + 1;
         return false;
     }
 
 #ifndef HOST_TEST
     if (s_preview_mutex) {
         if (xSemaphoreTake(s_preview_mutex, 0) != pdTRUE) {
+            s_preview_consume_lock_busy_count = s_preview_consume_lock_busy_count + 1;
             return false;
         }
     }
@@ -1249,6 +1299,10 @@ extern "C" bool vision_service_get_preview_frame(const uint8_t **out_data, uint1
     *out_h = VISION_PREVIEW_HEIGHT;
     s_preview_dirty = false;
     s_diag.frames_displayed++;
+    s_preview_consume_ok_count = s_preview_consume_ok_count + 1;
+#ifndef HOST_TEST
+    s_preview_last_consume_ms = (uint32_t)(esp_timer_get_time() / 1000);
+#endif
 
 #ifndef HOST_TEST
     if (s_preview_mutex) {

@@ -43,6 +43,7 @@ typedef enum {
     VISION_STATE_OFF = 0,
     VISION_STATE_STARTING,
     VISION_STATE_RUNNING,
+    VISION_STATE_STOPPING,
     VISION_STATE_ERROR,
 } vision_state_t;
 

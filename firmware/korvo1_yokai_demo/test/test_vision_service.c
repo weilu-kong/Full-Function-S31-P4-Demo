@@ -124,6 +124,11 @@ int main(void)
     vision_service_stop();
     assert(vision_service_get_state() == VISION_STATE_OFF);
 
+    /* A faulted lifecycle must not create another task set. */
+    s_state = VISION_STATE_ERROR;
+    assert(vision_service_start() == ESP_ERR_INVALID_STATE);
+    s_state = VISION_STATE_OFF;
+
     printf("[TEST] All Phase 5 & 6 unit tests passed successfully!\n");
     return 0;
 }

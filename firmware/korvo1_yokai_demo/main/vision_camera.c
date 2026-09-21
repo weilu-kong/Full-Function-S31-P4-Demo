@@ -35,7 +35,7 @@ static bool s_streaming = false;
 #ifndef HOST_TEST
 static int s_cam_fd = -1;
 static uint8_t *s_buffers[VISION_CAM_BUFFER_COUNT] = {0};
-static uint32_t s_buffer_len = 0;
+static uint32_t s_buffer_len[VISION_CAM_BUFFER_COUNT] = {0};
 static uint32_t s_frame_id = 0;
 static uint32_t s_cam_width = VISION_CAM_WIDTH;
 static uint32_t s_cam_height = VISION_CAM_HEIGHT;
@@ -104,6 +104,13 @@ esp_err_t vision_camera_init(void)
         s_cam_fd = -1;
         return ESP_FAIL;
     }
+    if (req.count < VISION_CAM_BUFFER_COUNT) {
+        ESP_LOGE(TAG, "VIDIOC_REQBUFS returned %u buffers, need %u",
+                 req.count, VISION_CAM_BUFFER_COUNT);
+        close(s_cam_fd);
+        s_cam_fd = -1;
+        return ESP_FAIL;
+    }
 
     /* 5. Map driver buffers into userspace memory and queue them */
     for (int i = 0; i < VISION_CAM_BUFFER_COUNT; i++) {
@@ -121,13 +128,14 @@ esp_err_t vision_camera_init(void)
 
         s_buffers[i] = (uint8_t *)mmap(NULL, buf.length, PROT_READ | PROT_WRITE,
                                       MAP_SHARED, s_cam_fd, buf.m.offset);
-        if (!s_buffers[i]) {
+        if (s_buffers[i] == MAP_FAILED) {
             ESP_LOGE(TAG, "mmap failed for index %d", i);
+            s_buffers[i] = NULL;
             close(s_cam_fd);
             s_cam_fd = -1;
             return ESP_FAIL;
         }
-        s_buffer_len = buf.length;
+        s_buffer_len[i] = buf.length;
     }
 
     /* Set 200ms DQBUF timeout so acquire doesn't hang if camera stops */
@@ -140,7 +148,13 @@ esp_err_t vision_camera_init(void)
 
     s_inited = true;
     s_streaming = false;
-    ESP_LOGI(TAG, "Camera adapter initialized (640x480 RGB565)");
+#ifndef HOST_TEST
+    ESP_LOGI(TAG, "Camera adapter initialized: %lux%lu pixfmt=%d buffers=%u bytes=%lu",
+             (unsigned long)s_cam_width, (unsigned long)s_cam_height, s_cam_pixfmt,
+             VISION_CAM_BUFFER_COUNT, (unsigned long)s_buffer_len[0]);
+#else
+    ESP_LOGI(TAG, "Camera adapter initialized: host simulation");
+#endif
     return ESP_OK;
 }
 
@@ -230,7 +244,10 @@ void vision_camera_release(vision_camera_frame_t *frame)
             .memory = V4L2_MEMORY_MMAP,
             .index = frame->buffer_index,
         };
-        (void)ioctl(s_cam_fd, VIDIOC_QBUF, &buf);
+        if (ioctl(s_cam_fd, VIDIOC_QBUF, &buf) != 0) {
+            ESP_LOGE(TAG, "VIDIOC_QBUF release failed for index %lu: errno=%d (%s)",
+                     (unsigned long)frame->buffer_index, errno, strerror(errno));
+        }
     }
 #endif
 
@@ -264,9 +281,10 @@ void vision_camera_deinit(void)
 
 #ifndef HOST_TEST
     for (int i = 0; i < VISION_CAM_BUFFER_COUNT; i++) {
-        if (s_buffers[i] && s_buffer_len > 0) {
-            munmap(s_buffers[i], s_buffer_len);
+        if (s_buffers[i] && s_buffer_len[i] > 0) {
+            munmap(s_buffers[i], s_buffer_len[i]);
             s_buffers[i] = NULL;
+            s_buffer_len[i] = 0;
         }
     }
     if (s_cam_fd >= 0) {

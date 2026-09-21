@@ -24,6 +24,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
+#include "freertos/event_groups.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_log.h"
@@ -38,11 +39,12 @@ static vision_mode_t s_mode = VISION_MODE_FACE;
 static vision_state_t s_state = VISION_STATE_OFF;
 static vision_diag_t s_diag = {};
 
-/* Preview double-buffering with tear-free display synchronization */
+/* Preview buffers have distinct display, ready, and inference ownership. */
 #define PREVIEW_FRAME_SIZE (VISION_PREVIEW_WIDTH * VISION_PREVIEW_HEIGHT * 2)
-static uint8_t *s_preview_buf[2] = {NULL, NULL};
+static uint8_t *s_preview_buf[3] = {NULL, NULL, NULL};
 static volatile int s_disp_idx = 0;   /* Buffer currently displayed by LVGL */
 static volatile int s_ready_idx = 0;  /* Buffer with latest complete camera frame */
+static volatile int s_infer_idx = -1; /* Buffer owned by ESP-DL */
 static volatile bool s_preview_dirty = false;
 static volatile bool s_capture_running = false;
 static volatile bool s_infer_running = false;
@@ -323,6 +325,14 @@ static QueueHandle_t s_result_queue = NULL;
 static QueueHandle_t s_cmd_queue = NULL;
 static TaskHandle_t s_capture_task_handle = NULL;
 static TaskHandle_t s_infer_task_handle = NULL;
+static TaskHandle_t s_health_task_handle = NULL;
+static EventGroupHandle_t s_lifecycle_events = NULL;
+static volatile uint32_t s_capture_progress_ms = 0;
+static volatile uint32_t s_infer_progress_ms = 0;
+
+#define VISION_EVT_CAPTURE_EXITED BIT0
+#define VISION_EVT_INFER_EXITED   BIT1
+#define VISION_EVT_ALL_EXITED (VISION_EVT_CAPTURE_EXITED | VISION_EVT_INFER_EXITED)
 
 static HumanFaceDetect *s_face_detect = nullptr;
 static HumanFaceRecognizer *s_face_recognizer = nullptr;
@@ -350,6 +360,40 @@ static bool mfn_memory_ready(const char *stage)
     return false;
 }
 
+/* Low-rate, read-only telemetry. It intentionally does not access LVGL. */
+static void vision_health_task(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        size_t int_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        size_t int_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        size_t psram_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+        size_t simd_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD);
+        UBaseType_t cap_stack = s_capture_task_handle ? uxTaskGetStackHighWaterMark(s_capture_task_handle) : 0;
+        UBaseType_t infer_stack = s_infer_task_handle ? uxTaskGetStackHighWaterMark(s_infer_task_handle) : 0;
+        uint32_t cap_age = s_capture_progress_ms && now >= s_capture_progress_ms ? now - s_capture_progress_ms : 0;
+        uint32_t infer_age = s_infer_progress_ms && now >= s_infer_progress_ms ? now - s_infer_progress_ms : 0;
+        ESP_LOGI(TAG,
+                 "[HEALTH] up=%u vstate=%u mode=%u tasks=%u int_free=%u int_min=%u int_largest=%u psram_free=%u psram_min=%u psram_largest=%u simd_largest=%u cap_frame=%u displayed=%u infer=%u cam_err=%u cap_stack=%u infer_stack=%u cap_age=%u infer_age=%u",
+                 (unsigned)now, (unsigned)s_state, (unsigned)s_mode, (unsigned)uxTaskGetNumberOfTasks(),
+                 (unsigned)int_free, (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL), (unsigned)int_largest,
+                 (unsigned)psram_free, (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+                 (unsigned)psram_largest, (unsigned)simd_largest, (unsigned)s_diag.frames_captured,
+                 (unsigned)s_diag.frames_displayed, (unsigned)s_diag.face_inferences, (unsigned)s_diag.camera_errors,
+                 (unsigned)cap_stack, (unsigned)infer_stack,
+                 (unsigned)cap_age, (unsigned)infer_age);
+        if (s_state == VISION_STATE_RUNNING && s_capture_progress_ms && cap_age > 5000) {
+            ESP_LOGE(TAG, "CAPTURE STALL: age=%u ms", (unsigned)cap_age);
+        }
+        if (s_state == VISION_STATE_RUNNING && s_infer_progress_ms && infer_age > 5000) {
+            ESP_LOGE(TAG, "INFERENCE STALL: age=%u ms", (unsigned)infer_age);
+        }
+        vTaskDelay(pdMS_TO_TICKS(30000));
+    }
+}
+
 static void vision_capture_task(void *arg)
 {
     (void)arg;
@@ -366,9 +410,17 @@ static void vision_capture_task(void *arg)
 
         s_diag.frames_captured++;
 
-        /* Always write to the buffer that is NOT currently displayed by LVGL */
-        int write_idx = 1 - s_disp_idx;
-        if (s_preview_buf[write_idx] && frame.data) {
+        int write_idx = -1;
+        if (s_preview_mutex && xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            for (int i = 0; i < 3; ++i) {
+                if (i != s_disp_idx && i != s_infer_idx) {
+                    write_idx = i;
+                    break;
+                }
+            }
+            xSemaphoreGive(s_preview_mutex);
+        }
+        if (write_idx >= 0 && s_preview_buf[write_idx] && frame.data) {
             uint16_t *dst = (uint16_t *)s_preview_buf[write_idx];
             if (frame.format == VISION_PIXFMT_RGB565) {
                 const uint16_t *src = (const uint16_t *)frame.data;
@@ -409,7 +461,7 @@ static void vision_capture_task(void *arg)
                 }
             }
 
-            /* Commit new ready frame under preview mutex */
+            /* Publish only a fully written frame. */
             if (s_preview_mutex) {
                 if (xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                     s_ready_idx = write_idx;
@@ -429,11 +481,12 @@ static void vision_capture_task(void *arg)
 
         /* Immediately release DMA buffer back to driver */
         vision_camera_release(&frame);
+        s_capture_progress_ms = (uint32_t)(esp_timer_get_time() / 1000);
         vTaskDelay(1);
     }
 
     ESP_LOGI(TAG, "Vision capture task exiting");
-    s_capture_task_handle = NULL;
+    xEventGroupSetBits(s_lifecycle_events, VISION_EVT_CAPTURE_EXITED);
     vTaskDelete(NULL);
 }
 
@@ -553,8 +606,13 @@ static void vision_inference_task(void *arg)
             }
         }
 
-        int cur_idx = s_ready_idx;
-        if (!s_preview_buf[cur_idx]) {
+        int cur_idx = -1;
+        if (s_preview_mutex && xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            cur_idx = s_ready_idx;
+            s_infer_idx = cur_idx;
+            xSemaphoreGive(s_preview_mutex);
+        }
+        if (cur_idx < 0 || !s_preview_buf[cur_idx]) {
             continue;
         }
 
@@ -855,11 +913,16 @@ static void vision_inference_task(void *arg)
                 xQueueSend(s_result_queue, &res, 0);
             }
         }
+        if (s_preview_mutex && xSemaphoreTake(s_preview_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            s_infer_idx = -1;
+            xSemaphoreGive(s_preview_mutex);
+        }
+        s_infer_progress_ms = (uint32_t)(esp_timer_get_time() / 1000);
         vTaskDelay(1);
     }
 
     ESP_LOGI(TAG, "Vision inference task exiting");
-    s_infer_task_handle = NULL;
+    xEventGroupSetBits(s_lifecycle_events, VISION_EVT_INFER_EXITED);
     vTaskDelete(NULL);
 }
 #else
@@ -884,6 +947,15 @@ extern "C" esp_err_t vision_service_init(void)
     s_infer_sem = xSemaphoreCreateBinary();
     if (!s_infer_sem) {
         ESP_LOGE(TAG, "Failed to create inference semaphore");
+        vSemaphoreDelete(s_lock);
+        s_lock = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    s_lifecycle_events = xEventGroupCreate();
+    if (!s_lifecycle_events) {
+        vSemaphoreDelete(s_infer_sem);
+        s_infer_sem = NULL;
         vSemaphoreDelete(s_lock);
         s_lock = NULL;
         return ESP_ERR_NO_MEM;
@@ -926,7 +998,7 @@ extern "C" esp_err_t vision_service_init(void)
     }
 
     /* Allocate ping-pong preview buffers in PSRAM */
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         s_preview_buf[i] = (uint8_t *)heap_caps_malloc(PREVIEW_FRAME_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (!s_preview_buf[i]) {
             ESP_LOGE(TAG, "Failed to allocate preview buffer %d in PSRAM", i);
@@ -944,10 +1016,18 @@ extern "C" esp_err_t vision_service_init(void)
 
     s_disp_idx = 0;
     s_ready_idx = 0;
+    s_infer_idx = -1;
     s_preview_dirty = false;
     s_state = VISION_STATE_OFF;
     s_mode = VISION_MODE_FACE;
     memset(&s_diag, 0, sizeof(s_diag));
+#ifndef HOST_TEST
+    s_capture_progress_ms = 0;
+    s_infer_progress_ms = 0;
+    if (xTaskCreate(vision_health_task, "vis_health", 3072, NULL, 1, &s_health_task_handle) != pdPASS) {
+        ESP_LOGW(TAG, "Health telemetry task unavailable");
+    }
+#endif
     s_inited = true;
 
     ESP_LOGI(TAG, "Vision service initialized (Preview: %dx%d, People: %d)",
@@ -974,11 +1054,28 @@ extern "C" esp_err_t vision_service_start(void)
 #endif
         return ESP_OK;
     }
+    if (s_state == VISION_STATE_STOPPING || s_state == VISION_STATE_ERROR
+#ifndef HOST_TEST
+        || s_capture_task_handle != NULL || s_infer_task_handle != NULL
+#endif
+    ) {
+#ifndef HOST_TEST
+        ESP_LOGE(TAG, "Refusing Vision start: state=%d capture=%p infer=%p",
+                 s_state, s_capture_task_handle, s_infer_task_handle);
+#else
+        ESP_LOGE(TAG, "Refusing Vision start: state=%d", s_state);
+#endif
+#ifndef HOST_TEST
+        xSemaphoreGive(s_lock);
+#endif
+        return ESP_ERR_INVALID_STATE;
+    }
 
     s_state = VISION_STATE_STARTING;
     ESP_LOGI(TAG, "Starting vision service in mode %d", s_mode);
 
 #ifndef HOST_TEST
+    xEventGroupClearBits(s_lifecycle_events, VISION_EVT_ALL_EXITED);
     log_psram("before Vision start");
     esp_err_t cam_err = vision_camera_start();
     if (cam_err != ESP_OK) {
@@ -1017,8 +1114,19 @@ extern "C" esp_err_t vision_service_start(void)
         &s_infer_task_handle
     );
     if (infer_ret != pdPASS) {
-        ESP_LOGW(TAG, "Failed to create inference task, running preview only");
+        ESP_LOGE(TAG, "Failed to create inference task");
         s_infer_running = false;
+        s_capture_running = false;
+        EventBits_t bits = xEventGroupWaitBits(s_lifecycle_events,
+                                                VISION_EVT_CAPTURE_EXITED,
+                                                pdFALSE, pdTRUE, pdMS_TO_TICKS(2000));
+        if (bits & VISION_EVT_CAPTURE_EXITED) {
+            s_capture_task_handle = NULL;
+        }
+        vision_camera_stop();
+        s_state = VISION_STATE_ERROR;
+        xSemaphoreGive(s_lock);
+        return ESP_FAIL;
     }
 #endif
 
@@ -1039,42 +1147,33 @@ extern "C" void vision_service_stop(void)
     ESP_LOGI(TAG, "Stopping vision service...");
 
 #ifndef HOST_TEST
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(500)) == pdTRUE) {
-        s_capture_running = false;
-        s_infer_running = false;
-        if (s_infer_sem) {
-            xSemaphoreGive(s_infer_sem);
-        }
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(500)) != pdTRUE) return;
+    s_state = VISION_STATE_STOPPING;
+    s_capture_running = false;
+    s_infer_running = false;
+    if (s_infer_sem) xSemaphoreGive(s_infer_sem);
+    xSemaphoreGive(s_lock);
 
-        int wait_ms = 0;
-        while ((s_capture_task_handle != NULL || s_infer_task_handle != NULL) && wait_ms < 500) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            wait_ms += 10;
-        }
-
-        vision_camera_stop();
-
-        s_state = VISION_STATE_OFF;
-        s_preview_dirty = false;
-        if (s_result_queue) {
-            xQueueReset(s_result_queue);
-        }
-        xSemaphoreGive(s_lock);
-    } else {
-        s_capture_running = false;
-        s_infer_running = false;
-        if (s_infer_sem) {
-            xSemaphoreGive(s_infer_sem);
-        }
-        int wait_ms = 0;
-        while ((s_capture_task_handle != NULL || s_infer_task_handle != NULL) && wait_ms < 500) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            wait_ms += 10;
-        }
-        vision_camera_stop();
-        s_state = VISION_STATE_OFF;
-        s_preview_dirty = false;
+    EventBits_t need = 0;
+    if (s_capture_task_handle) need |= VISION_EVT_CAPTURE_EXITED;
+    if (s_infer_task_handle) need |= VISION_EVT_INFER_EXITED;
+    EventBits_t bits = xEventGroupWaitBits(s_lifecycle_events, need, pdFALSE,
+                                            pdTRUE, pdMS_TO_TICKS(3000));
+    if ((bits & need) != need) {
+        ESP_LOGE(TAG, "Vision stop timeout: exited=0x%lx need=0x%lx",
+                 (unsigned long)bits, (unsigned long)need);
+        s_state = VISION_STATE_ERROR;
+        return;
     }
+
+    vision_camera_stop();
+    s_capture_task_handle = NULL;
+    s_infer_task_handle = NULL;
+    s_infer_idx = -1;
+    s_preview_dirty = false;
+    if (s_result_queue) xQueueReset(s_result_queue);
+    if (s_cmd_queue) xQueueReset(s_cmd_queue);
+    s_state = VISION_STATE_OFF;
 #else
     s_capture_running = false;
     s_infer_running = false;

@@ -64,6 +64,46 @@ typedef enum {
     VISION_ENROLL_ERROR,
 } vision_enroll_state_t;
 
+typedef enum {
+    VISION_ENROLL_SAMPLE_WAITING = 0,
+    VISION_ENROLL_SAMPLE_STABILIZING,
+    VISION_ENROLL_SAMPLE_CAPTURING,
+    VISION_ENROLL_SAMPLE_ACCEPTED,
+    VISION_ENROLL_SAMPLE_RETRY,
+} vision_enroll_sample_state_t;
+
+typedef enum {
+    VISION_ENROLL_ERR_NONE                     = 0,
+
+    VISION_ENROLL_ERR_NO_FACE                  = 1001,
+    VISION_ENROLL_ERR_MULTIPLE_FACES           = 1002,
+    VISION_ENROLL_ERR_FACE_TOO_SMALL           = 1003,
+    VISION_ENROLL_ERR_FACE_OFF_CENTER          = 1004,
+    VISION_ENROLL_ERR_LOW_DETECT_SCORE         = 1005,
+    VISION_ENROLL_ERR_WRONG_POSE               = 1006,
+    VISION_ENROLL_ERR_FACE_UNSTABLE            = 1007,
+
+    VISION_ENROLL_ERR_MFN_NO_MEMORY             = 2001,
+    VISION_ENROLL_ERR_FEATURE_EXTRACT_FAILED    = 2002,
+    VISION_ENROLL_ERR_FEATURE_ID_INVALID        = 2003,
+
+    VISION_ENROLL_ERR_METADATA_SAVE_FAILED      = 3001,
+    VISION_ENROLL_ERR_FACE_DB_FAILED            = 3002,
+
+    VISION_ENROLL_ERR_EMPTY_NAME                = 4001,
+    VISION_ENROLL_ERR_DUPLICATE_NAME            = 4002,
+    VISION_ENROLL_ERR_MAX_PERSONS               = 4003,
+    VISION_ENROLL_ERR_COMMAND_TIMEOUT           = 4004,
+    VISION_ENROLL_ERR_INVALID_SLOT              = 4005,
+    VISION_ENROLL_ERR_CANCELLED                 = 4006,
+} vision_enroll_error_code_t;
+
+#define ENROLL_STABLE_MIN_MS       700
+#define ENROLL_STABLE_MIN_FRAMES   5
+#define ENROLL_SUCCESS_HOLD_MS     900
+#define ENROLL_RETRY_HOLD_MS       1200
+#define ENROLL_FINAL_HOLD_MS       2000
+
 typedef struct {
     uint8_t slot;
     char name[VISION_FACE_NAME_MAX_BYTES + 1];
@@ -101,6 +141,9 @@ typedef struct {
 
     /* Enrollment progress status */
     vision_enroll_state_t enroll_state;
+    vision_enroll_sample_state_t enroll_sample_state;
+    vision_enroll_error_code_t enroll_error_code;
+    esp_err_t enroll_backend_error;
     uint8_t enroll_sample_count;
     uint8_t enroll_target_count;
     char enroll_name[VISION_FACE_NAME_MAX_BYTES + 1];
@@ -217,6 +260,11 @@ esp_err_t vision_service_delete_last_face(void);
  * @brief Legacy stub: clear all faces.
  */
 esp_err_t vision_service_clear_faces(void);
+
+/**
+ * @brief Get human-readable description for an enrollment error code.
+ */
+const char *vision_enroll_error_to_str(vision_enroll_error_code_t code);
 
 /**
  * @brief Get vision diagnostic statistics.

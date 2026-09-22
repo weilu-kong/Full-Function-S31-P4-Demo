@@ -433,7 +433,7 @@ static void refresh_manage_list(void)
         lv_obj_align(lbl_name, LV_ALIGN_LEFT_MID, 10, 0);
 
         lv_obj_t *lbl_info = lv_label_create(row);
-        lv_label_set_text(lbl_info, "5 特徴量保存済");
+        lv_label_set_text(lbl_info, "5 件保存済");
         lv_obj_set_style_text_font(lbl_info, UI_FONT_SMALL, 0);
         lv_obj_set_style_text_color(lbl_info, UI_COLOR_TEXT_SUB, 0);
         lv_obj_align(lbl_info, LV_ALIGN_LEFT_MID, 250, 0);
@@ -825,11 +825,17 @@ void ui_vision_screen_update(void)
         return;
     }
 
+    bool modal_visible = (s_enroll_modal && !lv_obj_has_flag(s_enroll_modal, LV_OBJ_FLAG_HIDDEN)) ||
+                         (s_manage_modal && !lv_obj_has_flag(s_manage_modal, LV_OBJ_FLAG_HIDDEN));
+    if (modal_visible && s_vf_img && !lv_obj_has_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
+    }
+
     /* 1. Consume fresh camera preview frame */
     const uint8_t *frame_data = NULL;
     uint16_t fw = 0, fh = 0;
     if (vision_service_get_preview_frame(&frame_data, &fw, &fh)) {
-        if (s_vf_img && frame_data) {
+        if (!modal_visible && s_vf_img && frame_data) {
             s_preview_img_dsc.data = frame_data;
             lv_image_set_src(s_vf_img, &s_preview_img_dsc);
             lv_obj_remove_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
@@ -843,6 +849,7 @@ void ui_vision_screen_update(void)
     /* 2. Poll inference detection results */
     vision_result_t res;
     while (vision_service_poll_result(&res)) {
+        if (modal_visible) continue;
         if (res.mode == VISION_MODE_FACE) {
             /* Check if enrollment session is active */
             if (res.enroll_state != VISION_ENROLL_IDLE) {

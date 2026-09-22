@@ -536,7 +536,7 @@ esp_err_t board_ui_start(app_state_t *state)
     adapter_cfg.stack_in_psram = true;
     ESP_RETURN_ON_ERROR(esp_lv_adapter_init(&adapter_cfg), TAG, "init esp_lvgl_adapter");
 
-    /* 4. Register RGB Display with True Triple Full Frame Buffering in PSRAM */
+    /* 4. Register RGB Display with Double Full Frame Buffering in PSRAM */
     esp_lv_adapter_display_config_t disp_cfg = ESP_LV_ADAPTER_DISPLAY_RGB_DEFAULT_CONFIG(
         panel,
         io,
@@ -544,9 +544,10 @@ esp_err_t board_ui_start(app_state_t *state)
         480,
         ESP_LV_ADAPTER_ROTATE_0
     );
-    disp_cfg.tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_TRIPLE_FULL;
+    disp_cfg.tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_DOUBLE_FULL;
     disp_cfg.profile.buffer_height = 480;
     disp_cfg.profile.use_psram = true;
+    ESP_LOGI(TAG, "[MEMCFG] lcd=DOUBLE_FULL lcd_fb=2 camera_mmap=2 preview_buf=3 preview=320x240 camera=1280x720-UYVY");
     s_disp = esp_lv_adapter_register_display(&disp_cfg);
     if (s_disp == NULL) {
         ESP_LOGE(TAG, "failed to register RGB display with esp_lvgl_adapter");

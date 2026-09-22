@@ -4,6 +4,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 board = (root / "main/board_ui.c").read_text()
+defaults = (root / "sdkconfig.defaults").read_text()
 ui = (root / "main/ui/ui.c").read_text()
 wifi = (root / "main/ui/ui_wifi.c").read_text()
 weather = (root / "main/ui/ui_weather.c").read_text()
@@ -11,7 +12,8 @@ image_loader = (root / "main/ui/ui_image_loader.c").read_text()
 home = (root / "main/ui/ui_home.c").read_text()
 partitions = (root / "partitions.csv").read_text()
 
-assert "ESP_LV_ADAPTER_TEAR_AVOID_MODE_TRIPLE_FULL" in board
+assert "ESP_LV_ADAPTER_TEAR_AVOID_MODE_DOUBLE_FULL" in board
+assert "CONFIG_BSP_LCD_RGB_BUFFER_NUMS=2" in defaults
 assert "lv_timer_create(ui_lv_timer_cb, 16" in board
 assert "esp_wifi_connect();" in board
 assert "board_ui_wifi_reconnect_saved" in board

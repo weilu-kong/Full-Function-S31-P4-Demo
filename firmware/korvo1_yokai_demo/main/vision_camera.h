@@ -7,6 +7,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef HOST_TEST
@@ -30,6 +31,9 @@ extern "C" {
 #define VISION_CAM_WIDTH  640
 #define VISION_CAM_HEIGHT 480
 #define VISION_CAM_BUFFER_COUNT 2
+
+/* Return the largest block compatible with both SPIRAM and SIMD allocations. */
+size_t vision_memory_checkpoint(const char *stage);
 
 typedef enum {
     VISION_PIXFMT_RGB565 = 0,

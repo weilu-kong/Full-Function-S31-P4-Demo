@@ -72,8 +72,13 @@ static int find_free_preview_buffer(void)
 /* --- Metadata and Storage Models (Sections 11 & 12) --- */
 #define VISION_PEOPLE_META_MAGIC   0x59464D44 /* "YFMD" */
 #define VISION_PEOPLE_META_VERSION 1
+#ifdef HOST_TEST
+#define VISION_PEOPLE_META_PATH    "/private/tmp/vision_face_people.meta"
+#define VISION_PEOPLE_ALT_PATH     "/private/tmp/vision_face_people.bak"
+#else
 #define VISION_PEOPLE_META_PATH    "/storage/face_people.meta"
-#define VISION_PEOPLE_TMP_PATH     "/storage/face_people.tmp"
+#define VISION_PEOPLE_ALT_PATH     "/storage/face_people.bak"
+#endif
 #define VISION_FACE_DB_PATH        "/storage/face_db.bin"
 
 typedef struct {
@@ -97,6 +102,7 @@ typedef struct {
 } vision_people_file_t;
 
 static vision_people_file_t s_people_file;
+static bool s_people_active_alt = false;
 static float s_match_threshold = VISION_FACE_MATCH_THRESHOLD_INITIAL;
 
 /* Standard CRC32 */
@@ -115,6 +121,7 @@ static uint32_t calc_crc32(const uint8_t *data, size_t length)
 static void face_people_init_empty(void)
 {
     memset(&s_people_file, 0, sizeof(s_people_file));
+    s_people_active_alt = false;
     s_people_file.magic = VISION_PEOPLE_META_MAGIC;
     s_people_file.version = VISION_PEOPLE_META_VERSION;
     s_people_file.record_size = sizeof(vision_person_record_t);
@@ -156,63 +163,85 @@ static bool face_people_validate(const vision_people_file_t *file)
     return (active_count == file->person_count);
 }
 
-static esp_err_t face_people_save_atomic(void)
+static bool face_people_read(const char *path, vision_people_file_t *out)
 {
-    s_people_file.generation++;
-    s_people_file.crc32 = calc_crc32((const uint8_t *)&s_people_file,
-                                     offsetof(vision_people_file_t, crc32));
-
-    FILE *f = fopen(VISION_PEOPLE_TMP_PATH, "wb");
-    if (!f) {
-        ESP_LOGE(TAG, "Failed to open %s for writing", VISION_PEOPLE_TMP_PATH);
-        return ESP_FAIL;
-    }
-
-    size_t written = fwrite(&s_people_file, sizeof(s_people_file), 1, f);
-    fflush(f);
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    bool read_ok = fread(out, sizeof(*out), 1, f) == 1;
     fclose(f);
+    return read_ok && face_people_validate(out);
+}
 
-    if (written != 1) {
-        ESP_LOGE(TAG, "Failed to write complete metadata to %s", VISION_PEOPLE_TMP_PATH);
-        remove(VISION_PEOPLE_TMP_PATH);
+static esp_err_t face_people_save_atomic(const vision_people_file_t *next)
+{
+    vision_people_file_t candidate = *next;
+    candidate.generation = s_people_file.generation + 1;
+    candidate.crc32 = calc_crc32((const uint8_t *)&candidate,
+                                 offsetof(vision_people_file_t, crc32));
+    if (!face_people_validate(&candidate)) return ESP_FAIL;
+
+    const char *target = s_people_active_alt ? VISION_PEOPLE_META_PATH : VISION_PEOPLE_ALT_PATH;
+    FILE *f = fopen(target, "wb");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open %s for writing", target);
         return ESP_FAIL;
     }
 
-    /* Atomic rename tmp -> meta */
-    if (rename(VISION_PEOPLE_TMP_PATH, VISION_PEOPLE_META_PATH) != 0) {
-        ESP_LOGE(TAG, "Failed to rename %s to %s", VISION_PEOPLE_TMP_PATH, VISION_PEOPLE_META_PATH);
+    size_t written = fwrite(&candidate, sizeof(candidate), 1, f);
+    int flush_error = fflush(f);
+    int close_error = fclose(f);
+
+    vision_people_file_t verify;
+    if (written != 1 || flush_error != 0 || close_error != 0 ||
+        !face_people_read(target, &verify) || memcmp(&verify, &candidate, sizeof(candidate)) != 0) {
+        ESP_LOGE(TAG, "Failed to write complete metadata to %s", target);
         return ESP_FAIL;
     }
 
+    s_people_file = candidate;
+    s_people_active_alt = !s_people_active_alt;
     ESP_LOGI(TAG, "Saved %d people metadata (gen=%lu) to %s",
-             s_people_file.person_count, (unsigned long)s_people_file.generation, VISION_PEOPLE_META_PATH);
+             s_people_file.person_count, (unsigned long)s_people_file.generation, target);
     return ESP_OK;
 }
 
 static esp_err_t face_people_load(void)
 {
-    FILE *f = fopen(VISION_PEOPLE_META_PATH, "rb");
-    if (!f) {
-        ESP_LOGI(TAG, "No existing people metadata at %s, initializing empty", VISION_PEOPLE_META_PATH);
-        face_people_init_empty();
+    vision_people_file_t primary, alternate;
+    bool primary_valid = face_people_read(VISION_PEOPLE_META_PATH, &primary);
+    bool alternate_valid = face_people_read(VISION_PEOPLE_ALT_PATH, &alternate);
+    if (primary_valid || alternate_valid) {
+        s_people_active_alt = alternate_valid && (!primary_valid || alternate.generation > primary.generation);
+        s_people_file = s_people_active_alt ? alternate : primary;
+        ESP_LOGI(TAG, "Successfully loaded metadata: %d people (gen=%lu, slot=%s)",
+                 s_people_file.person_count, (unsigned long)s_people_file.generation,
+                 s_people_active_alt ? "alt" : "primary");
         return ESP_OK;
     }
 
-    vision_people_file_t candidate;
-    size_t n = fread(&candidate, sizeof(candidate), 1, f);
-    fclose(f);
-
-    if (n == 1 && face_people_validate(&candidate)) {
-        s_people_file = candidate;
-        ESP_LOGI(TAG, "Successfully loaded metadata: %d people (gen=%lu)",
-                 s_people_file.person_count, (unsigned long)s_people_file.generation);
-        return ESP_OK;
-    }
-
-    ESP_LOGW(TAG, "Corrupt or invalid metadata at %s, keeping existing without overwriting", VISION_PEOPLE_META_PATH);
+    ESP_LOGI(TAG, "No valid people metadata, initializing empty");
     face_people_init_empty();
-    return ESP_FAIL;
+    return ESP_OK;
 }
+
+#ifndef HOST_TEST
+static uint16_t face_db_latest_feature_id(void)
+{
+    FILE *f = fopen(VISION_FACE_DB_PATH, "rb");
+    if (!f) return 0;
+    dl::recognition::database_meta meta;
+    uint16_t id = 0;
+    if (fread(&meta, sizeof(meta), 1, f) == 1 && meta.num_feats_total > 0 && meta.feat_len == 512) {
+        long offset = sizeof(meta) + (long)(meta.num_feats_total - 1) *
+                      (sizeof(id) + (long)meta.feat_len * sizeof(float));
+        if (fseek(f, offset, SEEK_SET) != 0 || fread(&id, sizeof(id), 1, f) != 1 ||
+            id != meta.num_feats_total) id = 0;
+    }
+    fclose(f);
+    return id;
+}
+
+#endif
 
 static const vision_person_record_t *find_person_by_feature_id(uint16_t id)
 {
@@ -381,20 +410,10 @@ static bool s_mfn_loaded = false;
 
 #define MFN_SAFE_LARGEST_BLOCK (900 * 1024)
 
-static size_t log_psram(const char *stage)
-{
-    size_t free_bytes = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-    size_t simd_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD);
-    ESP_LOGI(TAG, "PSRAM %s: free=%u largest=%u SIMD_largest=%u", stage,
-             (unsigned)free_bytes, (unsigned)largest, (unsigned)simd_largest);
-    return std::min(largest, simd_largest);
-}
-
 static bool mfn_memory_ready(const char *stage)
 {
     if (s_mfn_loaded) return true;
-    size_t largest = log_psram(stage);
+    size_t largest = vision_memory_checkpoint(stage);
     if (largest >= MFN_SAFE_LARGEST_BLOCK) return true;
     ESP_LOGE(TAG, "MFN load blocked: largest compatible PSRAM block %u < %u",
              (unsigned)largest, (unsigned)MFN_SAFE_LARGEST_BLOCK);
@@ -633,15 +652,20 @@ static void vision_inference_task(void *arg)
                 }
                 case VISION_CMD_DELETE_PERSON: {
                     if (cmd.slot < VISION_MAX_PERSONS && s_people_file.persons[cmd.slot].active) {
-                        if (s_face_recognizer) {
-                            for (int i = 0; i < s_people_file.persons[cmd.slot].feature_count; i++) {
-                                s_face_recognizer->delete_feat(s_people_file.persons[cmd.slot].feature_ids[i]);
+                        vision_person_record_t old = s_people_file.persons[cmd.slot];
+                        vision_people_file_t next = s_people_file;
+                        next.persons[cmd.slot].active = false;
+                        next.person_count--;
+                        if (face_people_save_atomic(&next) == ESP_OK) {
+                            if (s_face_recognizer) {
+                                for (int i = 0; i < old.feature_count; i++) {
+                                    s_face_recognizer->delete_feat(old.feature_ids[i]);
+                                }
                             }
+                            ESP_LOGI(TAG, "Deleted person slot %d", cmd.slot);
+                        } else {
+                            ESP_LOGE(TAG, "Deletion of person slot %d not committed", cmd.slot);
                         }
-                        s_people_file.persons[cmd.slot].active = false;
-                        s_people_file.person_count--;
-                        face_people_save_atomic();
-                        ESP_LOGI(TAG, "Deleted person slot %d", cmd.slot);
                     }
                     break;
                 }
@@ -663,15 +687,18 @@ static void vision_inference_task(void *arg)
                     break;
                 }
                 case VISION_CMD_CLEAR_ALL: {
-                    if (s_face_recognizer) {
-                        s_face_recognizer->clear_all_feats();
+                    vision_people_file_t next = s_people_file;
+                    memset(next.persons, 0, sizeof(next.persons));
+                    next.person_count = 0;
+                    if (face_people_save_atomic(&next) == ESP_OK) {
+                        if (s_face_recognizer) s_face_recognizer->clear_all_feats();
+                        enroll_journal_remove();
+                        s_enroll_txn.active = false;
+                        s_enroll_txn.state = VISION_ENROLL_IDLE;
+                        ESP_LOGI(TAG, "Cleared all people and face database");
+                    } else {
+                        ESP_LOGE(TAG, "Clear-all metadata not committed");
                     }
-                    enroll_journal_remove();
-                    face_people_init_empty();
-                    face_people_save_atomic();
-                    s_enroll_txn.active = false;
-                    s_enroll_txn.state = VISION_ENROLL_IDLE;
-                    ESP_LOGI(TAG, "Cleared all people and face database");
                     break;
                 }
                 default:
@@ -694,10 +721,13 @@ static void vision_inference_task(void *arg)
             if (!s_face_detect) {
                 ESP_LOGI(TAG, "Instantiating HumanFaceDetect model...");
                 s_face_detect = new HumanFaceDetect();
+                vision_memory_checkpoint("M6 after HumanFaceDetect ctor");
             }
             if (!s_face_recognizer && (s_people_file.person_count > 0 || s_enroll_txn.active)) {
                 ESP_LOGI(TAG, "Instantiating HumanFaceRecognizer model (MFN_S8_V1)...");
+                vision_memory_checkpoint("M8 before HumanFaceRecognizer ctor");
                 s_face_recognizer = new HumanFaceRecognizer(VISION_FACE_DB_PATH, HumanFaceFeat::MFN_S8_V1, true);
+                vision_memory_checkpoint("M9 after HumanFaceRecognizer ctor");
                 /* Recover any interrupted enrollment from previous boot (Section 40) */
                 FILE *jf = fopen(VISION_ENROLL_TXN_PATH, "rb");
                 if (jf) {
@@ -709,7 +739,7 @@ static void vision_inference_task(void *arg)
                         if (j.crc32 == exp_crc) {
                             ESP_LOGW(TAG, "Recovering power-loss journal for '%s' (%d features)", j.name, j.accepted_count);
                             for (int i = 0; i < j.accepted_count; i++) {
-                                if (j.feature_ids[i] > 0) {
+                                if (j.feature_ids[i] > 0 && !find_person_by_feature_id(j.feature_ids[i])) {
                                     s_face_recognizer->delete_feat(j.feature_ids[i]);
                                 }
                             }
@@ -732,6 +762,7 @@ static void vision_inference_task(void *arg)
             uint32_t infer_ms = (uint32_t)((t1 - t0) / 1000);
             if (!logged_first_inference) {
                 ESP_LOGI(TAG, "First face detection: %u ms, faces=%u", (unsigned)infer_ms, (unsigned)faces.size());
+                vision_memory_checkpoint("M7 after first face detection");
                 logged_first_inference = true;
             }
 
@@ -790,7 +821,7 @@ static void vision_inference_task(void *arg)
                         snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s", get_enroll_pose_prompt(s_enroll_txn.accepted_count));
                     } else if (now_ms - s_enroll_txn.last_sample_ms >= 350) {
                         /* Accepted sample! Run feature extraction & enroll */
-                        if (!mfn_memory_ready("before first enrollment/MFN load")) {
+                        if (!mfn_memory_ready("M10 before first enrollment/MFN load")) {
                             s_enroll_txn.active = false;
                             s_enroll_txn.state = VISION_ENROLL_ERROR;
                             s_enroll_txn.last_error = ESP_ERR_NO_MEM;
@@ -803,16 +834,14 @@ static void vision_inference_task(void *arg)
                         esp_err_t enr_err = s_face_recognizer->enroll(img, single_face);
                         if (!s_mfn_loaded) {
                             s_mfn_loaded = (enr_err == ESP_OK);
-                            log_psram("after first enrollment/MFN load");
+                            vision_memory_checkpoint("M11 after first enrollment/MFN load");
                         }
                         if (enr_err == ESP_OK) {
-                            /* Preferred B: query top match to retrieve exact assigned feature ID */
-                            uint16_t feat_id = 0;
-                            auto matches = s_face_recognizer->recognize(img, single_face);
-                            if (!matches.empty() && matches.front().id > 0) {
-                                feat_id = matches.front().id;
-                            } else {
-                                feat_id = (uint16_t)s_face_recognizer->get_num_feats();
+                            uint16_t feat_id = face_db_latest_feature_id();
+                            if (feat_id == 0) {
+                                s_face_recognizer->delete_last_feat();
+                                ESP_LOGE(TAG, "Enrolled feature ID could not be verified");
+                                continue;
                             }
 
                             s_enroll_txn.new_feature_ids[s_enroll_txn.accepted_count] = feat_id;
@@ -830,27 +859,25 @@ static void vision_inference_task(void *arg)
                                 s_enroll_txn.state = VISION_ENROLL_COMMITTING;
                                 uint8_t slot = s_enroll_txn.target_slot;
 
-                                if (s_enroll_txn.is_reregister) {
-                                    /* Delete old features upon successful re-enrollment */
-                                    for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
-                                        if (s_enroll_txn.old_feature_ids[i] > 0) {
-                                            s_face_recognizer->delete_feat(s_enroll_txn.old_feature_ids[i]);
+                                vision_people_file_t next = s_people_file;
+                                if (!s_enroll_txn.is_reregister) next.person_count++;
+                                next.persons[slot].active = true;
+                                next.persons[slot].slot = slot;
+                                snprintf(next.persons[slot].name, sizeof(next.persons[slot].name), "%s", s_enroll_txn.name);
+                                next.persons[slot].feature_count = VISION_FACE_SAMPLES_PER_PERSON;
+                                for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
+                                    next.persons[slot].feature_ids[i] = s_enroll_txn.new_feature_ids[i];
+                                }
+
+                                esp_err_t save_err = face_people_save_atomic(&next);
+                                if (save_err == ESP_OK) {
+                                    if (s_enroll_txn.is_reregister) {
+                                        for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
+                                            if (s_enroll_txn.old_feature_ids[i] > 0) {
+                                                s_face_recognizer->delete_feat(s_enroll_txn.old_feature_ids[i]);
+                                            }
                                         }
                                     }
-                                } else {
-                                    s_people_file.person_count++;
-                                }
-
-                                s_people_file.persons[slot].active = true;
-                                s_people_file.persons[slot].slot = slot;
-                                snprintf(s_people_file.persons[slot].name, sizeof(s_people_file.persons[slot].name), "%s", s_enroll_txn.name);
-                                s_people_file.persons[slot].feature_count = VISION_FACE_SAMPLES_PER_PERSON;
-                                for (int i = 0; i < VISION_FACE_SAMPLES_PER_PERSON; i++) {
-                                    s_people_file.persons[slot].feature_ids[i] = s_enroll_txn.new_feature_ids[i];
-                                }
-
-                                esp_err_t save_err = face_people_save_atomic();
-                                if (save_err == ESP_OK) {
                                     enroll_journal_remove();
                                     s_enroll_txn.state = VISION_ENROLL_SUCCESS;
                                     snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "登録しました");
@@ -862,10 +889,6 @@ static void vision_inference_task(void *arg)
                                         s_face_recognizer->delete_feat(s_enroll_txn.new_feature_ids[i]);
                                     }
                                     enroll_journal_remove();
-                                    if (!s_enroll_txn.is_reregister) {
-                                        s_people_file.persons[slot].active = false;
-                                        s_people_file.person_count--;
-                                    }
                                     s_enroll_txn.state = VISION_ENROLL_ERROR;
                                     snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "登録データを保存できません");
                                 }
@@ -912,21 +935,23 @@ static void vision_inference_task(void *arg)
                     for (auto &f : faces) {
                         if (f_idx >= VISION_MAX_DETECTIONS) break;
                         if (f.keypoint.size() == 10) {
-                            if (!mfn_memory_ready("before first recognition/MFN load")) break;
+                            if (!mfn_memory_ready("M10 before first recognition/MFN load")) break;
                             std::list<dl::detect::result_t> single_face;
                             single_face.push_back(f);
                             auto matches = s_face_recognizer->recognize(img, single_face);
                             if (!s_mfn_loaded) {
                                 s_mfn_loaded = true;
-                                log_psram("after first recognition/MFN load");
+                                vision_memory_checkpoint("M11 after first recognition/MFN load");
                             }
 
+                            int mapped_slot = -1;
                             if (!matches.empty()) {
                                 auto &top = matches.front();
                                 res.boxes[f_idx].matched_feature_id = top.id;
                                 res.boxes[f_idx].similarity = top.similarity;
 
                                 const vision_person_record_t *p = find_person_by_feature_id(top.id);
+                                if (p) mapped_slot = p->slot;
                                 if (p && top.similarity >= s_match_threshold) {
                                     res.boxes[f_idx].match_state = VISION_FACE_MATCH_KNOWN;
                                     res.boxes[f_idx].person_slot = p->slot;
@@ -949,6 +974,15 @@ static void vision_inference_task(void *arg)
                                 snprintf(res.boxes[f_idx].label, sizeof(res.boxes[f_idx].label), "未登録");
                                 s_diag.recognition_unknown++;
                             }
+                            if (s_diag.face_recognitions % 3 == 0) {
+                                ESP_LOGI(TAG, "[MATCH] id=%u sim_milli=%d mapped_slot=%d gate_milli=%d accepted=%d",
+                                         (unsigned)res.boxes[f_idx].matched_feature_id,
+                                         (int)lroundf(res.boxes[f_idx].similarity * 1000.0f),
+                                         mapped_slot, (int)lroundf(s_match_threshold * 1000.0f),
+                                         res.boxes[f_idx].match_state == VISION_FACE_MATCH_KNOWN);
+                            }
+                        } else if (s_diag.face_recognitions % 3 == 0) {
+                            ESP_LOGI(TAG, "[MATCH] skipped keypoints=%u", (unsigned)f.keypoint.size());
                         }
                         f_idx++;
                     }
@@ -1089,6 +1123,7 @@ extern "C" esp_err_t vision_service_init(void)
         }
         memset(s_preview_buf[i], 0, PREVIEW_FRAME_SIZE);
     }
+    vision_memory_checkpoint("M2 after preview buffers allocated");
 #else
     s_preview_buf[0] = s_host_preview_buf;
     s_preview_buf[1] = s_host_preview_buf;
@@ -1096,6 +1131,8 @@ extern "C" esp_err_t vision_service_init(void)
 
     /* Load persistent people metadata */
     face_people_load();
+#ifndef HOST_TEST
+#endif
 
     s_disp_idx = 0;
     s_ready_idx = 0;
@@ -1164,7 +1201,7 @@ extern "C" esp_err_t vision_service_start(void)
 
 #ifndef HOST_TEST
     xEventGroupClearBits(s_lifecycle_events, VISION_EVT_ALL_EXITED);
-    log_psram("before Vision start");
+    vision_memory_checkpoint("M1 before Vision start");
     esp_err_t cam_err = vision_camera_start();
     if (cam_err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start camera hardware: %s", esp_err_to_name(cam_err));
@@ -1172,7 +1209,6 @@ extern "C" esp_err_t vision_service_start(void)
         xSemaphoreGive(s_lock);
         return cam_err;
     }
-    log_psram("after Camera start");
 
     s_capture_running = true;
     BaseType_t task_ret = xTaskCreate(
@@ -1242,19 +1278,27 @@ extern "C" void vision_service_stop(void)
     if (s_infer_sem) xSemaphoreGive(s_infer_sem);
     xSemaphoreGive(s_lock);
 
-    EventBits_t need = 0;
-    if (s_capture_task_handle) need |= VISION_EVT_CAPTURE_EXITED;
-    if (s_infer_task_handle) need |= VISION_EVT_INFER_EXITED;
-    EventBits_t bits = xEventGroupWaitBits(s_lifecycle_events, need, pdFALSE,
-                                            pdTRUE, pdMS_TO_TICKS(3000));
-    if ((bits & need) != need) {
-        ESP_LOGE(TAG, "Vision stop timeout: exited=0x%lx need=0x%lx",
-                 (unsigned long)bits, (unsigned long)need);
-        s_state = VISION_STATE_ERROR;
-        return;
+    if (s_capture_task_handle) {
+        EventBits_t bits = xEventGroupWaitBits(s_lifecycle_events, VISION_EVT_CAPTURE_EXITED,
+                                                pdFALSE, pdTRUE, pdMS_TO_TICKS(3000));
+        if (!(bits & VISION_EVT_CAPTURE_EXITED)) {
+            ESP_LOGE(TAG, "Vision capture stop timeout: exited=0x%lx", (unsigned long)bits);
+            s_state = VISION_STATE_ERROR;
+            return;
+        }
     }
 
+    /* Stop DMA as soon as capture stops returning buffers; MFN inference may take longer to exit. */
     vision_camera_stop();
+    if (s_infer_task_handle) {
+        EventBits_t bits = xEventGroupWaitBits(s_lifecycle_events, VISION_EVT_INFER_EXITED,
+                                                pdFALSE, pdTRUE, pdMS_TO_TICKS(3000));
+        if (!(bits & VISION_EVT_INFER_EXITED)) {
+            ESP_LOGE(TAG, "Vision inference stop timeout: exited=0x%lx", (unsigned long)bits);
+            s_state = VISION_STATE_ERROR;
+            return;
+        }
+    }
     s_capture_task_handle = NULL;
     s_infer_task_handle = NULL;
     s_infer_idx = -1;
@@ -1263,6 +1307,7 @@ extern "C" void vision_service_stop(void)
     if (s_result_queue) xQueueReset(s_result_queue);
     if (s_cmd_queue) xQueueReset(s_cmd_queue);
     s_state = VISION_STATE_OFF;
+    vision_memory_checkpoint("M14 after leaving Vision");
 #else
     s_capture_running = false;
     s_infer_running = false;

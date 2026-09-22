@@ -21,6 +21,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "esp_video_device.h"
 #include "esp_video_ioctl.h"
 #include "bsp/esp32_s31_korvo_1.h"
@@ -28,6 +29,33 @@
 #endif
 
 static const char *TAG = "vision_camera";
+
+size_t vision_memory_checkpoint(const char *stage)
+{
+#ifndef HOST_TEST
+    size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t psram_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    size_t simd_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD);
+    size_t simd_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD);
+    ESP_LOGI(TAG, "[MEM] %s int_free=%u int_largest=%u psram_free=%u psram_largest=%u simd_free=%u simd_largest=%u",
+             stage, (unsigned)internal_free, (unsigned)internal_largest,
+             (unsigned)psram_free, (unsigned)psram_largest,
+             (unsigned)simd_free, (unsigned)simd_largest);
+    if (stage[0] == 'M' && (stage[1] == '1' || stage[1] == '4' || stage[1] == '7') && stage[2] == ' ') {
+        multi_heap_info_t info;
+        heap_caps_get_info(&info, MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD);
+        ESP_LOGI(TAG, "[MEMINFO] %s total_free_bytes=%u largest_free_block=%u minimum_free_bytes=%u allocated_blocks=%u free_blocks=%u",
+                 stage, (unsigned)info.total_free_bytes, (unsigned)info.largest_free_block,
+                 (unsigned)info.minimum_free_bytes, (unsigned)info.allocated_blocks, (unsigned)info.free_blocks);
+    }
+    return psram_largest < simd_largest ? psram_largest : simd_largest;
+#else
+    (void)stage;
+    return 0;
+#endif
+}
 
 static bool s_inited = false;
 static bool s_streaming = false;
@@ -52,6 +80,7 @@ esp_err_t vision_camera_init(void)
     }
 
 #ifndef HOST_TEST
+    vision_memory_checkpoint("M3 before camera init");
     /* 1. Start BSP camera hardware (XCLK 20MHz on GPIO55, I2C SCCB, DVP bus) */
     static bool s_bsp_camera_started = false;
     if (!s_bsp_camera_started) {
@@ -136,6 +165,8 @@ esp_err_t vision_camera_init(void)
             return ESP_FAIL;
         }
         s_buffer_len[i] = buf.length;
+        ESP_LOGI(TAG, "V4L2 buffer index=%d length=%lu address=%p",
+                 i, (unsigned long)buf.length, s_buffers[i]);
     }
 
     /* Set 200ms DQBUF timeout so acquire doesn't hang if camera stops */
@@ -147,6 +178,7 @@ esp_err_t vision_camera_init(void)
 #endif
 
     s_inited = true;
+    vision_memory_checkpoint("M4 after camera init");
     s_streaming = false;
 #ifndef HOST_TEST
     ESP_LOGI(TAG, "Camera adapter initialized: %lux%lu pixfmt=%d buffers=%u bytes=%lu",
@@ -191,6 +223,7 @@ esp_err_t vision_camera_start(void)
 #endif
 
     s_streaming = true;
+    vision_memory_checkpoint("M5 after camera STREAMON");
     ESP_LOGI(TAG, "Camera streaming started");
     return ESP_OK;
 }
@@ -268,6 +301,7 @@ void vision_camera_stop(void)
 #endif
 
     s_streaming = false;
+    vision_memory_checkpoint("M12 after camera STREAMOFF");
     ESP_LOGI(TAG, "Camera streaming stopped");
 }
 
@@ -294,6 +328,7 @@ void vision_camera_deinit(void)
 #endif
 
     s_inited = false;
+    vision_memory_checkpoint("M13 after camera deinit/munmap");
     ESP_LOGI(TAG, "Camera adapter de-initialized");
 }
 

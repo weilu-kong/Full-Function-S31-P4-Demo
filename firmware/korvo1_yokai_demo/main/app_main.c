@@ -7,6 +7,7 @@
 #include "voice_service.h"
 #include "weather_service.h"
 #include "vision_service.h"
+#include "vision_camera.h"
 
 static const char *TAG = "yokai_demo";
 
@@ -60,6 +61,7 @@ void app_main(void)
     /* Initialize weather service with SNTP & Open-Meteo polling */
     ESP_ERROR_CHECK(weather_service_init());
 
+    vision_memory_checkpoint("M0 boot before Vision init");
     /* Initialize vision service skeleton (Camera/AI deferred to UI entry) */
     esp_err_t vision_err = vision_service_init();
     if (vision_err != ESP_OK) {
@@ -71,6 +73,7 @@ void app_main(void)
     app_state_init(&state);
     ESP_ERROR_CHECK(board_ui_start(&state));
     ESP_LOGI(TAG, "Korvo-1 Yokai demo UI started");
+    vision_memory_checkpoint("M0 UI ready");
     ESP_LOGI(TAG, "PSRAM boot/UI ready: free=%u largest=%u SIMD_largest=%u",
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),

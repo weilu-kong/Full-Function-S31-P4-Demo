@@ -7,6 +7,18 @@ from pathlib import Path
 
 PATCHES = (
     (
+        "managed_components/espressif__esp-dl/vision/recognition/dl_recognition_database.cpp",
+        "    int i = 1;\n    for (auto it = m_feats.begin(); it != m_feats.end(); it++, i++) {\n"
+        "        sim = cal_similarity(it->feat, (float *)feat->data);\n"
+        "        if (sim <= thr) {\n            continue;\n        }\n"
+        "        // results.emplace_back(it->id, sim);\n        results.emplace_back(i, sim);",
+        "    for (auto it = m_feats.begin(); it != m_feats.end(); it++) {\n"
+        "        sim = cal_similarity(it->feat, (float *)feat->data);\n"
+        "        if (sim <= thr) {\n            continue;\n        }\n"
+        "        results.emplace_back(it->id, sim);",
+        1,
+    ),
+    (
         "managed_components/espressif__esp-dl/vision/image/dl_image_preprocessor.cpp",
         "    m_model_input = model->get_input(input_name);\n    assert(m_model_input->dtype",
         "    m_model_input = model->get_input(input_name);\n"

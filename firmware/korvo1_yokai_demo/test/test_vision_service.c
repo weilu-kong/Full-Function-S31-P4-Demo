@@ -15,6 +15,8 @@
 int main(void)
 {
     printf("[TEST] Testing vision_service Phase 5 recognition & Phase 6 metadata...\n");
+    remove(VISION_PEOPLE_META_PATH);
+    remove(VISION_PEOPLE_ALT_PATH);
 
     /* 1. Init & Lifecycle */
     assert(vision_service_init() == ESP_OK);
@@ -156,6 +158,25 @@ int main(void)
     s_state = VISION_STATE_ERROR;
     assert(vision_service_start() == ESP_ERR_INVALID_STATE);
     s_state = VISION_STATE_OFF;
+
+    /* A partial write to the newer slot must leave the previous metadata usable. */
+    vision_people_file_t next = s_people_file;
+    next.persons[0].active = true;
+    next.persons[0].slot = 0;
+    next.persons[0].feature_count = VISION_FACE_SAMPLES_PER_PERSON;
+    snprintf(next.persons[0].name, sizeof(next.persons[0].name), "%s", "Alice");
+    next.person_count = 1;
+    assert(face_people_save_atomic(&next) == ESP_OK);
+    snprintf(next.persons[0].name, sizeof(next.persons[0].name), "%s", "Alice2");
+    assert(face_people_save_atomic(&next) == ESP_OK);
+    FILE *corrupt = fopen(VISION_PEOPLE_META_PATH, "wb");
+    assert(corrupt != NULL);
+    assert(fwrite("x", 1, 1, corrupt) == 1);
+    fclose(corrupt);
+    assert(face_people_load() == ESP_OK);
+    assert(strcmp(s_people_file.persons[0].name, "Alice") == 0);
+    remove(VISION_PEOPLE_META_PATH);
+    remove(VISION_PEOPLE_ALT_PATH);
 
     printf("[TEST] All Phase 5 & 6 unit tests passed successfully!\n");
     return 0;

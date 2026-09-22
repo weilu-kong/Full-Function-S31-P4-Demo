@@ -268,6 +268,7 @@ static lv_obj_t *s_lbl_vision_perf = NULL;
 /* In-progress Enrollment HUD */
 static lv_obj_t *s_box_enroll_hud = NULL;
 static lv_obj_t *s_lbl_enroll_step = NULL;
+static lv_obj_t *s_lbl_enroll_feedback = NULL;
 static lv_obj_t *s_lbl_enroll_prompt = NULL;
 static lv_obj_t *s_btn_enroll_cancel = NULL;
 
@@ -278,6 +279,7 @@ static lv_obj_t *s_btn_scan = NULL;
 
 /* Enrollment Modal */
 static lv_obj_t *s_enroll_modal = NULL;
+static lv_obj_t *s_lbl_enroll_modal_err = NULL;
 static lv_obj_t *s_ta_enroll_name = NULL;
 static lv_obj_t *s_enroll_kb = NULL;
 static int s_enroll_target_slot = -1;
@@ -318,6 +320,7 @@ static void enroll_open_btn_cb(lv_event_t *e)
     }
     s_enroll_target_slot = -1;
     if (s_ta_enroll_name) lv_textarea_set_text(s_ta_enroll_name, "");
+    if (s_lbl_enroll_modal_err) lv_label_set_text(s_lbl_enroll_modal_err, "");
     if (s_enroll_modal) lv_obj_remove_flag(s_enroll_modal, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -325,13 +328,38 @@ static void enroll_submit_action(void)
 {
     if (!s_ta_enroll_name) return;
     const char *text = lv_textarea_get_text(s_ta_enroll_name);
-    if (!text || text[0] == '\0') return;
-
-    if (s_enroll_target_slot >= 0) {
-        vision_service_reregister_person((uint8_t)s_enroll_target_slot, text);
-    } else {
-        vision_service_begin_enrollment(text);
+    if (!text || text[0] == '\0') {
+        if (s_lbl_enroll_modal_err) {
+            lv_label_set_text(s_lbl_enroll_modal_err, "名前を入力してください");
+        }
+        return;
     }
+
+    esp_err_t err = ESP_OK;
+    if (s_enroll_target_slot >= 0) {
+        err = vision_service_reregister_person((uint8_t)s_enroll_target_slot, text);
+    } else {
+        err = vision_service_begin_enrollment(text);
+    }
+
+    if (err != ESP_OK) {
+        if (s_lbl_enroll_modal_err) {
+            if (err == ESP_ERR_INVALID_ARG) {
+                lv_label_set_text(s_lbl_enroll_modal_err, "名前を入力してください");
+            } else if (err == ESP_ERR_INVALID_STATE) {
+                lv_label_set_text(s_lbl_enroll_modal_err, "同名の人物が既に登録されています");
+            } else if (err == ESP_ERR_NO_MEM) {
+                lv_label_set_text(s_lbl_enroll_modal_err, "登録数が上限(10名)です");
+            } else if (err == ESP_ERR_TIMEOUT) {
+                lv_label_set_text(s_lbl_enroll_modal_err, "コマンドがタイムアウトしました");
+            } else {
+                lv_label_set_text(s_lbl_enroll_modal_err, "登録を開始できませんでした");
+            }
+        }
+        return;
+    }
+
+    if (s_lbl_enroll_modal_err) lv_label_set_text(s_lbl_enroll_modal_err, "");
     if (s_enroll_modal) lv_obj_add_flag(s_enroll_modal, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -386,6 +414,7 @@ static void reregister_person_btn_cb(lv_event_t *e)
             }
         }
     }
+    if (s_lbl_enroll_modal_err) lv_label_set_text(s_lbl_enroll_modal_err, "");
     if (s_enroll_modal) lv_obj_remove_flag(s_enroll_modal, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -593,18 +622,26 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_flag(s_box_enroll_hud, LV_OBJ_FLAG_HIDDEN);
 
     s_lbl_enroll_step = lv_label_create(s_box_enroll_hud);
-    lv_label_set_text(s_lbl_enroll_step, "登録中 (0/5)");
+    lv_label_set_text(s_lbl_enroll_step, "顔登録 (0/5)");
     lv_obj_set_style_text_font(s_lbl_enroll_step, UI_FONT_REGULAR, 0);
     lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_align(s_lbl_enroll_step, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_align(s_lbl_enroll_step, LV_ALIGN_TOP_MID, 0, 2);
+
+    s_lbl_enroll_feedback = lv_label_create(s_box_enroll_hud);
+    lv_label_set_text(s_lbl_enroll_feedback, "");
+    lv_obj_set_style_text_font(s_lbl_enroll_feedback, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GREEN_ACCENT, 0);
+    lv_obj_set_style_text_align(s_lbl_enroll_feedback, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(s_lbl_enroll_feedback, 175);
+    lv_obj_align(s_lbl_enroll_feedback, LV_ALIGN_TOP_MID, 0, 24);
 
     s_lbl_enroll_prompt = lv_label_create(s_box_enroll_hud);
     lv_label_set_text(s_lbl_enroll_prompt, "正面を向いてください");
     lv_obj_set_style_text_font(s_lbl_enroll_prompt, UI_FONT_SMALL, 0);
     lv_obj_set_style_text_color(s_lbl_enroll_prompt, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_text_align(s_lbl_enroll_prompt, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_width(s_lbl_enroll_prompt, 170);
-    lv_obj_align(s_lbl_enroll_prompt, LV_ALIGN_TOP_MID, 0, 36);
+    lv_obj_set_width(s_lbl_enroll_prompt, 175);
+    lv_obj_align(s_lbl_enroll_prompt, LV_ALIGN_TOP_MID, 0, 48);
 
     s_btn_enroll_cancel = lv_button_create(s_box_enroll_hud);
     lv_obj_add_style(s_btn_enroll_cancel, &ui_style_pill_badge, 0);
@@ -681,6 +718,12 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_color(lbl_modal_title, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_modal_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(lbl_modal_title, 20, 14);
+
+    s_lbl_enroll_modal_err = lv_label_create(enroll_panel);
+    lv_label_set_text(s_lbl_enroll_modal_err, "");
+    lv_obj_set_style_text_color(s_lbl_enroll_modal_err, UI_COLOR_RED_ACCENT, 0);
+    lv_obj_set_style_text_font(s_lbl_enroll_modal_err, UI_FONT_SMALL, 0);
+    lv_obj_set_pos(s_lbl_enroll_modal_err, 250, 18);
 
     s_ta_enroll_name = lv_textarea_create(enroll_panel);
     lv_textarea_set_one_line(s_ta_enroll_name, true);
@@ -859,23 +902,118 @@ void ui_vision_screen_update(void)
                 if (s_btn_scan) lv_obj_add_flag(s_btn_scan, LV_OBJ_FLAG_HIDDEN);
 
                 if (res.enroll_state == VISION_ENROLL_SUCCESS) {
-                    if (s_lbl_enroll_step) lv_label_set_text(s_lbl_enroll_step, "登録完了");
-                    if (s_lbl_enroll_prompt) lv_label_set_text(s_lbl_enroll_prompt, "登録しました");
+                    if (s_box_enroll_hud) lv_obj_set_style_border_color(s_box_enroll_hud, UI_COLOR_GREEN_ACCENT, 0);
+                    if (s_lbl_enroll_step) {
+                        lv_label_set_text(s_lbl_enroll_step, "顔登録 5/5");
+                        lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GREEN_ACCENT, 0);
+                    }
+                    if (s_lbl_enroll_feedback) {
+                        lv_label_set_text(s_lbl_enroll_feedback, "✓ 顔登録が完了しました");
+                        lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GREEN_ACCENT, 0);
+                    }
+                    if (s_lbl_enroll_prompt) {
+                        lv_label_set_text(s_lbl_enroll_prompt, res.enroll_name);
+                        lv_obj_set_style_text_color(s_lbl_enroll_prompt, UI_COLOR_TEXT_TITLE, 0);
+                    }
                     if (s_lbl_vision_status) {
                         lv_label_set_text(s_lbl_vision_status, "登録完了");
                         lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GREEN_ACCENT, 0);
                     }
+                    if (s_lbl_vision_target) {
+                        lv_label_set_text(s_lbl_vision_target, res.enroll_name);
+                    }
                 } else if (res.enroll_state == VISION_ENROLL_ERROR || res.enroll_state == VISION_ENROLL_CANCELLED) {
-                    if (s_lbl_enroll_step) lv_label_set_text(s_lbl_enroll_step, "登録中止");
-                    if (s_lbl_enroll_prompt) lv_label_set_text(s_lbl_enroll_prompt, res.enroll_prompt);
-                } else {
-                    char step_buf[32];
-                    snprintf(step_buf, sizeof(step_buf), "登録中 (%d/5)", res.enroll_sample_count);
-                    if (s_lbl_enroll_step) lv_label_set_text(s_lbl_enroll_step, step_buf);
-                    if (s_lbl_enroll_prompt) lv_label_set_text(s_lbl_enroll_prompt, res.enroll_prompt);
+                    if (s_box_enroll_hud) lv_obj_set_style_border_color(s_box_enroll_hud, UI_COLOR_RED_ACCENT, 0);
+                    if (s_lbl_enroll_step) {
+                        lv_label_set_text(s_lbl_enroll_step, res.enroll_state == VISION_ENROLL_CANCELLED ? "登録中止" : "登録エラー");
+                        lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_RED_ACCENT, 0);
+                    }
+                    if (s_lbl_enroll_feedback) {
+                        if (res.enroll_error_code != VISION_ENROLL_ERR_NONE) {
+                            char err_buf[32];
+                            snprintf(err_buf, sizeof(err_buf), "✕ E%d エラー", res.enroll_error_code);
+                            lv_label_set_text(s_lbl_enroll_feedback, err_buf);
+                        } else {
+                            lv_label_set_text(s_lbl_enroll_feedback, res.enroll_state == VISION_ENROLL_CANCELLED ? "✕ 中止されました" : "✕ 失敗しました");
+                        }
+                        lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_RED_ACCENT, 0);
+                    }
+                    if (s_lbl_enroll_prompt) {
+                        lv_label_set_text(s_lbl_enroll_prompt, res.enroll_prompt);
+                        lv_obj_set_style_text_color(s_lbl_enroll_prompt, UI_COLOR_RED_ACCENT, 0);
+                    }
                     if (s_lbl_vision_status) {
-                        lv_label_set_text(s_lbl_vision_status, "顔登録実行中");
-                        lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GOLD_ACCENT, 0);
+                        lv_label_set_text(s_lbl_vision_status, res.enroll_state == VISION_ENROLL_CANCELLED ? "登録中止" : "エラー");
+                        lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_RED_ACCENT, 0);
+                    }
+                } else {
+                    /* SAMPLING / COMMITTING / WAIT_FACE */
+                    char step_buf[32];
+                    snprintf(step_buf, sizeof(step_buf), "顔登録 %d / 5", res.enroll_sample_count);
+                    if (s_lbl_enroll_step) lv_label_set_text(s_lbl_enroll_step, step_buf);
+
+                    if (res.enroll_sample_state == VISION_ENROLL_SAMPLE_ACCEPTED) {
+                        if (s_box_enroll_hud) lv_obj_set_style_border_color(s_box_enroll_hud, UI_COLOR_GREEN_ACCENT, 0);
+                        if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GREEN_ACCENT, 0);
+                        if (s_lbl_enroll_feedback) {
+                            char fb_buf[48];
+                            snprintf(fb_buf, sizeof(fb_buf), "✓ %d枚目の登録成功", res.enroll_sample_count);
+                            lv_label_set_text(s_lbl_enroll_feedback, fb_buf);
+                            lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GREEN_ACCENT, 0);
+                        }
+                        if (s_lbl_vision_status) {
+                            lv_label_set_text(s_lbl_vision_status, "サンプル登録成功");
+                            lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GREEN_ACCENT, 0);
+                        }
+                    } else if (res.enroll_sample_state == VISION_ENROLL_SAMPLE_RETRY) {
+                        if (s_box_enroll_hud) lv_obj_set_style_border_color(s_box_enroll_hud, UI_COLOR_RED_ACCENT, 0);
+                        if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_RED_ACCENT, 0);
+                        if (s_lbl_enroll_feedback) {
+                            char fb_buf[48];
+                            snprintf(fb_buf, sizeof(fb_buf), "✕ E%d 再試行", res.enroll_error_code);
+                            lv_label_set_text(s_lbl_enroll_feedback, fb_buf);
+                            lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_RED_ACCENT, 0);
+                        }
+                        if (s_lbl_vision_status) {
+                            lv_label_set_text(s_lbl_vision_status, "再試行してください");
+                            lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_RED_ACCENT, 0);
+                        }
+                    } else if (res.enroll_sample_state == VISION_ENROLL_SAMPLE_CAPTURING) {
+                        if (s_box_enroll_hud) lv_obj_set_style_border_color(s_box_enroll_hud, UI_COLOR_GOLD_ACCENT, 0);
+                        if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GOLD_ACCENT, 0);
+                        if (s_lbl_enroll_feedback) {
+                            lv_label_set_text(s_lbl_enroll_feedback, "撮影中…");
+                            lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GOLD_ACCENT, 0);
+                        }
+                        if (s_lbl_vision_status) {
+                            lv_label_set_text(s_lbl_vision_status, "特徴抽出中…");
+                            lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GOLD_ACCENT, 0);
+                        }
+                    } else {
+                        /* WAITING or STABILIZING */
+                        lv_color_t color = (res.enroll_sample_state == VISION_ENROLL_SAMPLE_STABILIZING)
+                                           ? UI_COLOR_GOLD_ACCENT : UI_COLOR_CYAN_ACCENT;
+                        if (s_box_enroll_hud) lv_obj_set_style_border_color(s_box_enroll_hud, color, 0);
+                        if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GOLD_ACCENT, 0);
+                        if (s_lbl_enroll_feedback) {
+                            if (res.enroll_error_code != VISION_ENROLL_ERR_NONE) {
+                                char fb_buf[32];
+                                snprintf(fb_buf, sizeof(fb_buf), "E%d", res.enroll_error_code);
+                                lv_label_set_text(s_lbl_enroll_feedback, fb_buf);
+                                lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_RED_ACCENT, 0);
+                            } else {
+                                lv_label_set_text(s_lbl_enroll_feedback, "顔を合わせてください");
+                                lv_obj_set_style_text_color(s_lbl_enroll_feedback, color, 0);
+                            }
+                        }
+                        if (s_lbl_vision_status) {
+                            lv_label_set_text(s_lbl_vision_status, "顔登録実行中");
+                            lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GOLD_ACCENT, 0);
+                        }
+                    }
+                    if (s_lbl_enroll_prompt) {
+                        lv_label_set_text(s_lbl_enroll_prompt, res.enroll_prompt);
+                        lv_obj_set_style_text_color(s_lbl_enroll_prompt, UI_COLOR_TEXT_TITLE, 0);
                     }
                     if (s_lbl_vision_target) {
                         lv_label_set_text(s_lbl_vision_target, res.enroll_name);

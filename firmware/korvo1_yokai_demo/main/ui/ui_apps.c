@@ -347,7 +347,7 @@ static void enroll_submit_action(void)
             if (err == ESP_ERR_INVALID_ARG) {
                 lv_label_set_text(s_lbl_enroll_modal_err, "名前を入力してください");
             } else if (err == ESP_ERR_INVALID_STATE) {
-                lv_label_set_text(s_lbl_enroll_modal_err, "同名の人物が既に登録されています");
+                lv_label_set_text(s_lbl_enroll_modal_err, "同じ名前がすでに登録されています");
             } else if (err == ESP_ERR_NO_MEM) {
                 lv_label_set_text(s_lbl_enroll_modal_err, "登録数が上限(10名)です");
             } else if (err == ESP_ERR_TIMEOUT) {
@@ -908,7 +908,7 @@ void ui_vision_screen_update(void)
                         lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GREEN_ACCENT, 0);
                     }
                     if (s_lbl_enroll_feedback) {
-                        lv_label_set_text(s_lbl_enroll_feedback, "✓ 顔登録が完了しました");
+                        lv_label_set_text(s_lbl_enroll_feedback, "OK: 顔登録が完了しました");
                         lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GREEN_ACCENT, 0);
                     }
                     if (s_lbl_enroll_prompt) {
@@ -961,13 +961,13 @@ void ui_vision_screen_update(void)
                         if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GREEN_ACCENT, 0);
                         if (s_lbl_enroll_feedback) {
                             char fb_buf[48];
-                            snprintf(fb_buf, sizeof(fb_buf), "✓ 第%dステップ完了！", res.enroll_sample_count);
+                            snprintf(fb_buf, sizeof(fb_buf), "OK: ステップ %d 完了！", res.enroll_sample_count);
                             lv_label_set_text(s_lbl_enroll_feedback, fb_buf);
                             lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GREEN_ACCENT, 0);
                         }
                         if (s_lbl_vision_status) {
                             char st_buf[32];
-                            snprintf(st_buf, sizeof(st_buf), "第%dステップ完了", res.enroll_sample_count);
+                            snprintf(st_buf, sizeof(st_buf), "ステップ %d 完了", res.enroll_sample_count);
                             lv_label_set_text(s_lbl_vision_status, st_buf);
                             lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GREEN_ACCENT, 0);
                         }
@@ -976,23 +976,23 @@ void ui_vision_screen_update(void)
                         if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_RED_ACCENT, 0);
                         if (s_lbl_enroll_feedback) {
                             char fb_buf[48];
-                            snprintf(fb_buf, sizeof(fb_buf), "✕ E%d 再試行", res.enroll_error_code);
+                            snprintf(fb_buf, sizeof(fb_buf), "✕ E%d もう一度", res.enroll_error_code);
                             lv_label_set_text(s_lbl_enroll_feedback, fb_buf);
                             lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_RED_ACCENT, 0);
                         }
                         if (s_lbl_vision_status) {
-                            lv_label_set_text(s_lbl_vision_status, "再試行してください");
+                            lv_label_set_text(s_lbl_vision_status, "もう一度お願いします");
                             lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_RED_ACCENT, 0);
                         }
                     } else if (res.enroll_sample_state == VISION_ENROLL_SAMPLE_CAPTURING) {
                         if (s_box_enroll_hud) lv_obj_set_style_border_color(s_box_enroll_hud, UI_COLOR_GOLD_ACCENT, 0);
                         if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GOLD_ACCENT, 0);
                         if (s_lbl_enroll_feedback) {
-                            lv_label_set_text(s_lbl_enroll_feedback, "撮影中…");
+                            lv_label_set_text(s_lbl_enroll_feedback, "キャプチャ中…");
                             lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GOLD_ACCENT, 0);
                         }
                         if (s_lbl_vision_status) {
-                            lv_label_set_text(s_lbl_vision_status, "特徴抽出中…");
+                            lv_label_set_text(s_lbl_vision_status, "認識中…");
                             lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GOLD_ACCENT, 0);
                         }
                     } else {

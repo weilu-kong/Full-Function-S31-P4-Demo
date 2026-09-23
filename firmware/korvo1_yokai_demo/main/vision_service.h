@@ -98,8 +98,9 @@ typedef enum {
     VISION_ENROLL_ERR_CANCELLED                 = 4006,
 } vision_enroll_error_code_t;
 
-#define ENROLL_STABLE_MIN_MS       400
-#define ENROLL_STABLE_MIN_FRAMES   3
+#define ENROLL_STABLE_MIN_MS       500
+#define ENROLL_STABLE_MIN_FRAMES   4
+#define ENROLL_STEP_GRACE_MS       700
 #define ENROLL_SUCCESS_HOLD_MS     1200
 #define ENROLL_RETRY_HOLD_MS       1200
 #define ENROLL_FINAL_HOLD_MS       2000

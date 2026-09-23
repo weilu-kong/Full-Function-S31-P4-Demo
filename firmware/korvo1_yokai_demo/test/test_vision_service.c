@@ -185,18 +185,18 @@ int main(void)
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FACE_TOO_SMALL), "もう少し近づいてください") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FACE_OFF_CENTER), "顔を中央に合わせてください") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_LOW_DETECT_SCORE), "顔をはっきり映してください") == 0);
-    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_WRONG_POSE), "指示された向きに顔を向けてください") == 0);
+    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_WRONG_POSE), "顔の向きを合わせてください") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FACE_UNSTABLE), "顔を少し静止してください") == 0);
-    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_MFN_NO_MEMORY), "認識用メモリが不足しています") == 0);
-    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FEATURE_EXTRACT_FAILED), "特徴抽出に失敗しました") == 0);
-    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FEATURE_ID_INVALID), "特徴IDを確認できません") == 0);
+    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_MFN_NO_MEMORY), "メモリ不足です") == 0);
+    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FEATURE_EXTRACT_FAILED), "認識データ取得エラー") == 0);
+    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FEATURE_ID_INVALID), "IDを確認できません") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_METADATA_SAVE_FAILED), "登録データを保存できませんでした") == 0);
-    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FACE_DB_FAILED), "特徴データベースエラー") == 0);
+    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_FACE_DB_FAILED), "データベースエラー") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_EMPTY_NAME), "名前を入力してください") == 0);
-    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_DUPLICATE_NAME), "同名が既に登録されています") == 0);
+    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_DUPLICATE_NAME), "同じ名前がすでに登録されています") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_MAX_PERSONS), "登録数が上限(10名)です") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_COMMAND_TIMEOUT), "コマンドがタイムアウトしました") == 0);
-    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_INVALID_SLOT), "無効なスロット番号です") == 0);
+    assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_INVALID_SLOT), "無効なスロットです") == 0);
     assert(strcmp(vision_enroll_error_to_str(VISION_ENROLL_ERR_CANCELLED), "登録を中止しました") == 0);
 
     /* Pose yaw calculation */
@@ -221,10 +221,14 @@ int main(void)
     assert(is_pose_valid_for_step(1, test_yaw) == true);
     assert(is_pose_valid_for_step(0, test_yaw) == true);
 
-    /* Extreme turned face (yaw > 0.70) */
-    assert(is_pose_valid_for_step(0, 0.85f) == false);
-    assert(is_pose_valid_for_step(1, 0.85f) == false);
-    assert(is_pose_valid_for_step(2, -0.85f) == false);
+    /* Natural turned face (yaw = 0.80) */
+    assert(is_pose_valid_for_step(1, 0.80f) == true);
+    assert(is_pose_valid_for_step(2, -0.80f) == true);
+
+    /* Extreme turned face (yaw > 0.85) */
+    assert(is_pose_valid_for_step(0, 0.95f) == false);
+    assert(is_pose_valid_for_step(1, 0.95f) == false);
+    assert(is_pose_valid_for_step(2, -0.95f) == false);
 
     /* Prompts check */
     assert(strcmp(get_enroll_pose_prompt(0), "正面を向いてください") == 0);

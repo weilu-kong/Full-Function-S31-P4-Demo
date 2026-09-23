@@ -366,6 +366,7 @@ typedef struct {
     uint32_t stable_start_ms;
     uint32_t stable_frame_count;
     uint32_t feedback_until_ms;
+    uint32_t step_grace_until_ms;
     float last_pose_yaw;
     char prompt[64];
     esp_err_t last_error;
@@ -396,9 +397,10 @@ static bool is_pose_valid_for_step(uint8_t step, float yaw)
 {
     (void)step;
     /* ponytail: strict signed yaw gates require per-sensor 3D keypoint calibration. Current detector drops faces
-     * past ~15 deg, so wide tolerance (|yaw| <= 0.70) relies on UX prompt guidance to collect diverse samples safely.
+     * past ~15-20 deg, so wide tolerance (|yaw| <= 0.85) relies on UX prompt guidance to collect diverse samples safely
+     * without rejecting natural head turns.
      * Upgrade path: calibrate signed yaw against actual ground-truth sensor orientations when hardware lab available. */
-    return (fabsf(yaw) <= 0.70f);
+    return (fabsf(yaw) <= 0.85f);
 }
 
 /* Pose guidance prompt generator (Section 16) */
@@ -423,18 +425,18 @@ extern "C" const char *vision_enroll_error_to_str(vision_enroll_error_code_t cod
         case VISION_ENROLL_ERR_FACE_TOO_SMALL: return "もう少し近づいてください";
         case VISION_ENROLL_ERR_FACE_OFF_CENTER: return "顔を中央に合わせてください";
         case VISION_ENROLL_ERR_LOW_DETECT_SCORE: return "顔をはっきり映してください";
-        case VISION_ENROLL_ERR_WRONG_POSE: return "指示された向きに顔を向けてください";
+        case VISION_ENROLL_ERR_WRONG_POSE: return "顔の向きを合わせてください";
         case VISION_ENROLL_ERR_FACE_UNSTABLE: return "顔を少し静止してください";
-        case VISION_ENROLL_ERR_MFN_NO_MEMORY: return "認識用メモリが不足しています";
-        case VISION_ENROLL_ERR_FEATURE_EXTRACT_FAILED: return "特徴抽出に失敗しました";
-        case VISION_ENROLL_ERR_FEATURE_ID_INVALID: return "特徴IDを確認できません";
+        case VISION_ENROLL_ERR_MFN_NO_MEMORY: return "メモリ不足です";
+        case VISION_ENROLL_ERR_FEATURE_EXTRACT_FAILED: return "認識データ取得エラー";
+        case VISION_ENROLL_ERR_FEATURE_ID_INVALID: return "IDを確認できません";
         case VISION_ENROLL_ERR_METADATA_SAVE_FAILED: return "登録データを保存できませんでした";
-        case VISION_ENROLL_ERR_FACE_DB_FAILED: return "特徴データベースエラー";
+        case VISION_ENROLL_ERR_FACE_DB_FAILED: return "データベースエラー";
         case VISION_ENROLL_ERR_EMPTY_NAME: return "名前を入力してください";
-        case VISION_ENROLL_ERR_DUPLICATE_NAME: return "同名が既に登録されています";
+        case VISION_ENROLL_ERR_DUPLICATE_NAME: return "同じ名前がすでに登録されています";
         case VISION_ENROLL_ERR_MAX_PERSONS: return "登録数が上限(10名)です";
         case VISION_ENROLL_ERR_COMMAND_TIMEOUT: return "コマンドがタイムアウトしました";
-        case VISION_ENROLL_ERR_INVALID_SLOT: return "無効なスロット番号です";
+        case VISION_ENROLL_ERR_INVALID_SLOT: return "無効なスロットです";
         case VISION_ENROLL_ERR_CANCELLED: return "登録を中止しました";
         default: return "不明なエラー";
     }
@@ -699,6 +701,7 @@ static void vision_inference_task(void *arg)
                     s_enroll_txn.state = VISION_ENROLL_WAIT_FACE;
                     s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                     s_enroll_txn.error_code = VISION_ENROLL_ERR_NONE;
+                    s_enroll_txn.step_grace_until_ms = (uint32_t)(esp_timer_get_time() / 1000) + 500;
                     snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s", get_enroll_pose_prompt(0));
                     ESP_LOGI(TAG, "[ENROLL] start name='%s' slot=%d", s_enroll_txn.name, slot);
                     break;
@@ -757,6 +760,7 @@ static void vision_inference_task(void *arg)
                         s_enroll_txn.state = VISION_ENROLL_WAIT_FACE;
                         s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                         s_enroll_txn.error_code = VISION_ENROLL_ERR_NONE;
+                        s_enroll_txn.step_grace_until_ms = (uint32_t)(esp_timer_get_time() / 1000) + 500;
                         snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s", get_enroll_pose_prompt(0));
                         ESP_LOGI(TAG, "[ENROLL] start re-register name='%s' slot=%d", s_enroll_txn.name, cmd.slot);
                     }
@@ -892,7 +896,7 @@ static void vision_inference_task(void *arg)
                         s_enroll_txn.stable_start_ms = 0;
                         s_enroll_txn.stable_frame_count = 0;
                         if (s_enroll_txn.accepted_count == 1 || s_enroll_txn.accepted_count == 2) {
-                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "少し正面寄りに戻してください (E1001)");
+                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "少し正面に戻してください (E1001)");
                         } else {
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を映してください (E1001)");
                         }
@@ -912,34 +916,28 @@ static void vision_inference_task(void *arg)
                         bool has_yaw = calc_face_pose_yaw(f, &yaw);
                         s_enroll_txn.last_pose_yaw = yaw;
 
+                        vision_enroll_error_code_t frame_err = VISION_ENROLL_ERR_NONE;
+
                         if (bw < 50 || bh < 50) {
-                            s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
-                            s_enroll_txn.error_code = VISION_ENROLL_ERR_FACE_TOO_SMALL;
-                            s_enroll_txn.stable_start_ms = 0;
-                            s_enroll_txn.stable_frame_count = 0;
+                            frame_err = VISION_ENROLL_ERR_FACE_TOO_SMALL;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "もう少し近づいてください (E1003)");
                         } else if (cx < 48 || cx > (VISION_PREVIEW_WIDTH - 48) || cy < 36 || cy > (VISION_PREVIEW_HEIGHT - 36)) {
-                            s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
-                            s_enroll_txn.error_code = VISION_ENROLL_ERR_FACE_OFF_CENTER;
-                            s_enroll_txn.stable_start_ms = 0;
-                            s_enroll_txn.stable_frame_count = 0;
+                            frame_err = VISION_ENROLL_ERR_FACE_OFF_CENTER;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を中央に合わせてください (E1004)");
                         } else if (f.score < 0.50f) {
-                            s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
-                            s_enroll_txn.error_code = VISION_ENROLL_ERR_LOW_DETECT_SCORE;
-                            s_enroll_txn.stable_start_ms = 0;
-                            s_enroll_txn.stable_frame_count = 0;
+                            frame_err = VISION_ENROLL_ERR_LOW_DETECT_SCORE;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔をはっきり映してください (E1005)");
                         } else if (has_yaw && !is_pose_valid_for_step(s_enroll_txn.accepted_count, yaw)) {
-                            s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
-                            s_enroll_txn.error_code = VISION_ENROLL_ERR_WRONG_POSE;
-                            s_enroll_txn.stable_start_ms = 0;
-                            s_enroll_txn.stable_frame_count = 0;
-                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s (E1006)",
-                                     get_enroll_pose_prompt(s_enroll_txn.accepted_count));
+                            frame_err = VISION_ENROLL_ERR_WRONG_POSE;
+                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔の向きを合わせてください (E1006)");
                         }
 
-                        if (s_enroll_txn.error_code != VISION_ENROLL_ERR_NONE) {
+                        s_enroll_txn.error_code = frame_err;
+
+                        if (frame_err != VISION_ENROLL_ERR_NONE) {
+                            s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
+                            s_enroll_txn.stable_start_ms = 0;
+                            s_enroll_txn.stable_frame_count = 0;
                             static uint32_t s_enroll_fail_log_idx = 0;
                             if (++s_enroll_fail_log_idx % 10 == 1) {
                                 ESP_LOGW(TAG, "[ENROLL_GATE] step=%d fail=E%d yaw=%.3f score=%.3f box=[%d,%d,%d,%d]",
@@ -947,14 +945,20 @@ static void vision_inference_task(void *arg)
                                          f.box[0], f.box[1], f.box[2], f.box[3]);
                             }
                         } else {
-                            s_enroll_txn.error_code = VISION_ENROLL_ERR_NONE;
-                            if (s_enroll_txn.stable_start_ms == 0) {
-                                s_enroll_txn.stable_start_ms = now_ms;
-                                s_enroll_txn.stable_frame_count = 1;
-                                s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_STABILIZING;
+                            if (now_ms < s_enroll_txn.step_grace_until_ms) {
+                                s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
+                                s_enroll_txn.stable_start_ms = 0;
+                                s_enroll_txn.stable_frame_count = 0;
+                                snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s",
+                                         get_enroll_pose_prompt(s_enroll_txn.accepted_count));
                             } else {
-                                s_enroll_txn.stable_frame_count++;
-                            }
+                                if (s_enroll_txn.stable_start_ms == 0) {
+                                    s_enroll_txn.stable_start_ms = now_ms;
+                                    s_enroll_txn.stable_frame_count = 1;
+                                    s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_STABILIZING;
+                                } else {
+                                    s_enroll_txn.stable_frame_count++;
+                                }
 
                             if (s_enroll_txn.stable_frame_count % 3 == 0) {
                                 ESP_LOGI(TAG, "[ENROLL_POSE] step=%d yaw=%.3f score=%.3f box=[%d,%d,%d,%d]",
@@ -975,7 +979,7 @@ static void vision_inference_task(void *arg)
                                     s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_RETRY;
                                     s_enroll_txn.error_code = VISION_ENROLL_ERR_MFN_NO_MEMORY;
                                     s_enroll_txn.backend_error = ESP_ERR_NO_MEM;
-                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "認識用メモリが不足しています (E2001)");
+                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "メモリ不足です (E2001)");
                                     ESP_LOGE(TAG, "[ENROLL_ERR] step=%d code=2001 backend=0x%x",
                                              s_enroll_txn.accepted_count + 1, ESP_ERR_NO_MEM);
                                 } else {
@@ -996,7 +1000,8 @@ static void vision_inference_task(void *arg)
                                             s_enroll_txn.error_code = VISION_ENROLL_ERR_FEATURE_ID_INVALID;
                                             s_enroll_txn.backend_error = ESP_ERR_INVALID_RESPONSE;
                                             s_enroll_txn.feedback_until_ms = now_ms + ENROLL_RETRY_HOLD_MS;
-                                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "特徴IDを確認できません (E2003)");
+                                            s_enroll_txn.step_grace_until_ms = now_ms + ENROLL_RETRY_HOLD_MS + 500;
+                                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "IDを確認できません (E2003)");
                                             ESP_LOGE(TAG, "[ENROLL_ERR] step=%d code=2003 backend=0x%x",
                                                      s_enroll_txn.accepted_count + 1, ESP_ERR_INVALID_RESPONSE);
                                         } else {
@@ -1006,12 +1011,13 @@ static void vision_inference_task(void *arg)
                                             s_enroll_txn.state = VISION_ENROLL_SAMPLING;
                                             s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_ACCEPTED;
                                             s_enroll_txn.feedback_until_ms = now_ms + ENROLL_SUCCESS_HOLD_MS;
+                                            s_enroll_txn.step_grace_until_ms = now_ms + ENROLL_SUCCESS_HOLD_MS + ENROLL_STEP_GRACE_MS;
                                             enroll_journal_save(s_enroll_txn.name, s_enroll_txn.target_slot,
                                                                 s_enroll_txn.accepted_count, s_enroll_txn.new_feature_ids);
 
                                             ESP_LOGI(TAG, "[ENROLL] step=%d ACCEPT feature_id=%u",
                                                      s_enroll_txn.accepted_count, feat_id);
-                                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "✓ %d枚目の登録に成功しました",
+                                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "OK: %d枚目の登録完了",
                                                      s_enroll_txn.accepted_count);
 
                                             if (s_enroll_txn.accepted_count >= VISION_FACE_SAMPLES_PER_PERSON) {
@@ -1043,7 +1049,7 @@ static void vision_inference_task(void *arg)
                                                     s_enroll_txn.state = VISION_ENROLL_SUCCESS;
                                                     s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_ACCEPTED;
                                                     s_enroll_terminal_until_ms = now_ms + ENROLL_FINAL_HOLD_MS;
-                                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔登録が完了しました");
+                                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "OK: 顔登録が完了しました");
                                                     ESP_LOGI(TAG, "[ENROLL] SUCCESS slot=%u name=%s", slot, s_enroll_txn.name);
                                                 } else {
                                                     /* Rollback on metadata save failure */
@@ -1066,7 +1072,8 @@ static void vision_inference_task(void *arg)
                                         s_enroll_txn.error_code = VISION_ENROLL_ERR_FEATURE_EXTRACT_FAILED;
                                         s_enroll_txn.backend_error = enr_err;
                                         s_enroll_txn.feedback_until_ms = now_ms + ENROLL_RETRY_HOLD_MS;
-                                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "特徴抽出に失敗しました (E2002)");
+                                        s_enroll_txn.step_grace_until_ms = now_ms + ENROLL_RETRY_HOLD_MS + 500;
+                                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "認識データ取得エラー (E2002)");
                                         ESP_LOGW(TAG, "[ENROLL] step=%d RETRY code=2002 backend=0x%x yaw=%.2f",
                                                  s_enroll_txn.accepted_count + 1, enr_err, yaw);
                                         ESP_LOGE(TAG, "[ENROLL_ERR] step=%d code=2002 backend=0x%x",
@@ -1077,6 +1084,7 @@ static void vision_inference_task(void *arg)
                         }
                     }
                 }
+            }
 
                 res.enroll_state = s_enroll_txn.state;
                 res.enroll_sample_state = s_enroll_txn.sample_state;

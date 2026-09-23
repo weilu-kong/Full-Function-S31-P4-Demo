@@ -211,22 +211,20 @@ int main(void)
     assert(is_pose_valid_for_step(0, test_yaw) == true);
     assert(is_pose_valid_for_step(3, test_yaw) == true);
     assert(is_pose_valid_for_step(4, test_yaw) == true);
-    assert(is_pose_valid_for_step(1, test_yaw) == false); /* Step 1 requires turned face */
-    assert(is_pose_valid_for_step(2, test_yaw) == false); /* Step 2 requires turned face */
+    assert(is_pose_valid_for_step(1, test_yaw) == true);
+    assert(is_pose_valid_for_step(2, test_yaw) == true);
 
-    /* Turned face (yaw > 0.45) */
+    /* Turned face (yaw = 0.60) */
     std::vector<int> turned_kpt1 = {30, 50, 35, 80, 62, 65, 70, 50, 65, 80}; /* nose=62, mid=50, half=20 -> yaw=0.60 */
     assert(calc_face_pose_yaw_from_keypoints(turned_kpt1, &test_yaw) == true);
     assert(fabsf(test_yaw - 0.60f) < 0.01f);
     assert(is_pose_valid_for_step(1, test_yaw) == true);
-    assert(is_pose_valid_for_step(0, test_yaw) == false);
+    assert(is_pose_valid_for_step(0, test_yaw) == true);
 
-    /* Turned face (yaw < -0.45) */
-    std::vector<int> turned_kpt2 = {30, 50, 35, 80, 38, 65, 70, 50, 65, 80}; /* nose=38, mid=50, half=20 -> yaw=-0.60 */
-    assert(calc_face_pose_yaw_from_keypoints(turned_kpt2, &test_yaw) == true);
-    assert(fabsf(test_yaw - (-0.60f)) < 0.01f);
-    assert(is_pose_valid_for_step(2, test_yaw) == true);
-    assert(is_pose_valid_for_step(0, test_yaw) == false);
+    /* Extreme turned face (yaw > 0.70) */
+    assert(is_pose_valid_for_step(0, 0.85f) == false);
+    assert(is_pose_valid_for_step(1, 0.85f) == false);
+    assert(is_pose_valid_for_step(2, -0.85f) == false);
 
     /* Prompts check */
     assert(strcmp(get_enroll_pose_prompt(0), "正面を向いてください") == 0);

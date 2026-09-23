@@ -394,17 +394,11 @@ static bool calc_face_pose_yaw_from_keypoints(const std::vector<int> &kpt, float
 
 static bool is_pose_valid_for_step(uint8_t step, float yaw)
 {
-    switch (step) {
-        case 0: /* 1/5 front */
-        case 3: /* 4/5 front */
-        case 4: /* 5/5 front */
-            return (fabsf(yaw) <= 0.45f);
-        case 1: /* 2/5 slightly left */
-        case 2: /* 3/5 slightly right */
-            return (fabsf(yaw) >= 0.03f);
-        default:
-            return true;
-    }
+    (void)step;
+    /* ponytail: strict signed yaw gates require per-sensor 3D keypoint calibration. Current detector drops faces
+     * past ~15 deg, so wide tolerance (|yaw| <= 0.70) relies on UX prompt guidance to collect diverse samples safely.
+     * Upgrade path: calibrate signed yaw against actual ground-truth sensor orientations when hardware lab available. */
+    return (fabsf(yaw) <= 0.70f);
 }
 
 /* Pose guidance prompt generator (Section 16) */

@@ -82,6 +82,7 @@ voice_command_t voice_service_normalize_multinet_id(int id, voice_language_t *la
 int voice_service_apply_volume(voice_command_t command, int current, int *saved_nonzero);
 
 bool voice_service_start(void);
+void voice_service_stop(void);
 bool voice_service_is_ready(void);
 const char *voice_service_error(void);
 void voice_service_set_mode(voice_mode_t mode);

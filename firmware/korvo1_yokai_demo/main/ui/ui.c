@@ -6,8 +6,12 @@
 #include "ui/ui_wifi.h"
 #include "ui/ui_bluetooth.h"
 #include "ui/ui_apps.h"
+#include "ui/ui_fireworks.h"
+#include "ui/ui_clock.h"
+#include "ui/ui_calculator.h"
 #include "ui/ui_drawer.h"
 #include "ui/ui_image_loader.h"
+#include "app_health.h"
 #include "board_ui.h"
 #include "weather_service.h"
 #include "synth_service.h"
@@ -302,6 +306,14 @@ static void trans_expand_completed_cb(lv_anim_t *a)
         } else if (s_pending_target == UI_SCREEN_VISION) {
             ui_vision_set_active(true);
             vision_service_start();
+        } else if (s_pending_target == UI_SCREEN_FIREWORKS) {
+            ui_fireworks_set_active(true);
+            app_health_log_heap("enter fireworks");
+        } else if (s_pending_target == UI_SCREEN_CLOCK) {
+            ui_clock_set_active(true);
+            app_health_log_heap("enter clock");
+        } else if (s_pending_target == UI_SCREEN_CALCULATOR) {
+            app_health_log_heap("enter calculator");
         }
     }
     if (card) {
@@ -339,6 +351,17 @@ void ui_switch_screen(ui_screen_t target)
     if (prev == UI_SCREEN_VISION && target != UI_SCREEN_VISION) {
         vision_service_stop();
         ui_vision_set_active(false);
+    }
+    if (prev == UI_SCREEN_FIREWORKS && target != UI_SCREEN_FIREWORKS) {
+        ui_fireworks_set_active(false);
+        app_health_log_heap("exit fireworks");
+    }
+    if (prev == UI_SCREEN_CLOCK && target != UI_SCREEN_CLOCK) {
+        ui_clock_set_active(false);
+        app_health_log_heap("exit clock");
+    }
+    if (prev == UI_SCREEN_CALCULATOR && target != UI_SCREEN_CALCULATOR) {
+        app_health_log_heap("exit calculator");
     }
 
     /*
@@ -433,8 +456,11 @@ void ui_tick_periodic(void)
         ui_synth_update_waveform();
     }
 
-    /* 6. Update Remaining Apps (Clock / Timer, etc.) */
-    ui_apps_tick_periodic();
+    /* 6. Update Clock / Timer and Fireworks */
+    ui_clock_tick();
+    if (s_current_screen == UI_SCREEN_FIREWORKS) {
+        ui_fireworks_tick();
+    }
 
     /* 7. Update Vision Screen */
     if (s_current_screen == UI_SCREEN_VISION) {

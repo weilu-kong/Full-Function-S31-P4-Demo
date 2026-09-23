@@ -10,9 +10,6 @@ extern "C" {
 
 lv_obj_t *ui_voice_screen_create(ui_home_btn_cb_t home_cb);
 lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb);
-lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb);
-lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb);
-lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb);
 lv_obj_t *ui_food_screen_create(ui_home_btn_cb_t home_cb);
 
 void ui_voice_screen_update(const voice_result_t *result, int volume,

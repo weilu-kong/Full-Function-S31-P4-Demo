@@ -17,27 +17,9 @@ static const char *TAG = "yokai_demo";
 #include "esp_lv_adapter.h"
 #include "bsp/esp32_s31_korvo_1.h"
 
-#include "esp_spiffs.h"
-
-static void init_storage(void)
-{
-    esp_vfs_spiffs_conf_t conf = {
-        .base_path = "/storage",
-        .partition_label = "storage",
-        .max_files = 5,
-        .format_if_mount_failed = true
-    };
-    esp_err_t ret = esp_vfs_spiffs_register(&conf);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mount /storage SPIFFS (%s)", esp_err_to_name(ret));
-        return;
-    }
-    size_t total = 0, used = 0;
-    ret = esp_spiffs_info("storage", &total, &used);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Storage SPIFFS mounted: total=%u bytes, used=%u bytes", (unsigned)total, (unsigned)used);
-    }
-}
+#include "storage_service.h"
+#include "app_health.h"
+#include "app_regression.h"
 
 void app_main(void)
 {
@@ -48,8 +30,12 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    /* Mount /storage SPIFFS partition for persistent face DB and user presets */
-    init_storage();
+    /* Mount /storage SPIFFS partition (safe, no auto-formatting) */
+    esp_err_t storage_err = app_storage_init();
+    if (storage_err != ESP_OK) {
+        ESP_LOGE(TAG, "Storage initialization failed: %s (face DB will be read-only/unavailable)",
+                 esp_err_to_name(storage_err));
+    }
 
     /* Initialize synthesizer audio engine with esp-audio-effects */
     ESP_ERROR_CHECK(synth_service_init());
@@ -74,8 +60,11 @@ void app_main(void)
     ESP_ERROR_CHECK(board_ui_start(&state));
     ESP_LOGI(TAG, "Korvo-1 Yokai demo UI started");
     vision_memory_checkpoint("M0 UI ready");
+    app_health_log_heap("M0 UI ready");
     ESP_LOGI(TAG, "PSRAM boot/UI ready: free=%u largest=%u SIMD_largest=%u",
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD));
+
+    app_regression_start();
 }

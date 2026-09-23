@@ -3,6 +3,34 @@
 #include "lvgl.h"
 #include <stdint.h>
 
+#ifndef LV_OPA_15
+#define LV_OPA_15 ((lv_opa_t)38)
+#endif
+#ifndef LV_OPA_25
+#define LV_OPA_25 ((lv_opa_t)64)
+#endif
+#ifndef LV_OPA_35
+#define LV_OPA_35 ((lv_opa_t)89)
+#endif
+#ifndef LV_OPA_45
+#define LV_OPA_45 ((lv_opa_t)115)
+#endif
+#ifndef LV_OPA_55
+#define LV_OPA_55 ((lv_opa_t)140)
+#endif
+#ifndef LV_OPA_65
+#define LV_OPA_65 ((lv_opa_t)166)
+#endif
+#ifndef LV_OPA_75
+#define LV_OPA_75 ((lv_opa_t)191)
+#endif
+#ifndef LV_OPA_85
+#define LV_OPA_85 ((lv_opa_t)217)
+#endif
+#ifndef LV_OPA_95
+#define LV_OPA_95 ((lv_opa_t)242)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

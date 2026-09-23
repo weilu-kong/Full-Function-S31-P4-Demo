@@ -143,10 +143,12 @@ typedef struct {
 
 static voice_feed_buffers_t s_feed;
 
+static void voice_service_cleanup_start_failure(void);
+
 static bool fail_start(const char *message)
 {
     snprintf(s_error, sizeof(s_error), "%s", message);
-    s_ready = false;
+    voice_service_cleanup_start_failure();
     ESP_LOGE(TAG, "%s", s_error);
     return false;
 }
@@ -762,6 +764,80 @@ static void voice_fetch_task(void *arg)
             command_window = (mode == VOICE_MODE_CONTINUOUS);
         }
     }
+    vTaskDelete(NULL);
+}
+
+static void voice_service_cleanup_start_failure(void)
+{
+    if (s_fetch_task != NULL) {
+        vTaskDelete(s_fetch_task);
+        s_fetch_task = NULL;
+    }
+    if (s_feed_task != NULL) {
+        vTaskDelete(s_feed_task);
+        s_feed_task = NULL;
+    }
+    free_feed_buffers();
+
+    if (s_mn_data != NULL) {
+        esp_mn_commands_free();
+        if (s_mn != NULL && s_mn->destroy != NULL) {
+            s_mn->destroy(s_mn_data);
+        }
+        s_mn_data = NULL;
+    }
+
+    if (s_afe_data != NULL) {
+        if (s_afe != NULL && s_afe->destroy != NULL) {
+            s_afe->destroy(s_afe_data);
+        }
+        s_afe_data = NULL;
+    }
+
+    if (s_models != NULL) {
+        esp_srmodel_deinit(s_models);
+        s_models = NULL;
+    }
+
+    if (s_mic_asrc != NULL) {
+        esp_asrc_close(s_mic_asrc);
+        s_mic_asrc = NULL;
+    }
+    if (s_ref_asrc != NULL) {
+        esp_asrc_close(s_ref_asrc);
+        s_ref_asrc = NULL;
+    }
+
+    if (s_mic_dev != NULL) {
+        esp_codec_dev_close(s_mic_dev);
+        s_mic_dev = NULL;
+    }
+
+    if (s_ref_ring != NULL) {
+        free(s_ref_ring);
+        s_ref_ring = NULL;
+    }
+    s_ref_read = 0;
+    s_ref_write = 0;
+    s_ref_count = 0;
+
+    if (s_ref_mutex != NULL) {
+        vSemaphoreDelete(s_ref_mutex);
+        s_ref_mutex = NULL;
+    }
+
+    if (s_result_queue != NULL) {
+        vQueueDelete(s_result_queue);
+        s_result_queue = NULL;
+    }
+
+    s_ready = false;
+}
+
+void voice_service_stop(void)
+{
+    voice_service_cleanup_start_failure();
+    ESP_LOGI(TAG, "Voice service stopped and all resources rolled back");
 }
 
 bool voice_service_start(void)

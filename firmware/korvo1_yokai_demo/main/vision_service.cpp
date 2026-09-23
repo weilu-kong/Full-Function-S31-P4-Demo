@@ -13,6 +13,7 @@
 #include <vector>
 #include "vision_service.h"
 #include "vision_camera.h"
+#include "storage_service.h"
 
 #ifdef HOST_TEST
 #define LOG_TAG "vision_service"
@@ -1245,6 +1246,44 @@ private:
 };
 #endif
 
+static void vision_service_cleanup_partial_init(void)
+{
+#ifndef HOST_TEST
+    for (int i = 0; i < 3; ++i) {
+        if (s_preview_buf[i]) {
+            heap_caps_free(s_preview_buf[i]);
+            s_preview_buf[i] = NULL;
+        }
+    }
+
+    if (s_preview_mutex) {
+        vSemaphoreDelete(s_preview_mutex);
+        s_preview_mutex = NULL;
+    }
+    if (s_cmd_queue) {
+        vQueueDelete(s_cmd_queue);
+        s_cmd_queue = NULL;
+    }
+    if (s_result_queue) {
+        vQueueDelete(s_result_queue);
+        s_result_queue = NULL;
+    }
+    if (s_lifecycle_events) {
+        vEventGroupDelete(s_lifecycle_events);
+        s_lifecycle_events = NULL;
+    }
+    if (s_infer_sem) {
+        vSemaphoreDelete(s_infer_sem);
+        s_infer_sem = NULL;
+    }
+    if (s_lock) {
+        vSemaphoreDelete(s_lock);
+        s_lock = NULL;
+    }
+#endif
+    s_inited = false;
+}
+
 extern "C" esp_err_t vision_service_init(void)
 {
     if (s_inited) {
@@ -1255,59 +1294,42 @@ extern "C" esp_err_t vision_service_init(void)
     s_lock = xSemaphoreCreateMutex();
     if (!s_lock) {
         ESP_LOGE(TAG, "Failed to create mutex");
+        vision_service_cleanup_partial_init();
         return ESP_ERR_NO_MEM;
     }
 
     s_infer_sem = xSemaphoreCreateBinary();
     if (!s_infer_sem) {
         ESP_LOGE(TAG, "Failed to create inference semaphore");
-        vSemaphoreDelete(s_lock);
-        s_lock = NULL;
+        vision_service_cleanup_partial_init();
         return ESP_ERR_NO_MEM;
     }
 
     s_lifecycle_events = xEventGroupCreate();
     if (!s_lifecycle_events) {
-        vSemaphoreDelete(s_infer_sem);
-        s_infer_sem = NULL;
-        vSemaphoreDelete(s_lock);
-        s_lock = NULL;
+        ESP_LOGE(TAG, "Failed to create lifecycle events");
+        vision_service_cleanup_partial_init();
         return ESP_ERR_NO_MEM;
     }
 
     s_result_queue = xQueueCreate(2, sizeof(vision_result_t));
     if (!s_result_queue) {
         ESP_LOGE(TAG, "Failed to create result queue");
-        vSemaphoreDelete(s_infer_sem);
-        s_infer_sem = NULL;
-        vSemaphoreDelete(s_lock);
-        s_lock = NULL;
+        vision_service_cleanup_partial_init();
         return ESP_ERR_NO_MEM;
     }
 
     s_cmd_queue = xQueueCreate(8, sizeof(vision_cmd_t));
     if (!s_cmd_queue) {
         ESP_LOGE(TAG, "Failed to create command queue");
-        vSemaphoreDelete(s_result_queue);
-        s_result_queue = NULL;
-        vSemaphoreDelete(s_infer_sem);
-        s_infer_sem = NULL;
-        vSemaphoreDelete(s_lock);
-        s_lock = NULL;
+        vision_service_cleanup_partial_init();
         return ESP_ERR_NO_MEM;
     }
 
     s_preview_mutex = xSemaphoreCreateMutex();
     if (!s_preview_mutex) {
         ESP_LOGE(TAG, "Failed to create preview mutex");
-        vQueueDelete(s_cmd_queue);
-        s_cmd_queue = NULL;
-        vSemaphoreDelete(s_result_queue);
-        s_result_queue = NULL;
-        vSemaphoreDelete(s_infer_sem);
-        s_infer_sem = NULL;
-        vSemaphoreDelete(s_lock);
-        s_lock = NULL;
+        vision_service_cleanup_partial_init();
         return ESP_ERR_NO_MEM;
     }
 
@@ -1316,6 +1338,7 @@ extern "C" esp_err_t vision_service_init(void)
         s_preview_buf[i] = (uint8_t *)heap_caps_malloc(PREVIEW_FRAME_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (!s_preview_buf[i]) {
             ESP_LOGE(TAG, "Failed to allocate preview buffer %d in PSRAM", i);
+            vision_service_cleanup_partial_init();
             return ESP_ERR_NO_MEM;
         }
         memset(s_preview_buf[i], 0, PREVIEW_FRAME_SIZE);
@@ -1638,6 +1661,11 @@ extern "C" esp_err_t vision_service_begin_enrollment(const char *utf8_name)
 
     if (find_person_by_name(clean_name) != NULL) {
         ESP_LOGW(TAG, "Duplicate name '%s' already registered", clean_name);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!app_storage_is_ready()) {
+        ESP_LOGW(TAG, "Cannot enroll: persistent storage is not available");
         return ESP_ERR_INVALID_STATE;
     }
 

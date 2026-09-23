@@ -73,6 +73,26 @@ static uint8_t s_host_buffer[VISION_CAM_WIDTH * VISION_CAM_HEIGHT * 2];
 static uint32_t s_host_frame_id = 0;
 #endif
 
+static void camera_cleanup_partial_init(void)
+{
+#ifndef HOST_TEST
+    for (int i = 0; i < VISION_CAM_BUFFER_COUNT; ++i) {
+        if (s_buffers[i] && s_buffer_len[i] > 0) {
+            munmap(s_buffers[i], s_buffer_len[i]);
+            s_buffers[i] = NULL;
+            s_buffer_len[i] = 0;
+        }
+    }
+
+    if (s_cam_fd >= 0) {
+        close(s_cam_fd);
+        s_cam_fd = -1;
+    }
+#endif
+    s_streaming = false;
+    s_inited = false;
+}
+
 esp_err_t vision_camera_init(void)
 {
     if (s_inited) {
@@ -105,8 +125,7 @@ esp_err_t vision_camera_init(void)
     };
     if (ioctl(s_cam_fd, VIDIOC_G_FMT, &fmt) != 0) {
         ESP_LOGE(TAG, "VIDIOC_G_FMT failed");
-        close(s_cam_fd);
-        s_cam_fd = -1;
+        camera_cleanup_partial_init();
         return ESP_FAIL;
     }
 
@@ -129,15 +148,13 @@ esp_err_t vision_camera_init(void)
     };
     if (ioctl(s_cam_fd, VIDIOC_REQBUFS, &req) != 0) {
         ESP_LOGE(TAG, "VIDIOC_REQBUFS failed");
-        close(s_cam_fd);
-        s_cam_fd = -1;
+        camera_cleanup_partial_init();
         return ESP_FAIL;
     }
     if (req.count < VISION_CAM_BUFFER_COUNT) {
         ESP_LOGE(TAG, "VIDIOC_REQBUFS returned %u buffers, need %u",
                  req.count, VISION_CAM_BUFFER_COUNT);
-        close(s_cam_fd);
-        s_cam_fd = -1;
+        camera_cleanup_partial_init();
         return ESP_FAIL;
     }
 
@@ -150,8 +167,7 @@ esp_err_t vision_camera_init(void)
         };
         if (ioctl(s_cam_fd, VIDIOC_QUERYBUF, &buf) != 0) {
             ESP_LOGE(TAG, "VIDIOC_QUERYBUF failed for index %d", i);
-            close(s_cam_fd);
-            s_cam_fd = -1;
+            camera_cleanup_partial_init();
             return ESP_FAIL;
         }
 
@@ -160,8 +176,7 @@ esp_err_t vision_camera_init(void)
         if (s_buffers[i] == MAP_FAILED) {
             ESP_LOGE(TAG, "mmap failed for index %d", i);
             s_buffers[i] = NULL;
-            close(s_cam_fd);
-            s_cam_fd = -1;
+            camera_cleanup_partial_init();
             return ESP_FAIL;
         }
         s_buffer_len[i] = buf.length;

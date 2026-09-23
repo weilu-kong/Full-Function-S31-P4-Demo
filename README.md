@@ -28,16 +28,12 @@ The project has moved beyond a static UI prototype and now runs the main service
 | Object recognition | ⏸ Paused | Intentionally not part of the current completion gate |
 | Wi-Fi | ✅ Implemented | Scan, password entry, saved STA config, connection/error feedback |
 | Bluetooth audio | ✅ Implemented | Classic BT / A2DP sink and shared audio output |
-| Fireworks | 🟡 Prototype | Current implementation is a simple touch-triggered expanding/fading circle |
-| Clock / Timer | 🟡 Prototype | Clock plus fixed 3-minute timer |
-| Calculator | 🟡 Prototype | Basic two-operand arithmetic; UI and engine will be expanded |
+| Fireworks | ✅ Production (Style B) | Torii & lake procedural art, custom LVGL layer draw callback, fixed pool (160 particles, 4 rockets), 3 styles (菊/牡丹/柳), manual tap + auto fireworks, zero per-frame malloc |
+| Clock / Timer | ✅ Production (Style B) | Torii & lake twilight procedural art, SNTP-backed clock, `esp_timer_get_time()` monotonic deadline countdown, stopwatch with 8 rolling laps |
+| Calculator | ✅ Production (Style A) | Dark lacquer & gold procedural bezel, AC/C, +/-, %, 4 basic operations, decimal handling, chained evaluation, operator replacement, repeated equals, divide-by-zero protection, max 8-record rolling history |
 | Food freshness | 🟡 Prototype | UI/demo state; persistence/editing remains future work |
 
-The current development focus after Vision AI is:
-
-1. **Night Sky Fireworks** — rich touch-triggered screen fireworks without large permanent frame buffers.
-2. **Clock / Timer** — SNTP-backed clock, configurable timer, stopwatch/presets, completion feedback.
-3. **Calculator** — iPhone-style basic calculator behavior, robust chained operations, percent/sign/error handling and history.
+Detailed hardware verification data and telemetry: [YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md](docs/YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md).
 
 ---
 

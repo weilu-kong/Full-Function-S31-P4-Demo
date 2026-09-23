@@ -398,10 +398,10 @@ static bool is_pose_valid_for_step(uint8_t step, float yaw)
         case 0: /* 1/5 front */
         case 3: /* 4/5 front */
         case 4: /* 5/5 front */
-            return (fabsf(yaw) <= 0.20f);
+            return (fabsf(yaw) <= 0.25f);
         case 1: /* 2/5 slightly left */
         case 2: /* 3/5 slightly right */
-            return (fabsf(yaw) >= 0.10f);
+            return (fabsf(yaw) >= 0.08f);
         default:
             return true;
     }
@@ -914,19 +914,19 @@ static void vision_inference_task(void *arg)
                         bool has_yaw = calc_face_pose_yaw(f, &yaw);
                         s_enroll_txn.last_pose_yaw = yaw;
 
-                        if (bw < 60 || bh < 60) {
+                        if (bw < 50 || bh < 50) {
                             s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                             s_enroll_txn.error_code = VISION_ENROLL_ERR_FACE_TOO_SMALL;
                             s_enroll_txn.stable_start_ms = 0;
                             s_enroll_txn.stable_frame_count = 0;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "もう少し近づいてください (E1003)");
-                        } else if (cx < 64 || cx > (VISION_PREVIEW_WIDTH - 64) || cy < 48 || cy > (VISION_PREVIEW_HEIGHT - 48)) {
+                        } else if (cx < 48 || cx > (VISION_PREVIEW_WIDTH - 48) || cy < 36 || cy > (VISION_PREVIEW_HEIGHT - 36)) {
                             s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                             s_enroll_txn.error_code = VISION_ENROLL_ERR_FACE_OFF_CENTER;
                             s_enroll_txn.stable_start_ms = 0;
                             s_enroll_txn.stable_frame_count = 0;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を中央に合わせてください (E1004)");
-                        } else if (f.score < 0.70f) {
+                        } else if (f.score < 0.60f) {
                             s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                             s_enroll_txn.error_code = VISION_ENROLL_ERR_LOW_DETECT_SCORE;
                             s_enroll_txn.stable_start_ms = 0;
@@ -939,6 +939,15 @@ static void vision_inference_task(void *arg)
                             s_enroll_txn.stable_frame_count = 0;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "%s (E1006)",
                                      get_enroll_pose_prompt(s_enroll_txn.accepted_count));
+                        }
+
+                        if (s_enroll_txn.error_code != VISION_ENROLL_ERR_NONE) {
+                            static uint32_t s_enroll_fail_log_idx = 0;
+                            if (++s_enroll_fail_log_idx % 10 == 1) {
+                                ESP_LOGW(TAG, "[ENROLL_GATE] step=%d fail=E%d yaw=%.3f score=%.3f box=[%d,%d,%d,%d]",
+                                         s_enroll_txn.accepted_count + 1, s_enroll_txn.error_code, yaw, f.score,
+                                         f.box[0], f.box[1], f.box[2], f.box[3]);
+                            }
                         } else {
                             s_enroll_txn.error_code = VISION_ENROLL_ERR_NONE;
                             if (s_enroll_txn.stable_start_ms == 0) {
@@ -954,7 +963,7 @@ static void vision_inference_task(void *arg)
                                          s_enroll_txn.accepted_count + 1, yaw, f.score, f.box[0], f.box[1], f.box[2], f.box[3]);
                             }
 
-                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "静止してください (%d/%d)",
+                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "静止確認中 (%d/%d)",
                                      (int)s_enroll_txn.stable_frame_count, (int)ENROLL_STABLE_MIN_FRAMES);
 
                             if ((now_ms - s_enroll_txn.stable_start_ms >= ENROLL_STABLE_MIN_MS) &&

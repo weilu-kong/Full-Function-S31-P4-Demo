@@ -949,7 +949,11 @@ void ui_vision_screen_update(void)
                 } else {
                     /* SAMPLING / COMMITTING / WAIT_FACE */
                     char step_buf[32];
-                    snprintf(step_buf, sizeof(step_buf), "顔登録 %d / 5", res.enroll_sample_count);
+                    uint8_t curr_step = (res.enroll_sample_state == VISION_ENROLL_SAMPLE_ACCEPTED)
+                                        ? res.enroll_sample_count
+                                        : (res.enroll_sample_count + 1);
+                    if (curr_step > 5) curr_step = 5;
+                    snprintf(step_buf, sizeof(step_buf), "顔登録 %d / 5", curr_step);
                     if (s_lbl_enroll_step) lv_label_set_text(s_lbl_enroll_step, step_buf);
 
                     if (res.enroll_sample_state == VISION_ENROLL_SAMPLE_ACCEPTED) {
@@ -957,12 +961,14 @@ void ui_vision_screen_update(void)
                         if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_GREEN_ACCENT, 0);
                         if (s_lbl_enroll_feedback) {
                             char fb_buf[48];
-                            snprintf(fb_buf, sizeof(fb_buf), "✓ %d枚目の登録成功", res.enroll_sample_count);
+                            snprintf(fb_buf, sizeof(fb_buf), "✓ 第%dステップ完了！", res.enroll_sample_count);
                             lv_label_set_text(s_lbl_enroll_feedback, fb_buf);
                             lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_GREEN_ACCENT, 0);
                         }
                         if (s_lbl_vision_status) {
-                            lv_label_set_text(s_lbl_vision_status, "サンプル登録成功");
+                            char st_buf[32];
+                            snprintf(st_buf, sizeof(st_buf), "第%dステップ完了", res.enroll_sample_count);
+                            lv_label_set_text(s_lbl_vision_status, st_buf);
                             lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_GREEN_ACCENT, 0);
                         }
                     } else if (res.enroll_sample_state == VISION_ENROLL_SAMPLE_RETRY) {

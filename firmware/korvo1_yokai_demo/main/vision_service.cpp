@@ -398,10 +398,10 @@ static bool is_pose_valid_for_step(uint8_t step, float yaw)
         case 0: /* 1/5 front */
         case 3: /* 4/5 front */
         case 4: /* 5/5 front */
-            return (fabsf(yaw) <= 0.28f);
+            return (fabsf(yaw) <= 0.45f);
         case 1: /* 2/5 slightly left */
         case 2: /* 3/5 slightly right */
-            return (fabsf(yaw) >= 0.05f);
+            return (fabsf(yaw) >= 0.03f);
         default:
             return true;
     }
@@ -936,7 +936,7 @@ static void vision_inference_task(void *arg)
                             s_enroll_txn.stable_start_ms = 0;
                             s_enroll_txn.stable_frame_count = 0;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔をはっきり映してください (E1005)");
-                        } else if (!has_yaw || !is_pose_valid_for_step(s_enroll_txn.accepted_count, yaw)) {
+                        } else if (has_yaw && !is_pose_valid_for_step(s_enroll_txn.accepted_count, yaw)) {
                             s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                             s_enroll_txn.error_code = VISION_ENROLL_ERR_WRONG_POSE;
                             s_enroll_txn.stable_start_ms = 0;

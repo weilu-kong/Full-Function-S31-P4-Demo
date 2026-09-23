@@ -52,7 +52,7 @@
 | **Wi-Fi 交信 (Wi-Fi)** | 真实后台扫描任务（`esp_wifi_scan_start`）；动态 AP 列表（显示 SSID、RSSI 信号格、加密锁）；点击 SSID 弹出密码输入抽屉，**集成全键盘虚拟键盘**；支持输入连接、获取 IP 及连接失败原因码反馈。 | 记住已连接过的 Wi-Fi 密码并在开机自动重连 |
 | **蓝牙音频 (Bluetooth)** | A2DP Sink 设备名称 `Yokai-Groovebox`；蓝牙设备扫描及状态展示；主音量滑块直连硬件 Codec。 | 完善 BLE 配对握手与状态广播 |
 | **阴阳电卓 (Calculator)** | 顶栏 LCD 液晶屏已升级为 **32px（`UI_FONT_LARGE`）**；16 颗大按键（0~9、加减乘除、C、=）标签均升级为 **32px**；支持完整连续四则运算。 | 增加浮点数与历史记录小徽标 |
-| **目目连视觉 (Vision AI)** | 带有扫描光标与 HUD 准星的视觉推理 UI。支持语音 "カメラ" / "がぞう" 唤起。 | 接入 DVP/USB 摄像头驱动及 ESP-DL 人脸/物体模型 |
+| **目目连视觉 (Vision AI)** | **全面完成并实测闭环**：DVP SC101IOT 1280×720 UYVY 摄像头驱动、DMA Ping-Pong 预览缓冲、ESP-DL 人脸检测 + MobileFaceNet 识别、5 样本姿态引导录入状态机（正面/向左/向右/复位/校验）、姿态角 Landmark Yaw 容差（0.85）、700ms 步骤切换宽限、Flash NVS 原子化持久化与日志回滚、Flex Column 弹性排版 HUD（防文字重叠）、字库白名单合规（0缺失字符）。详见 [VISION_ENROLLMENT_UX_RELIABILITY_2026-09-24.md](VISION_ENROLLMENT_UX_RELIABILITY_2026-09-24.md)。 | 持续验证长期运行稳定性 |
 | **言灵神社 (Voice Shrine)** | **全面完成并实测闭环**：ESP-SR AFE/AEC、日语/英语双唤醒词（"Hi ESP" / "こんにちはESP"）全局唤醒、MultiNet7 双语 15 组命令离线识别；麦克风 34dB 降噪调优、VAD_MODE_3 快速截断（300ms）、0.23f 判决阈值、5.0s 聆听窗口；彻底解决唤醒死锁与 "Gohan"/"Go Home" 冲突；转场 Toast 修正为地道日语（"言霊の社"、"雷神シンセ" 等）；真机全部 15 项指令 100% 验收通过。 | 保持声学配置稳定，继续下一阶段视觉与联网业务 |
 | **狸屋时钟 (Clock & Timer)** | 巨型时钟显示与高精度秒表/计时器（開始、停止、リセット）。 | 联动 SNTP 网络授时校准系统 RTC |
 | **百鬼台所 (Food Freshness)** | 食材保质期倒计时卡片，视觉状态徽章与分类列表。 | 支持添加/删除食材条目 |

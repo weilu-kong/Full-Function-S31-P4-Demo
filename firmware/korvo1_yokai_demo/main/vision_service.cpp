@@ -398,10 +398,10 @@ static bool is_pose_valid_for_step(uint8_t step, float yaw)
         case 0: /* 1/5 front */
         case 3: /* 4/5 front */
         case 4: /* 5/5 front */
-            return (fabsf(yaw) <= 0.25f);
+            return (fabsf(yaw) <= 0.28f);
         case 1: /* 2/5 slightly left */
         case 2: /* 3/5 slightly right */
-            return (fabsf(yaw) >= 0.08f);
+            return (fabsf(yaw) >= 0.05f);
         default:
             return true;
     }
@@ -897,7 +897,11 @@ static void vision_inference_task(void *arg)
                         s_enroll_txn.error_code = VISION_ENROLL_ERR_NO_FACE;
                         s_enroll_txn.stable_start_ms = 0;
                         s_enroll_txn.stable_frame_count = 0;
-                        snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を映してください (E1001)");
+                        if (s_enroll_txn.accepted_count == 1 || s_enroll_txn.accepted_count == 2) {
+                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "少し正面寄りに戻してください (E1001)");
+                        } else {
+                            snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を映してください (E1001)");
+                        }
                     } else if (faces.size() > 1) {
                         s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                         s_enroll_txn.error_code = VISION_ENROLL_ERR_MULTIPLE_FACES;
@@ -926,7 +930,7 @@ static void vision_inference_task(void *arg)
                             s_enroll_txn.stable_start_ms = 0;
                             s_enroll_txn.stable_frame_count = 0;
                             snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "顔を中央に合わせてください (E1004)");
-                        } else if (f.score < 0.60f) {
+                        } else if (f.score < 0.50f) {
                             s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_WAITING;
                             s_enroll_txn.error_code = VISION_ENROLL_ERR_LOW_DETECT_SCORE;
                             s_enroll_txn.stable_start_ms = 0;

@@ -1049,7 +1049,7 @@ static void vision_inference_task(void *arg)
                                                     s_enroll_txn.state = VISION_ENROLL_SUCCESS;
                                                     s_enroll_txn.sample_state = VISION_ENROLL_SAMPLE_ACCEPTED;
                                                     s_enroll_terminal_until_ms = now_ms + ENROLL_FINAL_HOLD_MS;
-                                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "OK: 顔登録が完了しました");
+                                                    snprintf(s_enroll_txn.prompt, sizeof(s_enroll_txn.prompt), "登録が完了しました");
                                                     ESP_LOGI(TAG, "[ENROLL] SUCCESS slot=%u name=%s", slot, s_enroll_txn.name);
                                                 } else {
                                                     /* Rollback on metadata save failure */

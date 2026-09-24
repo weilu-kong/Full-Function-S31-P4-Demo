@@ -3,6 +3,7 @@
 #include "ui/ui_theme.h"
 #include "clock_service.h"
 #include "weather_service.h"
+#include "misc/cache/instance/lv_image_cache.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
@@ -209,11 +210,6 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
-    lv_obj_t *title = lv_label_create(scr);
-    lv_obj_set_pos(title, 146, 20);
-    lv_label_set_text(title, "狸屋の時計 🐾");
-    lv_obj_set_style_text_font(title, UI_FONT_TITLE, 0);
-    lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
 
     static const char *tabs[3] = {"時計", "タイマー", "ストップウォッチ"};
     const int tx[3] = {420, 532, 644};
@@ -361,13 +357,13 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_t *lh = lv_label_create(lap_box);
     lv_label_set_text(lh, "ラップ記録");
     lv_obj_set_style_text_font(lh, UI_FONT_SMALL, 0);
-    lv_obj_set_style_text_color(lh, lv_color_hex(0x738A9C), 0);
+    lv_obj_set_style_text_color(lh, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_pos(lh, 14, 8);
 
     s_sw_empty_label = lv_label_create(lap_box);
     lv_label_set_text(s_sw_empty_label, "ラップを押すとここに記録されます");
     lv_obj_set_style_text_font(s_sw_empty_label, UI_FONT_SMALL, 0);
-    lv_obj_set_style_text_color(s_sw_empty_label, lv_color_hex(0x566B7E), 0);
+    lv_obj_set_style_text_color(s_sw_empty_label, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_pos(s_sw_empty_label, 14, 42);
 
     for (int i = 0; i < 8; ++i) {
@@ -420,12 +416,16 @@ void ui_clock_set_active(bool active)
     s_active = active;
     if (active) {
         if (s_img_bg && ui_app_shared_bg.data) {
+            lv_image_cache_drop(&ui_app_shared_bg);
             lv_image_set_src(s_img_bg, &ui_app_shared_bg);
+            lv_obj_set_pos(s_img_bg, 0, 0);
+            lv_obj_set_size(s_img_bg, 800, 480);
+            lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
             lv_obj_invalidate(s_img_bg);
         }
     } else {
         if (s_img_bg) {
-            lv_image_set_src(s_img_bg, NULL);
+            lv_obj_add_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }

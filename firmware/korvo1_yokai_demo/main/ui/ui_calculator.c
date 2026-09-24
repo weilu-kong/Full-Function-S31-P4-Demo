@@ -2,6 +2,7 @@
 #include "ui/ui_image_loader.h"
 #include "ui/ui_theme.h"
 #include "calculator_engine.h"
+#include "misc/cache/instance/lv_image_cache.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -159,11 +160,6 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
-    lv_obj_t *title = lv_label_create(scr);
-    lv_obj_set_pos(title, 310, 18);
-    lv_label_set_text(title, "和風そろばん");
-    lv_obj_set_style_text_font(title, UI_FONT_TITLE, 0);
-    lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
 
     /* History button top-right: Japanese text only (fixes [x] mojibake) */
     lv_obj_t *hist = lv_button_create(scr);
@@ -269,13 +265,17 @@ void ui_calculator_set_active(bool active)
 {
     if (active) {
         if (s_img_bg && ui_app_shared_bg.data) {
+            lv_image_cache_drop(&ui_app_shared_bg);
             lv_image_set_src(s_img_bg, &ui_app_shared_bg);
+            lv_obj_set_pos(s_img_bg, 0, 0);
+            lv_obj_set_size(s_img_bg, 800, 480);
+            lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
             lv_obj_invalidate(s_img_bg);
         }
         refresh_display();
     } else {
         if (s_img_bg) {
-            lv_image_set_src(s_img_bg, NULL);
+            lv_obj_add_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }

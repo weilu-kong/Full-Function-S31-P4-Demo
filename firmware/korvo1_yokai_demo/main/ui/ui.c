@@ -318,6 +318,9 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             app_health_log_heap("enter calculator");
         }
         lv_screen_load(s_screen_objs[s_pending_target]);
+        if (s_pending_target != UI_SCREEN_CLOCK && s_pending_target != UI_SCREEN_CALCULATOR) {
+            ui_app_background_free();
+        }
     }
     if (card) {
         lv_obj_delete(card);
@@ -366,10 +369,6 @@ void ui_switch_screen(ui_screen_t target)
     if (prev == UI_SCREEN_CALCULATOR && target != UI_SCREEN_CALCULATOR) {
         ui_calculator_set_active(false);
         app_health_log_heap("exit calculator");
-    }
-    if ((prev == UI_SCREEN_CLOCK || prev == UI_SCREEN_CALCULATOR) &&
-        (target != UI_SCREEN_CLOCK && target != UI_SCREEN_CALCULATOR)) {
-        ui_app_background_free();
     }
 
     /*

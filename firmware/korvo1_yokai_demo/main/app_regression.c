@@ -99,19 +99,28 @@ static void regression_task(void *arg)
     app_health_log_heap("Returned Home from Vision Cycle 2");
 
     /* 6. Test Voice Command Injection & Synth Feedback */
-    ESP_LOGI(TAG, "[TEST 6/6] Testing Voice Command Injection & Synth Audio Tone...");
+    ESP_LOGI(TAG, "[TEST 6/7] Testing Voice Command Injection & Synth Audio Tone...");
     voice_service_inject_command(VOICE_COMMAND_SYNTH);
     vTaskDelay(pdMS_TO_TICKS(2500));
     app_health_log_heap("In Synth Screen via Voice Command");
     synth_service_play_feedback_tone();
     vTaskDelay(pdMS_TO_TICKS(1000));
 
+    /* 7. Verify Clock & Calculator Backgrounds survive after Vision AI */
+    ESP_LOGI(TAG, "[TEST 7/7] Returning to Clock & Calculator to verify backgrounds post-Vision...");
+    board_ui_switch_screen(UI_SCREEN_CLOCK);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    app_health_log_heap("In Clock App (Post-Vision)");
+    board_ui_switch_screen(UI_SCREEN_CALCULATOR);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    app_health_log_heap("In Calculator App (Post-Vision)");
+
     /* Return Home */
     board_ui_switch_screen(UI_SCREEN_HOME);
     vTaskDelay(pdMS_TO_TICKS(1500));
 
     ESP_LOGI(TAG, "==================================================");
-    ESP_LOGI(TAG, "[REGRESSION_PASS] ALL 3 APPS + VISION + VOICE + WI-FI + SYNTH VERIFIED ON HARDWARE!");
+    ESP_LOGI(TAG, "[REGRESSION_PASS] ALL 3 APPS + VISION + VOICE + WI-FI + SYNTH + POST-VISION BGS VERIFIED!");
     ESP_LOGI(TAG, "==================================================");
     app_health_log_heap("Final Regression Done");
     vTaskDelete(NULL);

@@ -119,8 +119,8 @@ static lv_obj_t *make_key(lv_obj_t *parent, int x, int y, int w, int h,
         lv_obj_set_style_bg_color(b, lv_color_hex(0x131D27), 0);
         lv_obj_set_style_border_color(b, lv_color_hex(0x384B5D), 0);
     }
-    lv_obj_set_style_bg_opa(b, LV_OPA_90, 0);
-    lv_obj_set_style_border_opa(b, LV_OPA_80, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_opa(b, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(b, lv_color_hex(0x293C4E), LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(b, key_evt, LV_EVENT_CLICKED, (void *)(intptr_t)key);
@@ -142,18 +142,24 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
 
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_size(scr, 800, 480);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x060C14), 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(scr, 0, 0);
+    lv_obj_set_style_border_width(scr, 0, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Background: Real Yokai Modern Soroban Glass artwork */
     s_img_bg = lv_image_create(scr);
+    lv_image_set_src(s_img_bg, &ui_app_shared_bg);
     lv_obj_set_pos(s_img_bg, 0, 0);
     lv_obj_set_size(s_img_bg, 800, 480);
     lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *home = lv_button_create(scr);
     lv_obj_add_style(home, &ui_style_btn_home, 0);
-    lv_obj_set_pos(home, 16, 14);
-    lv_obj_set_size(home, 112, 44);
+    lv_obj_set_pos(home, 14, 13);
+    lv_obj_set_size(home, 130, 44);
+    lv_obj_set_style_radius(home, 12, 0);
     lv_obj_add_event_cb(home, home_evt, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hl = lv_label_create(home);
     lv_label_set_text(hl, "< ホーム");
@@ -163,9 +169,9 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
 
     /* History button top-right: Japanese text only (fixes [x] mojibake) */
     lv_obj_t *hist = lv_button_create(scr);
-    lv_obj_set_pos(hist, 674, 14);
-    lv_obj_set_size(hist, 110, 42);
-    lv_obj_set_style_radius(hist, 10, 0);
+    lv_obj_set_pos(hist, 656, 13);
+    lv_obj_set_size(hist, 130, 44);
+    lv_obj_set_style_radius(hist, 12, 0);
     lv_obj_set_style_bg_color(hist, lv_color_hex(0x101A24), 0);
     lv_obj_set_style_bg_opa(hist, LV_OPA_80, 0);
     lv_obj_set_style_border_width(hist, 1, 0);
@@ -178,8 +184,8 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
 
     /* Display box positioned over the background art glass frame */
     lv_obj_t *disp_box = lv_obj_create(scr);
-    lv_obj_set_pos(disp_box, 296, 79);
-    lv_obj_set_size(disp_box, 488, 70);
+    lv_obj_set_pos(disp_box, 300, 80);
+    lv_obj_set_size(disp_box, 480, 68);
     lv_obj_set_style_bg_opa(disp_box, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(disp_box, 0, 0);
     lv_obj_set_style_pad_all(disp_box, 0, 0);
@@ -191,39 +197,39 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_color(s_display, lv_color_hex(0xF3DDA1), 0);
     lv_obj_align(s_display, LV_ALIGN_RIGHT_MID, -24, 0);
 
-    /* 4 columns × 5 rows matching concept art layout */
-    const int x[4] = {299, 418, 537, 658};
-    const int y[5] = {160, 220, 280, 340, 400};
-    const int w = 112, h = 50;
+    /* 4 columns × 5 rows with clean margins (ends at x=774, y=428) */
+    const int x[4] = {304, 424, 544, 664};
+    const int y[5] = {156, 212, 268, 324, 380};
+    const int w = 110, h = 48;
 
     make_key(scr, x[0], y[0], w, h, "AC", CK_CLEAR, 2);
     make_key(scr, x[1], y[0], w, h, "±", CK_SIGN, 4);
     make_key(scr, x[2], y[0], w, h, "%", CK_PERCENT, 4);
-    make_key(scr, x[3], y[0], 122, h, "÷", CK_DIV, 1);
+    make_key(scr, x[3], y[0], w, h, "÷", CK_DIV, 1);
 
     make_key(scr, x[0], y[1], w, h, "7", CK_7, 0);
     make_key(scr, x[1], y[1], w, h, "8", CK_8, 0);
     make_key(scr, x[2], y[1], w, h, "9", CK_9, 0);
-    make_key(scr, x[3], y[1], 122, h, "×", CK_MUL, 1);
+    make_key(scr, x[3], y[1], w, h, "×", CK_MUL, 1);
 
     make_key(scr, x[0], y[2], w, h, "4", CK_4, 0);
     make_key(scr, x[1], y[2], w, h, "5", CK_5, 0);
     make_key(scr, x[2], y[2], w, h, "6", CK_6, 0);
-    make_key(scr, x[3], y[2], 122, h, "-", CK_SUB, 1);
+    make_key(scr, x[3], y[2], w, h, "-", CK_SUB, 1);
 
     make_key(scr, x[0], y[3], w, h, "1", CK_1, 0);
     make_key(scr, x[1], y[3], w, h, "2", CK_2, 0);
     make_key(scr, x[2], y[3], w, h, "3", CK_3, 0);
-    make_key(scr, x[3], y[3], 122, h, "+", CK_ADD, 1);
+    make_key(scr, x[3], y[3], w, h, "+", CK_ADD, 1);
 
-    make_key(scr, x[0], y[4], 231, h, "0", CK_0, 0);
+    make_key(scr, x[0], y[4], 230, h, "0", CK_0, 0);
     make_key(scr, x[2], y[4], w, h, ".", CK_DOT, 0);
-    make_key(scr, x[3], y[4], 122, h, "=", CK_EQ, 3);
+    make_key(scr, x[3], y[4], w, h, "=", CK_EQ, 3);
 
     /* History overlay */
     s_hist_panel = lv_obj_create(scr);
-    lv_obj_set_pos(s_hist_panel, 432, 62);
-    lv_obj_set_size(s_hist_panel, 352, 402);
+    lv_obj_set_pos(s_hist_panel, 410, 62);
+    lv_obj_set_size(s_hist_panel, 344, 380);
     lv_obj_set_style_radius(s_hist_panel, 14, 0);
     lv_obj_set_style_bg_color(s_hist_panel, lv_color_hex(0x08131E), 0);
     lv_obj_set_style_bg_opa(s_hist_panel, LV_OPA_90, 0);
@@ -246,7 +252,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     }
 
     lv_obj_t *hc = lv_button_create(s_hist_panel);
-    lv_obj_set_pos(hc, 190, 342);
+    lv_obj_set_pos(hc, 180, 324);
     lv_obj_set_size(hc, 140, 40);
     lv_obj_set_style_radius(hc, 10, 0);
     lv_obj_set_style_bg_color(hc, lv_color_hex(0x572325), 0);
@@ -273,9 +279,5 @@ void ui_calculator_set_active(bool active)
             lv_obj_invalidate(s_img_bg);
         }
         refresh_display();
-    } else {
-        if (s_img_bg) {
-            lv_obj_add_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
-        }
     }
 }

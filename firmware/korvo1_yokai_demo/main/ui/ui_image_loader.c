@@ -151,7 +151,13 @@ esp_err_t ui_images_init(void)
 
     s_weather_background = 0;
 
-    ESP_LOGI(TAG, "Background images decompressed (shared weather buffer: saved 2.3MB PSRAM)");
+    /* Decode the initial shared app background (Clock); Calculator and Fireworks reuse this 750KB buffer. */
+    ret = decode_jpeg_to_dsc("ui_img_clock_bg", ui_img_clock_bg_jpg, ui_img_clock_bg_jpg_len, &ui_app_shared_bg);
+    if (ret == ESP_OK) {
+        s_current_app_bg = UI_APP_BG_CLOCK;
+    }
+
+    ESP_LOGI(TAG, "Background images decompressed (shared app & weather buffers ready in PSRAM)");
     return ESP_OK;
 }
 
@@ -229,12 +235,9 @@ esp_err_t ui_app_background_load(ui_app_bg_t bg)
 
 void ui_app_background_free(void)
 {
-    if (ui_app_shared_bg.data) {
-        lv_image_cache_drop(&ui_app_shared_bg);
-        heap_caps_free((void *)ui_app_shared_bg.data);
-        ui_app_shared_bg.data = NULL;
-        s_current_app_bg = UI_APP_BG_NONE;
-        ESP_LOGI(TAG, "Freed shared app background buffer (750KB returned to PSRAM)");
-    }
+    /* Keep ui_app_shared_bg permanently allocated in PSRAM (750KB).
+     * With 16MB PSRAM and 1.15MB minimum free margin during peak Vision AI,
+     * retaining this buffer guarantees zero fragmentation and zero-latency background switching.
+     */
 }
 

@@ -165,11 +165,11 @@ static void sw_lap_reset_evt(lv_event_t *e)
     else clock_stopwatch_reset();
 }
 
-static lv_obj_t *make_digit_box(lv_obj_t *parent, int x, lv_obj_t **out_label)
+static lv_obj_t *make_digit_box(lv_obj_t *parent, int x, int y, int w, int h, lv_obj_t **out_label)
 {
     lv_obj_t *box = lv_obj_create(parent);
-    lv_obj_set_pos(box, x, 177);
-    lv_obj_set_size(box, 76, 72);
+    lv_obj_set_pos(box, x, y);
+    lv_obj_set_size(box, w, h);
     lv_obj_set_style_radius(box, 10, 0);
     lv_obj_set_style_bg_color(box, lv_color_hex(0x0B1621), 0);
     lv_obj_set_style_bg_opa(box, LV_OPA_80, 0);
@@ -192,10 +192,15 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
 
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_size(scr, 800, 480);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x060C14), 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(scr, 0, 0);
+    lv_obj_set_style_border_width(scr, 0, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Background: Real Yokai Moonlit Lake Minimalist artwork */
     s_img_bg = lv_image_create(scr);
+    lv_image_set_src(s_img_bg, &ui_app_shared_bg);
     lv_obj_set_pos(s_img_bg, 0, 0);
     lv_obj_set_size(s_img_bg, 800, 480);
     lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_CLICKABLE);
@@ -212,8 +217,8 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
 
 
     static const char *tabs[3] = {"時計", "タイマー", "ストップウォッチ"};
-    const int tx[3] = {420, 532, 644};
-    const int tw[3] = {104, 104, 140};
+    const int tx[3] = {390, 506, 622};
+    const int tw[3] = {104, 104, 146};
     for (int i = 0; i < 3; ++i) {
         s_tab_btn[i] = lv_button_create(scr);
         lv_obj_set_pos(s_tab_btn[i], tx[i], 14);
@@ -237,49 +242,61 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
         lv_obj_remove_flag(s_page[i], LV_OBJ_FLAG_SCROLLABLE);
     }
 
-    /* CLOCK PAGE */
+    /* CLOCK PAGE - Centered cleanly in dark sky area (x=220..720, y=25..220) */
     s_clock_date = lv_label_create(s_page[CLOCK_TAB_CLOCK]);
-    lv_obj_set_pos(s_clock_date, 360, 68);
+    lv_obj_set_pos(s_clock_date, 220, 25);
+    lv_obj_set_size(s_clock_date, 500, 30);
+    lv_obj_set_style_text_align(s_clock_date, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_clock_date, UI_FONT_REGULAR, 0);
     lv_obj_set_style_text_color(s_clock_date, UI_COLOR_TEXT_TITLE, 0);
 
     s_clock_time = lv_label_create(s_page[CLOCK_TAB_CLOCK]);
-    lv_obj_set_pos(s_clock_time, 355, 115);
+    lv_obj_set_pos(s_clock_time, 220, 70);
+    lv_obj_set_size(s_clock_time, 500, 50);
+    lv_obj_set_style_text_align(s_clock_time, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_clock_time, UI_FONT_LARGE, 0);
     lv_obj_set_style_text_color(s_clock_time, lv_color_hex(0xF2DDA1), 0);
 
     s_clock_weather = lv_label_create(s_page[CLOCK_TAB_CLOCK]);
-    lv_obj_set_pos(s_clock_weather, 360, 185);
+    lv_obj_set_pos(s_clock_weather, 220, 140);
+    lv_obj_set_size(s_clock_weather, 500, 30);
+    lv_obj_set_style_text_align(s_clock_weather, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_clock_weather, UI_FONT_REGULAR, 0);
     lv_obj_set_style_text_color(s_clock_weather, UI_COLOR_TEXT_TITLE, 0);
 
     s_clock_sync = lv_label_create(s_page[CLOCK_TAB_CLOCK]);
-    lv_obj_set_pos(s_clock_sync, 360, 240);
+    lv_obj_set_pos(s_clock_sync, 220, 185);
+    lv_obj_set_size(s_clock_sync, 500, 30);
+    lv_obj_set_style_text_align(s_clock_sync, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_clock_sync, UI_FONT_REGULAR, 0);
 
-    /* TIMER PAGE */
+    /* TIMER PAGE - Centered in dark sky area (x=230..715, y=10..270, ends at screen Y=330, safely above lake) */
     lv_obj_t *t_sub = lv_label_create(s_page[CLOCK_TAB_TIMER]);
     lv_label_set_text(t_sub, "残り時間");
-    lv_obj_set_pos(t_sub, 350, 105);
+    lv_obj_set_pos(t_sub, 230, 45);
+    lv_obj_set_size(t_sub, 200, 30);
+    lv_obj_set_style_text_align(t_sub, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(t_sub, UI_FONT_REGULAR, 0);
     lv_obj_set_style_text_color(t_sub, UI_COLOR_TEXT_SUB, 0);
 
     s_timer_value = lv_label_create(s_page[CLOCK_TAB_TIMER]);
-    lv_obj_set_pos(s_timer_value, 345, 145);
+    lv_obj_set_pos(s_timer_value, 230, 85);
+    lv_obj_set_size(s_timer_value, 200, 50);
+    lv_obj_set_style_text_align(s_timer_value, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_timer_value, UI_FONT_LARGE, 0);
     lv_obj_set_style_text_color(s_timer_value, lv_color_hex(0xF2DDA1), 0);
 
-    /* Divider ONLY on Countdown Timer page */
+    /* Divider ONLY on Countdown Timer page (ends at screen Y=319, safely above lake) */
     lv_obj_t *timer_sep = lv_obj_create(s_page[CLOCK_TAB_TIMER]);
-    lv_obj_set_pos(timer_sep, 474, 52);
-    lv_obj_set_size(timer_sep, 2, 330);
+    lv_obj_set_pos(timer_sep, 445, 15);
+    lv_obj_set_size(timer_sep, 2, 250);
     lv_obj_set_style_bg_color(timer_sep, lv_color_hex(0x2E5066), 0);
     lv_obj_set_style_bg_opa(timer_sep, LV_OPA_40, 0);
     lv_obj_set_style_border_width(timer_sep, 0, 0);
 
     lv_obj_t *timer_title = lv_label_create(s_page[CLOCK_TAB_TIMER]);
     lv_label_set_text(timer_title, "カウントダウン");
-    lv_obj_set_pos(timer_title, 500, 30);
+    lv_obj_set_pos(timer_title, 460, 10);
     lv_obj_set_style_text_font(timer_title, UI_FONT_TITLE, 0);
     lv_obj_set_style_text_color(timer_title, UI_COLOR_TEXT_TITLE, 0);
 
@@ -288,64 +305,64 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
         char txt[12];
         snprintf(txt, sizeof(txt), "%d分", presets[i]);
         lv_obj_t *b = make_text_btn(s_page[CLOCK_TAB_TIMER],
-                                    485 + i*72, 72, 64, 38, txt,
+                                    460 + i*64, 44, 56, 34, txt,
                                     UI_COLOR_CYAN_ACCENT);
         lv_obj_add_event_cb(b, preset_evt, LV_EVENT_CLICKED,
                             (void *)(intptr_t)presets[i]);
     }
 
-    make_digit_box(s_page[CLOCK_TAB_TIMER], 490, &s_timer_h);
-    make_digit_box(s_page[CLOCK_TAB_TIMER], 584, &s_timer_m);
-    make_digit_box(s_page[CLOCK_TAB_TIMER], 678, &s_timer_s);
+    const int bx[3] = {470, 554, 638};
+    make_digit_box(s_page[CLOCK_TAB_TIMER], bx[0], 120, 72, 60, &s_timer_h);
+    make_digit_box(s_page[CLOCK_TAB_TIMER], bx[1], 120, 72, 60, &s_timer_m);
+    make_digit_box(s_page[CLOCK_TAB_TIMER], bx[2], 120, 72, 60, &s_timer_s);
 
-    const int bx[3] = {490, 584, 678};
     const adj_t up[3] = {ADJ_H_UP, ADJ_M_UP, ADJ_S_UP};
     const adj_t dn[3] = {ADJ_H_DN, ADJ_M_DN, ADJ_S_DN};
     for (int i = 0; i < 3; ++i) {
-        lv_obj_t *u = make_text_btn(s_page[CLOCK_TAB_TIMER], bx[i]+13, 132, 50, 34, "^",
+        lv_obj_t *u = make_text_btn(s_page[CLOCK_TAB_TIMER], bx[i]+10, 82, 52, 32, "^",
                                     lv_color_hex(0x4C7183));
         lv_obj_add_event_cb(u, adjust_evt, LV_EVENT_CLICKED, (void *)(intptr_t)up[i]);
-        lv_obj_t *d = make_text_btn(s_page[CLOCK_TAB_TIMER], bx[i]+13, 260, 50, 34, "v",
+        lv_obj_t *d = make_text_btn(s_page[CLOCK_TAB_TIMER], bx[i]+10, 186, 52, 32, "v",
                                     lv_color_hex(0x4C7183));
         lv_obj_add_event_cb(d, adjust_evt, LV_EVENT_CLICKED, (void *)(intptr_t)dn[i]);
     }
 
     s_timer_start = make_text_btn(s_page[CLOCK_TAB_TIMER],
-                                  500, 318, 180, 54, "開始",
+                                  470, 226, 156, 40, "開始",
                                   UI_COLOR_CYAN_ACCENT);
     s_timer_start_label = lv_obj_get_child(s_timer_start, 0);
     lv_obj_add_event_cb(s_timer_start, timer_start_evt, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *cancel = make_text_btn(s_page[CLOCK_TAB_TIMER],
-                                     690, 318, 92, 54, "取消",
+                                     638, 226, 72, 40, "取消",
                                      UI_COLOR_RED_ACCENT);
     lv_obj_add_event_cb(cancel, timer_cancel_evt, LV_EVENT_CLICKED, NULL);
 
     update_set_labels();
 
-    /* STOPWATCH PAGE */
+    /* STOPWATCH PAGE - Centered in dark sky area (x=220..710, y=15..260, ends at screen Y=324, safely above lake) */
     s_sw_value = lv_label_create(s_page[CLOCK_TAB_STOPWATCH]);
     lv_label_set_text(s_sw_value, "00:00:00.00");
-    lv_obj_set_pos(s_sw_value, 345, 58);
-    lv_obj_set_size(s_sw_value, 430, 48);
+    lv_obj_set_pos(s_sw_value, 220, 15);
+    lv_obj_set_size(s_sw_value, 500, 45);
     lv_obj_set_style_text_align(s_sw_value, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_sw_value, UI_FONT_LARGE, 0);
     lv_obj_set_style_text_color(s_sw_value, lv_color_hex(0xF2DDA1), 0);
 
     lv_obj_t *sw_start = make_text_btn(s_page[CLOCK_TAB_STOPWATCH],
-                                       355, 122, 195, 48, "開始",
+                                       250, 65, 210, 38, "開始",
                                        UI_COLOR_RED_ACCENT);
     s_sw_start_label = lv_obj_get_child(sw_start, 0);
     lv_obj_add_event_cb(sw_start, sw_start_evt, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lap = make_text_btn(s_page[CLOCK_TAB_STOPWATCH],
-                                 570, 122, 195, 48, "ラップ",
+                                 480, 65, 210, 38, "ラップ",
                                  lv_color_hex(0x5B7185));
     lv_obj_add_event_cb(lap, sw_lap_reset_evt, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lap_box = lv_obj_create(s_page[CLOCK_TAB_STOPWATCH]);
-    lv_obj_set_pos(lap_box, 355, 185);
-    lv_obj_set_size(lap_box, 410, 218);
+    lv_obj_set_pos(lap_box, 250, 112);
+    lv_obj_set_size(lap_box, 440, 148);
     lv_obj_set_style_bg_color(lap_box, lv_color_hex(0x07131D), 0);
     lv_obj_set_style_bg_opa(lap_box, LV_OPA_30, 0);
     lv_obj_set_style_border_color(lap_box, lv_color_hex(0x2E4A62), 0);
@@ -358,19 +375,19 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_label_set_text(lh, "ラップ記録");
     lv_obj_set_style_text_font(lh, UI_FONT_SMALL, 0);
     lv_obj_set_style_text_color(lh, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_pos(lh, 14, 8);
+    lv_obj_set_pos(lh, 14, 6);
 
     s_sw_empty_label = lv_label_create(lap_box);
     lv_label_set_text(s_sw_empty_label, "ラップを押すとここに記録されます");
     lv_obj_set_style_text_font(s_sw_empty_label, UI_FONT_SMALL, 0);
     lv_obj_set_style_text_color(s_sw_empty_label, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_set_pos(s_sw_empty_label, 14, 42);
+    lv_obj_set_pos(s_sw_empty_label, 14, 34);
 
     for (int i = 0; i < 8; ++i) {
         s_sw_laps[i] = lv_label_create(lap_box);
         int col = i / 4;
         int row = i % 4;
-        lv_obj_set_pos(s_sw_laps[i], 16 + col * 200, 36 + row * 40);
+        lv_obj_set_pos(s_sw_laps[i], 16 + col * 210, 32 + row * 26);
         lv_obj_set_style_text_font(s_sw_laps[i], UI_FONT_SMALL, 0);
         lv_obj_set_style_text_color(s_sw_laps[i], UI_COLOR_TEXT_TITLE, 0);
         lv_label_set_text(s_sw_laps[i], "");
@@ -422,10 +439,6 @@ void ui_clock_set_active(bool active)
             lv_obj_set_size(s_img_bg, 800, 480);
             lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
             lv_obj_invalidate(s_img_bg);
-        }
-    } else {
-        if (s_img_bg) {
-            lv_obj_add_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }

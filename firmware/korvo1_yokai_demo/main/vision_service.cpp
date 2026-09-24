@@ -1526,6 +1526,14 @@ extern "C" void vision_service_stop(void)
     s_preview_consumed_seq = s_preview_publish_seq;
     if (s_result_queue) xQueueReset(s_result_queue);
     if (s_cmd_queue) xQueueReset(s_cmd_queue);
+    if (s_face_detect) {
+        delete s_face_detect;
+        s_face_detect = nullptr;
+    }
+    if (s_face_recognizer) {
+        delete s_face_recognizer;
+        s_face_recognizer = nullptr;
+    }
     s_state = VISION_STATE_OFF;
     vision_memory_checkpoint("M14 after leaving Vision");
 #else

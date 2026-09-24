@@ -28,11 +28,19 @@ static float rng01(void)
 
 static fw_particle_t *alloc_particle(void)
 {
+    size_t oldest = 0;
+    float max_ratio = -1.0f;
     for (size_t i = 0; i < FW_MAX_PARTICLES; ++i) {
         if (!s_particles[i].active) return &s_particles[i];
+        float ratio = s_particles[i].age_s / s_particles[i].life_s;
+        if (ratio > max_ratio) {
+            max_ratio = ratio;
+            oldest = i;
+        }
     }
-    s_dropped++;
-    return NULL;
+    /* Pool full: recycle the most faded particle so new explosions are never dropped */
+    s_particles[oldest].active = false;
+    return &s_particles[oldest];
 }
 
 static fw_rocket_t *alloc_rocket(void)
@@ -248,7 +256,7 @@ void fireworks_engine_update(float dt_s)
             float x = 80.0f + rng01() * 640.0f;
             float target = 105.0f + rng01() * 195.0f;
             fireworks_engine_launch(x, 395.0f, target);
-            s_auto_wait_s = 0.45f + rng01() * 0.75f;
+            s_auto_wait_s = 0.85f + rng01() * 0.70f;
         }
     }
 }

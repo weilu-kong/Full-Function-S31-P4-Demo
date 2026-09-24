@@ -123,8 +123,8 @@ static void draw_particles(lv_layer_t *layer)
             ld.color = lv_color_hex(p[i].rgb888);
             ld.opa = opa;
             ld.width = 2;
-            ld.round_start = 1;
-            ld.round_end = 1;
+            ld.round_start = 0;
+            ld.round_end = 0;
             ld.p1.x = (int32_t)p[i].prev_x;
             ld.p1.y = (int32_t)p[i].prev_y;
             ld.p2.x = (int32_t)p[i].x;
@@ -142,30 +142,17 @@ static void draw_particles(lv_layer_t *layer)
             rd.bg_color = (t > 0.65f && (((int)(p[i].age_s * 30)) & 1))
                           ? lv_color_hex(0xFFFFFF) : lv_color_hex(p[i].rgb888);
             rd.bg_opa = opa;
-            rd.radius = LV_RADIUS_CIRCLE;
+            rd.radius = (r >= 3) ? 1 : 0;
             lv_draw_rect(layer, &rd, &a);
 
         } else if (p[i].style == FW_STYLE_BOTAN) {
-            /* 2. Botan: Dual-shell Glowing Spherical Peony Petals (No trails, glowing discs) */
+            /* 2. Botan: Dual-shell Glowing Spherical Peony Petals */
             int32_t r = p[i].size;
-            /* Outer soft glow halo */
-            lv_draw_rect_dsc_t hd;
-            lv_draw_rect_dsc_init(&hd);
-            hd.bg_color = lv_color_hex(p[i].rgb888);
-            hd.bg_opa = (lv_opa_t)(opa * 0.35f);
-            hd.radius = LV_RADIUS_CIRCLE;
-            lv_area_t ha = {
-                (int32_t)p[i].x - r - 2, (int32_t)p[i].y - r - 2,
-                (int32_t)p[i].x + r + 2, (int32_t)p[i].y + r + 2
-            };
-            lv_draw_rect(layer, &hd, &ha);
-
-            /* Core bright petal */
             lv_draw_rect_dsc_t cd;
             lv_draw_rect_dsc_init(&cd);
             cd.bg_color = (p[i].sub_type == 1) ? lv_color_hex(0xFFFFFF) : lv_color_hex(p[i].rgb888);
             cd.bg_opa = opa;
-            cd.radius = LV_RADIUS_CIRCLE;
+            cd.radius = 1;
             lv_area_t ca = {
                 (int32_t)p[i].x - r, (int32_t)p[i].y - r,
                 (int32_t)p[i].x + r, (int32_t)p[i].y + r
@@ -179,8 +166,8 @@ static void draw_particles(lv_layer_t *layer)
             ld.color = lv_color_hex(p[i].rgb888);
             ld.opa = (lv_opa_t)(opa * 0.85f);
             ld.width = 2;
-            ld.round_start = 1;
-            ld.round_end = 1;
+            ld.round_start = 0;
+            ld.round_end = 0;
             ld.p1.x = (int32_t)p[i].x;
             ld.p1.y = (int32_t)p[i].y;
             ld.p2.x = (int32_t)(p[i].prev_x - p[i].vx * 0.04f);
@@ -192,32 +179,12 @@ static void draw_particles(lv_layer_t *layer)
             lv_draw_rect_dsc_init(&rd);
             rd.bg_color = lv_color_hex(0xFFFFFF);
             rd.bg_opa = (lv_opa_t)(opa * 0.7f);
-            rd.radius = LV_RADIUS_CIRCLE;
+            rd.radius = 0;
             lv_area_t ra = {
                 (int32_t)p[i].x - 1, (int32_t)p[i].y - 1,
                 (int32_t)p[i].x + 1, (int32_t)p[i].y + 1
             };
             lv_draw_rect(layer, &rd, &ra);
-        }
-
-        /* Ambient specular reflection on lake water surface for alternating sparks */
-        if ((i & 1) == 0 && p[i].y < 345.0f && p[i].y > 60.0f) {
-            int32_t ry = 362 + (int32_t)((345.0f - p[i].y) * 0.30f);
-            if (ry >= 360 && ry <= 470) {
-                lv_draw_line_dsc_t rd;
-                lv_draw_line_dsc_init(&rd);
-                rd.color = lv_color_hex(p[i].rgb888);
-                rd.opa = (lv_opa_t)(opa * 0.22f);
-                rd.width = 2;
-                rd.round_start = 1;
-                rd.round_end = 1;
-                int32_t half = 6 + p[i].size * 2;
-                rd.p1.x = (int32_t)p[i].x - half;
-                rd.p1.y = ry;
-                rd.p2.x = (int32_t)p[i].x + half;
-                rd.p2.y = ry;
-                lv_draw_line(layer, &rd);
-            }
         }
     }
 
@@ -229,8 +196,8 @@ static void draw_particles(lv_layer_t *layer)
         d.color = UI_COLOR_GOLD_ACCENT;
         d.opa = LV_OPA_80;
         d.width = 2;
-        d.round_start = 1;
-        d.round_end = 1;
+        d.round_start = 0;
+        d.round_end = 0;
         d.p1.x = (int32_t)r[i].x;
         d.p1.y = (int32_t)r[i].y;
         d.p2.x = (int32_t)r[i].x;
@@ -331,7 +298,9 @@ void ui_fireworks_tick(void)
 
     fireworks_stats_t st;
     fireworks_engine_get_stats(&st);
-    if (s_count) {
+    static uint32_t s_last_launches = 0xFFFFFFFF;
+    if (s_count && st.launches != s_last_launches) {
+        s_last_launches = st.launches;
         char buf[40];
         snprintf(buf, sizeof(buf), "打上数: %lu 発",
                  (unsigned long)st.launches);

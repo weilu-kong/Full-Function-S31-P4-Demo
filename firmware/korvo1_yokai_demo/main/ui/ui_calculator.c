@@ -159,6 +159,12 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
+    lv_obj_t *title = lv_label_create(scr);
+    lv_obj_set_pos(title, 310, 18);
+    lv_label_set_text(title, "和風そろばん");
+    lv_obj_set_style_text_font(title, UI_FONT_TITLE, 0);
+    lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
+
     /* History button top-right: Japanese text only (fixes [x] mojibake) */
     lv_obj_t *hist = lv_button_create(scr);
     lv_obj_set_pos(hist, 674, 14);

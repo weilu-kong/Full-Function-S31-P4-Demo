@@ -37,6 +37,7 @@ static int s_set_h = 0, s_set_m = 5, s_set_s = 0;
 static lv_obj_t *s_sw_value;
 static lv_obj_t *s_sw_start_label;
 static lv_obj_t *s_sw_laps[8];
+static lv_obj_t *s_sw_empty_label;
 
 static void home_evt(lv_event_t *e)
 {
@@ -208,9 +209,15 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
+    lv_obj_t *title = lv_label_create(scr);
+    lv_obj_set_pos(title, 146, 20);
+    lv_label_set_text(title, "狸屋の時計 🐾");
+    lv_obj_set_style_text_font(title, UI_FONT_TITLE, 0);
+    lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
+
     static const char *tabs[3] = {"時計", "タイマー", "ストップウォッチ"};
-    const int tx[3] = {410, 526, 642};
-    const int tw[3] = {110, 110, 146};
+    const int tx[3] = {420, 532, 644};
+    const int tw[3] = {104, 104, 140};
     for (int i = 0; i < 3; ++i) {
         s_tab_btn[i] = lv_button_create(scr);
         lv_obj_set_pos(s_tab_btn[i], tx[i], 14);
@@ -344,17 +351,30 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_pos(lap_box, 355, 185);
     lv_obj_set_size(lap_box, 410, 218);
     lv_obj_set_style_bg_color(lap_box, lv_color_hex(0x07131D), 0);
-    lv_obj_set_style_bg_opa(lap_box, LV_OPA_70, 0);
-    lv_obj_set_style_border_color(lap_box, lv_color_hex(0x244256), 0);
+    lv_obj_set_style_bg_opa(lap_box, LV_OPA_30, 0);
+    lv_obj_set_style_border_color(lap_box, lv_color_hex(0x2E4A62), 0);
     lv_obj_set_style_border_width(lap_box, 1, 0);
-    lv_obj_set_style_radius(lap_box, 10, 0);
+    lv_obj_set_style_border_opa(lap_box, LV_OPA_40, 0);
+    lv_obj_set_style_radius(lap_box, 8, 0);
     lv_obj_remove_flag(lap_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *lh = lv_label_create(lap_box);
+    lv_label_set_text(lh, "ラップ記録");
+    lv_obj_set_style_text_font(lh, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_color(lh, lv_color_hex(0x738A9C), 0);
+    lv_obj_set_pos(lh, 14, 8);
+
+    s_sw_empty_label = lv_label_create(lap_box);
+    lv_label_set_text(s_sw_empty_label, "ラップを押すとここに記録されます");
+    lv_obj_set_style_text_font(s_sw_empty_label, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_color(s_sw_empty_label, lv_color_hex(0x566B7E), 0);
+    lv_obj_set_pos(s_sw_empty_label, 14, 42);
 
     for (int i = 0; i < 8; ++i) {
         s_sw_laps[i] = lv_label_create(lap_box);
         int col = i / 4;
         int row = i % 4;
-        lv_obj_set_pos(s_sw_laps[i], 16 + col * 200, 12 + row * 46);
+        lv_obj_set_pos(s_sw_laps[i], 16 + col * 200, 36 + row * 40);
         lv_obj_set_style_text_font(s_sw_laps[i], UI_FONT_SMALL, 0);
         lv_obj_set_style_text_color(s_sw_laps[i], UI_COLOR_TEXT_TITLE, 0);
         lv_label_set_text(s_sw_laps[i], "");
@@ -443,6 +463,14 @@ void ui_clock_tick(void)
     lv_label_set_text(s_sw_value, b);
     lv_label_set_text(s_sw_start_label,
                       sw.state == CLOCK_SW_RUNNING ? "停止" : "開始");
+
+    if (s_sw_empty_label) {
+        if (sw.lap_count == 0) {
+            lv_obj_clear_flag(s_sw_empty_label, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(s_sw_empty_label, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 
     for (int i = 0; i < 8; ++i) {
         if (i < sw.lap_count) {

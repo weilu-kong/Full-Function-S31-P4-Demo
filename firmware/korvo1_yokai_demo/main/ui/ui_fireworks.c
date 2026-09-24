@@ -20,10 +20,10 @@ static void set_btn_selected(lv_obj_t *btn, bool selected, bool cyan)
     lv_obj_set_style_bg_color(btn,
         selected ? (cyan ? lv_color_hex(0x0F6377) : lv_color_hex(0x5E481F))
                  : lv_color_hex(0x101B28), 0);
-    lv_obj_set_style_bg_opa(btn, selected ? LV_OPA_90 : LV_OPA_75, 0);
+    lv_obj_set_style_bg_opa(btn, selected ? LV_OPA_90 : LV_OPA_70, 0);
     lv_obj_set_style_border_color(btn,
         cyan ? UI_COLOR_CYAN_ACCENT : UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_border_opa(btn, selected ? LV_OPA_COVER : LV_OPA_45, 0);
+    lv_obj_set_style_border_opa(btn, selected ? LV_OPA_COVER : LV_OPA_40, 0);
 }
 
 static void sync_buttons(void)
@@ -49,9 +49,9 @@ static lv_obj_t *make_pill(lv_obj_t *parent, int x, const char *text)
     lv_obj_set_style_radius(b, 24, 0);
     lv_obj_set_style_border_width(b, 1, 0);
     lv_obj_set_style_border_color(b, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_style_border_opa(b, LV_OPA_45, 0);
+    lv_obj_set_style_border_opa(b, LV_OPA_40, 0);
     lv_obj_set_style_bg_color(b, lv_color_hex(0x101B28), 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_75, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_70, 0);
 
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, text);
@@ -112,35 +112,112 @@ static void draw_particles(lv_layer_t *layer)
     for (size_t i = 0; i < count; ++i) {
         if (!p[i].active) continue;
         float t = p[i].age_s / p[i].life_s;
-        if (t < 0) t = 0;
-        if (t > 1) t = 1;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
         lv_opa_t opa = (lv_opa_t)(255.0f * (1.0f - t));
 
-        if (p[i].style == FW_STYLE_YANAGI) {
-            lv_draw_line_dsc_t d;
-            lv_draw_line_dsc_init(&d);
-            d.color = lv_color_hex(p[i].rgb888);
-            d.opa = opa;
-            d.width = p[i].size;
-            d.round_start = 1;
-            d.round_end = 1;
-            d.p1.x = (int32_t)p[i].x;
-            d.p1.y = (int32_t)p[i].y;
-            d.p2.x = (int32_t)(p[i].x - p[i].vx * 0.045f);
-            d.p2.y = (int32_t)(p[i].y - p[i].vy * 0.045f);
-            lv_draw_line(layer, &d);
-        } else {
+        if (p[i].style == FW_STYLE_KIKU) {
+            /* 1. Kiku: Golden Chrysanthemum with sparkling comet trail */
+            lv_draw_line_dsc_t ld;
+            lv_draw_line_dsc_init(&ld);
+            ld.color = lv_color_hex(p[i].rgb888);
+            ld.opa = opa;
+            ld.width = 2;
+            ld.round_start = 1;
+            ld.round_end = 1;
+            ld.p1.x = (int32_t)p[i].prev_x;
+            ld.p1.y = (int32_t)p[i].prev_y;
+            ld.p2.x = (int32_t)p[i].x;
+            ld.p2.y = (int32_t)p[i].y;
+            lv_draw_line(layer, &ld);
+
+            /* Sparkling bright head spark */
             int32_t r = p[i].size;
             lv_area_t a = {
                 (int32_t)p[i].x - r, (int32_t)p[i].y - r,
                 (int32_t)p[i].x + r, (int32_t)p[i].y + r
             };
-            lv_draw_rect_dsc_t d;
-            lv_draw_rect_dsc_init(&d);
-            d.bg_color = lv_color_hex(p[i].rgb888);
-            d.bg_opa = opa;
-            d.radius = LV_RADIUS_CIRCLE;
-            lv_draw_rect(layer, &d, &a);
+            lv_draw_rect_dsc_t rd;
+            lv_draw_rect_dsc_init(&rd);
+            rd.bg_color = (t > 0.65f && (((int)(p[i].age_s * 30)) & 1))
+                          ? lv_color_hex(0xFFFFFF) : lv_color_hex(p[i].rgb888);
+            rd.bg_opa = opa;
+            rd.radius = LV_RADIUS_CIRCLE;
+            lv_draw_rect(layer, &rd, &a);
+
+        } else if (p[i].style == FW_STYLE_BOTAN) {
+            /* 2. Botan: Dual-shell Glowing Spherical Peony Petals (No trails, glowing discs) */
+            int32_t r = p[i].size;
+            /* Outer soft glow halo */
+            lv_draw_rect_dsc_t hd;
+            lv_draw_rect_dsc_init(&hd);
+            hd.bg_color = lv_color_hex(p[i].rgb888);
+            hd.bg_opa = (lv_opa_t)(opa * 0.35f);
+            hd.radius = LV_RADIUS_CIRCLE;
+            lv_area_t ha = {
+                (int32_t)p[i].x - r - 2, (int32_t)p[i].y - r - 2,
+                (int32_t)p[i].x + r + 2, (int32_t)p[i].y + r + 2
+            };
+            lv_draw_rect(layer, &hd, &ha);
+
+            /* Core bright petal */
+            lv_draw_rect_dsc_t cd;
+            lv_draw_rect_dsc_init(&cd);
+            cd.bg_color = (p[i].sub_type == 1) ? lv_color_hex(0xFFFFFF) : lv_color_hex(p[i].rgb888);
+            cd.bg_opa = opa;
+            cd.radius = LV_RADIUS_CIRCLE;
+            lv_area_t ca = {
+                (int32_t)p[i].x - r, (int32_t)p[i].y - r,
+                (int32_t)p[i].x + r, (int32_t)p[i].y + r
+            };
+            lv_draw_rect(layer, &cd, &ca);
+
+        } else {
+            /* 3. Yanagi: Weeping Willow Cascading Streaks with Silver/Cyan Shimmer */
+            lv_draw_line_dsc_t ld;
+            lv_draw_line_dsc_init(&ld);
+            ld.color = lv_color_hex(p[i].rgb888);
+            ld.opa = (lv_opa_t)(opa * 0.85f);
+            ld.width = 2;
+            ld.round_start = 1;
+            ld.round_end = 1;
+            ld.p1.x = (int32_t)p[i].x;
+            ld.p1.y = (int32_t)p[i].y;
+            ld.p2.x = (int32_t)(p[i].prev_x - p[i].vx * 0.04f);
+            ld.p2.y = (int32_t)(p[i].prev_y - p[i].vy * 0.04f);
+            lv_draw_line(layer, &ld);
+
+            /* Shimmer tip */
+            lv_draw_rect_dsc_t rd;
+            lv_draw_rect_dsc_init(&rd);
+            rd.bg_color = lv_color_hex(0xFFFFFF);
+            rd.bg_opa = (lv_opa_t)(opa * 0.7f);
+            rd.radius = LV_RADIUS_CIRCLE;
+            lv_area_t ra = {
+                (int32_t)p[i].x - 1, (int32_t)p[i].y - 1,
+                (int32_t)p[i].x + 1, (int32_t)p[i].y + 1
+            };
+            lv_draw_rect(layer, &rd, &ra);
+        }
+
+        /* Ambient specular reflection on lake water surface */
+        if (p[i].y < 345.0f && p[i].y > 60.0f) {
+            int32_t ry = 362 + (int32_t)((345.0f - p[i].y) * 0.30f);
+            if (ry >= 360 && ry <= 470) {
+                lv_draw_line_dsc_t rd;
+                lv_draw_line_dsc_init(&rd);
+                rd.color = lv_color_hex(p[i].rgb888);
+                rd.opa = (lv_opa_t)(opa * 0.22f);
+                rd.width = 2;
+                rd.round_start = 1;
+                rd.round_end = 1;
+                int32_t half = 6 + p[i].size * 2;
+                rd.p1.x = (int32_t)p[i].x - half;
+                rd.p1.y = ry;
+                rd.p2.x = (int32_t)p[i].x + half;
+                rd.p2.y = ry;
+                lv_draw_line(layer, &rd);
+            }
         }
     }
 
@@ -179,7 +256,7 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
 
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_size(scr, 800, 480);
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0x041322), 0);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x020610), 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     s_art = lv_obj_create(scr);
@@ -210,17 +287,18 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
+    /* Title at y=10 and Subtitle at y=52: clean vertical separation with no overlap */
     lv_obj_t *title = lv_label_create(scr);
     lv_label_set_text(title, "夜空の花火");
     lv_obj_set_style_text_font(title, UI_FONT_LARGE, 0);
     lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     lv_obj_t *sub = lv_label_create(scr);
     lv_label_set_text(sub, "タップで花火を打ち上げよう");
     lv_obj_set_style_text_font(sub, UI_FONT_SMALL, 0);
     lv_obj_set_style_text_color(sub, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 49);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 52);
 
     s_count = lv_label_create(scr);
     lv_label_set_text(s_count, "打上数: 0 発");
@@ -228,10 +306,11 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     lv_obj_set_style_text_color(s_count, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_align(s_count, LV_ALIGN_TOP_RIGHT, -22, 22);
 
-    s_style_btn[0] = make_pill(scr, 112, "菊");
+    /* Bottom pills evenly spaced: width 132 each, centered horizontally */
+    s_style_btn[0] = make_pill(scr, 106, "菊");
     s_style_btn[1] = make_pill(scr, 258, "牡丹");
-    s_style_btn[2] = make_pill(scr, 404, "柳");
-    s_auto_btn = make_pill(scr, 550, "AUTO");
+    s_style_btn[2] = make_pill(scr, 410, "柳");
+    s_auto_btn = make_pill(scr, 562, "AUTO");
 
     for (int i = 0; i < 3; ++i)
         lv_obj_add_event_cb(s_style_btn[i], mode_cb, LV_EVENT_CLICKED,

@@ -98,25 +98,28 @@ static lv_obj_t *make_key(lv_obj_t *parent, int x, int y, int w, int h,
     lv_obj_t *b = lv_button_create(parent);
     lv_obj_set_pos(b, x, y);
     lv_obj_set_size(b, w, h);
-    lv_obj_set_style_radius(b, 11, 0);
+    lv_obj_set_style_radius(b, 12, 0);
     lv_obj_set_style_border_width(b, 1, 0);
 
-    if (kind == 1) { /* operator */
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x6A4D20), 0);
-        lv_obj_set_style_border_color(b, lv_color_hex(0xD1A04B), 0);
-    } else if (kind == 2) { /* clear */
-        lv_obj_set_style_bg_color(b, lv_color_hex(0xA82F2C), 0);
-        lv_obj_set_style_border_color(b, lv_color_hex(0xF06A60), 0);
-    } else if (kind == 3) { /* equals */
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x07869B), 0);
-        lv_obj_set_style_border_color(b, UI_COLOR_CYAN_ACCENT, 0);
-    } else {
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x17212C), 0);
-        lv_obj_set_style_border_color(b, lv_color_hex(0x64717E), 0);
+    if (kind == 1) { /* operator (amber gold) */
+        lv_obj_set_style_bg_color(b, lv_color_hex(0x7A5623), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(0xD4A753), 0);
+    } else if (kind == 2) { /* clear (crimson lacquer) */
+        lv_obj_set_style_bg_color(b, lv_color_hex(0xB02828), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(0xEF5350), 0);
+    } else if (kind == 3) { /* equals (cyan accent) */
+        lv_obj_set_style_bg_color(b, lv_color_hex(0x0C7D91), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(0x26C6DA), 0);
+    } else if (kind == 4) { /* sign/percent (slate lacquer) */
+        lv_obj_set_style_bg_color(b, lv_color_hex(0x202B38), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(0x566C82), 0);
+    } else { /* digits (deep charcoal lacquer) */
+        lv_obj_set_style_bg_color(b, lv_color_hex(0x131D27), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(0x384B5D), 0);
     }
-    lv_obj_set_style_bg_opa(b, LV_OPA_95, 0);
-    lv_obj_set_style_border_opa(b, LV_OPA_75, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(0x253648), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(b, LV_OPA_90, 0);
+    lv_obj_set_style_border_opa(b, LV_OPA_80, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(0x293C4E), LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(b, key_evt, LV_EVENT_CLICKED, (void *)(intptr_t)key);
 
@@ -154,22 +157,23 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
+    /* Title at y=16 (generous clearance above keypad frame starting at y=58) */
     lv_obj_t *title = lv_label_create(scr);
     lv_label_set_text(title, "和風そろばん");
-    lv_obj_set_pos(title, 144, 18);
+    lv_obj_set_pos(title, 144, 16);
     lv_obj_set_style_text_font(title, UI_FONT_LARGE, 0);
     lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
 
     lv_obj_t *hist = lv_button_create(scr);
-    lv_obj_set_pos(hist, 684, 14);
-    lv_obj_set_size(hist, 100, 42);
+    lv_obj_set_pos(hist, 674, 14);
+    lv_obj_set_size(hist, 110, 42);
     lv_obj_set_style_radius(hist, 10, 0);
     lv_obj_set_style_bg_color(hist, lv_color_hex(0x101A24), 0);
     lv_obj_set_style_border_width(hist, 1, 0);
     lv_obj_set_style_border_color(hist, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_add_event_cb(hist, history_toggle_evt, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hist_l = lv_label_create(hist);
-    lv_label_set_text(hist_l, "履歴");
+    lv_label_set_text(hist_l, LV_SYMBOL_LIST " 履歴");
     lv_obj_set_style_text_font(hist_l, UI_FONT_REGULAR, 0);
     lv_obj_center(hist_l);
 
@@ -178,7 +182,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(disp_box, 486, 72);
     lv_obj_set_style_radius(disp_box, 12, 0);
     lv_obj_set_style_bg_color(disp_box, lv_color_hex(0x0A1119), 0);
-    lv_obj_set_style_bg_opa(disp_box, LV_OPA_95, 0);
+    lv_obj_set_style_bg_opa(disp_box, LV_OPA_90, 0);
     lv_obj_set_style_border_width(disp_box, 1, 0);
     lv_obj_set_style_border_color(disp_box, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_remove_flag(disp_box, LV_OBJ_FLAG_SCROLLABLE);
@@ -195,14 +199,14 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     const int w = 112, h = 54;
 
     make_key(scr, x[0], y[0], w, h, "AC", CK_CLEAR, 2);
-    make_key(scr, x[1], y[0], w, h, "+/-", CK_SIGN, 0);
-    make_key(scr, x[2], y[0], w, h, "%", CK_PERCENT, 0);
-    make_key(scr, x[3], y[0], w, h, "/", CK_DIV, 1);
+    make_key(scr, x[1], y[0], w, h, "±", CK_SIGN, 4);
+    make_key(scr, x[2], y[0], w, h, "%", CK_PERCENT, 4);
+    make_key(scr, x[3], y[0], w, h, "÷", CK_DIV, 1);
 
     make_key(scr, x[0], y[1], w, h, "7", CK_7, 0);
     make_key(scr, x[1], y[1], w, h, "8", CK_8, 0);
     make_key(scr, x[2], y[1], w, h, "9", CK_9, 0);
-    make_key(scr, x[3], y[1], w, h, "*", CK_MUL, 1);
+    make_key(scr, x[3], y[1], w, h, "×", CK_MUL, 1);
 
     make_key(scr, x[0], y[2], w, h, "4", CK_4, 0);
     make_key(scr, x[1], y[2], w, h, "5", CK_5, 0);
@@ -224,7 +228,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(s_hist_panel, 352, 402);
     lv_obj_set_style_radius(s_hist_panel, 14, 0);
     lv_obj_set_style_bg_color(s_hist_panel, lv_color_hex(0x08131E), 0);
-    lv_obj_set_style_bg_opa(s_hist_panel, LV_OPA_95, 0);
+    lv_obj_set_style_bg_opa(s_hist_panel, LV_OPA_90, 0);
     lv_obj_set_style_border_width(s_hist_panel, 1, 0);
     lv_obj_set_style_border_color(s_hist_panel, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_remove_flag(s_hist_panel, LV_OBJ_FLAG_SCROLLABLE);

@@ -26,19 +26,6 @@ static float rng01(void)
     return (float)(rng_u32() & 0x00FFFFFFu) / 16777215.0f;
 }
 
-static uint32_t style_color(fireworks_style_t style, int i)
-{
-    static const uint32_t kiku[] = {0xF4D37A, 0xFFDFA4, 0xE8B94D};
-    static const uint32_t botan[] = {0xE76D62, 0xF0A35E, 0xE9C46A};
-    static const uint32_t yanagi[] = {0x8DDCF0, 0xBFEFFF, 0xD8F6FF};
-    switch (style) {
-    case FW_STYLE_BOTAN: return botan[i % 3];
-    case FW_STYLE_YANAGI: return yanagi[i % 3];
-    case FW_STYLE_KIKU:
-    default: return kiku[i % 3];
-    }
-}
-
 static fw_particle_t *alloc_particle(void)
 {
     for (size_t i = 0; i < FW_MAX_PARTICLES; ++i) {
@@ -58,46 +45,92 @@ static fw_rocket_t *alloc_rocket(void)
 
 static void spawn_burst(float x, float y, fireworks_style_t style)
 {
-    int count = 34;
-    float speed_min = 62.0f;
-    float speed_max = 135.0f;
-    float life_min = 0.75f;
-    float life_max = 1.35f;
-
     if (style == FW_STYLE_BOTAN) {
-        count = 28;
-        speed_min = 75.0f;
-        speed_max = 150.0f;
-        life_min = 0.65f;
-        life_max = 1.0f;
+        /* Concentric dual-shell peony */
+        /* Outer shell: 22 vibrant petals */
+        static const uint32_t outer_colors[] = {0xFF1744, 0xE040FB, 0xFF4081, 0xFF5252};
+        for (int i = 0; i < 22; ++i) {
+            fw_particle_t *p = alloc_particle();
+            if (!p) continue;
+            float angle = (float)(2.0 * M_PI * i / 22.0) + (rng01() - 0.5f) * 0.1f;
+            float speed = 115.0f + 25.0f * rng01();
+            memset(p, 0, sizeof(*p));
+            p->x = x; p->y = y;
+            p->prev_x = x; p->prev_y = y;
+            p->vx = cosf(angle) * speed;
+            p->vy = sinf(angle) * speed;
+            p->age_s = 0.0f;
+            p->life_s = 0.85f + 0.35f * rng01();
+            p->rgb888 = outer_colors[i % 4];
+            p->size = 4;
+            p->style = (uint8_t)style;
+            p->sub_type = 0;
+            p->active = true;
+        }
+        /* Inner core (Shin): 14 bright cyan/gold petals */
+        static const uint32_t core_colors[] = {0x00E5FF, 0xFFEA00, 0x76FF03};
+        for (int i = 0; i < 14; ++i) {
+            fw_particle_t *p = alloc_particle();
+            if (!p) continue;
+            float angle = (float)(2.0 * M_PI * i / 14.0) + (rng01() - 0.5f) * 0.15f;
+            float speed = 55.0f + 20.0f * rng01();
+            memset(p, 0, sizeof(*p));
+            p->x = x; p->y = y;
+            p->prev_x = x; p->prev_y = y;
+            p->vx = cosf(angle) * speed;
+            p->vy = sinf(angle) * speed;
+            p->age_s = 0.0f;
+            p->life_s = 0.70f + 0.25f * rng01();
+            p->rgb888 = core_colors[i % 3];
+            p->size = 3;
+            p->style = (uint8_t)style;
+            p->sub_type = 1;
+            p->active = true;
+        }
     } else if (style == FW_STYLE_YANAGI) {
-        count = 32;
-        speed_min = 48.0f;
-        speed_max = 108.0f;
-        life_min = 1.25f;
-        life_max = 1.9f;
-    }
-
-    const float base_jitter = rng01() * 0.18f;
-    for (int i = 0; i < count; ++i) {
-        fw_particle_t *p = alloc_particle();
-        if (!p) continue;
-
-        float angle = (float)(2.0 * M_PI * i / count) +
-                      (rng01() - 0.5f) * 0.13f + base_jitter;
-        float speed = speed_min + (speed_max - speed_min) * rng01();
-
-        memset(p, 0, sizeof(*p));
-        p->x = x;
-        p->y = y;
-        p->vx = cosf(angle) * speed;
-        p->vy = sinf(angle) * speed;
-        p->age_s = 0.0f;
-        p->life_s = life_min + (life_max - life_min) * rng01();
-        p->rgb888 = style_color(style, i);
-        p->size = (style == FW_STYLE_BOTAN) ? 4 : 3;
-        p->style = (uint8_t)style;
-        p->active = true;
+        /* Fountain weeping willow cascade */
+        static const uint32_t yanagi_colors[] = {0xE0F7FA, 0x80DEEA, 0xFFF9C4, 0xB2EBF2};
+        int count = 32;
+        for (int i = 0; i < count; ++i) {
+            fw_particle_t *p = alloc_particle();
+            if (!p) continue;
+            float angle = (float)(M_PI * (0.08f + 0.84f * (float)i / (float)count));
+            float speed = 65.0f + 60.0f * rng01();
+            memset(p, 0, sizeof(*p));
+            p->x = x; p->y = y;
+            p->prev_x = x; p->prev_y = y;
+            p->vx = cosf(angle) * speed * 1.35f;
+            p->vy = -sinf(angle) * speed * 1.15f;
+            p->age_s = 0.0f;
+            p->life_s = 1.7f + 0.6f * rng01();
+            p->rgb888 = yanagi_colors[i % 4];
+            p->size = 3;
+            p->style = (uint8_t)style;
+            p->sub_type = 0;
+            p->active = true;
+        }
+    } else {
+        /* Kiku: Radial Chrysanthemum with sparkling comet trails */
+        static const uint32_t kiku_colors[] = {0xFFD54F, 0xFFF0A0, 0xFFCA28, 0xFFFFFF};
+        int count = 36;
+        for (int i = 0; i < count; ++i) {
+            fw_particle_t *p = alloc_particle();
+            if (!p) continue;
+            float angle = (float)(2.0 * M_PI * i / (float)count) + (rng01() - 0.5f) * 0.12f;
+            float speed = 80.0f + 65.0f * rng01();
+            memset(p, 0, sizeof(*p));
+            p->x = x; p->y = y;
+            p->prev_x = x; p->prev_y = y;
+            p->vx = cosf(angle) * speed;
+            p->vy = sinf(angle) * speed;
+            p->age_s = 0.0f;
+            p->life_s = 0.95f + 0.45f * rng01();
+            p->rgb888 = kiku_colors[i % 4];
+            p->size = 3;
+            p->style = (uint8_t)style;
+            p->sub_type = 0;
+            p->active = true;
+        }
     }
     s_launches++;
 }
@@ -185,23 +218,26 @@ void fireworks_engine_update(float dt_s)
             continue;
         }
 
+        p->prev_x = p->x;
+        p->prev_y = p->y;
+
         p->x += p->vx * dt_s;
         p->y += p->vy * dt_s;
 
-        float gravity = 44.0f;
-        float drag = 0.992f;
+        float gravity = 32.0f;
+        float drag = 0.972f;
         if (p->style == FW_STYLE_BOTAN) {
-            gravity = 58.0f;
-            drag = 0.988f;
+            gravity = 44.0f;
+            drag = 0.968f;
         } else if (p->style == FW_STYLE_YANAGI) {
-            gravity = 82.0f;
-            drag = 0.995f;
+            gravity = 92.0f;
+            drag = 0.992f;
         }
         p->vy += gravity * dt_s;
         p->vx *= drag;
         p->vy *= drag;
 
-        if (p->x < -20 || p->x > 820 || p->y > 430) {
+        if (p->x < -20 || p->x > 820 || p->y > 450) {
             p->active = false;
         }
     }

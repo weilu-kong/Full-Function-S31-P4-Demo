@@ -18,12 +18,14 @@ typedef enum {
 
 typedef struct {
     float x, y;
+    float prev_x, prev_y;
     float vx, vy;
     float age_s;
     float life_s;
     uint32_t rgb888;
     uint8_t size;
     uint8_t style;
+    uint8_t sub_type;
     bool active;
 } fw_particle_t;
 

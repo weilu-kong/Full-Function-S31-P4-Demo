@@ -17,6 +17,7 @@ static lv_obj_t *s_display;
 static lv_obj_t *s_clear_label;
 static lv_obj_t *s_hist_panel;
 static lv_obj_t *s_hist_rows[8];
+static lv_obj_t *s_img_bg;
 
 static void home_evt(lv_event_t *e)
 {
@@ -143,11 +144,10 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Background: Real Yokai Modern Soroban Glass artwork */
-    lv_obj_t *bg = lv_image_create(scr);
-    lv_image_set_src(bg, &ui_app_shared_bg);
-    lv_obj_set_pos(bg, 0, 0);
-    lv_obj_set_size(bg, 800, 480);
-    lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE);
+    s_img_bg = lv_image_create(scr);
+    lv_obj_set_pos(s_img_bg, 0, 0);
+    lv_obj_set_size(s_img_bg, 800, 480);
+    lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *home = lv_button_create(scr);
     lv_obj_add_style(home, &ui_style_btn_home, 0);
@@ -257,4 +257,19 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_flag(s_hist_panel, LV_OBJ_FLAG_HIDDEN);
     refresh_display();
     return scr;
+}
+
+void ui_calculator_set_active(bool active)
+{
+    if (active) {
+        if (s_img_bg && ui_app_shared_bg.data) {
+            lv_image_set_src(s_img_bg, &ui_app_shared_bg);
+            lv_obj_invalidate(s_img_bg);
+        }
+        refresh_display();
+    } else {
+        if (s_img_bg) {
+            lv_image_set_src(s_img_bg, NULL);
+        }
+    }
 }

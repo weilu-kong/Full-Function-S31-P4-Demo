@@ -286,7 +286,6 @@ static void trans_expand_completed_cb(lv_anim_t *a)
 {
     lv_obj_t *card = (lv_obj_t *)a->var;
     if (s_pending_target < UI_SCREEN_MAX && s_screen_objs[s_pending_target]) {
-        lv_screen_load(s_screen_objs[s_pending_target]);
         if (s_pending_target == UI_SCREEN_SYNTH) {
             synth_service_set_active(true);
         } else if (s_pending_target == UI_SCREEN_WEATHER) {
@@ -307,7 +306,6 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             ui_vision_set_active(true);
             vision_service_start();
         } else if (s_pending_target == UI_SCREEN_FIREWORKS) {
-            ui_app_background_load(UI_APP_BG_FIREWORKS);
             ui_fireworks_set_active(true);
             app_health_log_heap("enter fireworks");
         } else if (s_pending_target == UI_SCREEN_CLOCK) {
@@ -316,8 +314,10 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             app_health_log_heap("enter clock");
         } else if (s_pending_target == UI_SCREEN_CALCULATOR) {
             ui_app_background_load(UI_APP_BG_CALCULATOR);
+            ui_calculator_set_active(true);
             app_health_log_heap("enter calculator");
         }
+        lv_screen_load(s_screen_objs[s_pending_target]);
     }
     if (card) {
         lv_obj_delete(card);
@@ -364,10 +364,11 @@ void ui_switch_screen(ui_screen_t target)
         app_health_log_heap("exit clock");
     }
     if (prev == UI_SCREEN_CALCULATOR && target != UI_SCREEN_CALCULATOR) {
+        ui_calculator_set_active(false);
         app_health_log_heap("exit calculator");
     }
-    if ((prev == UI_SCREEN_FIREWORKS || prev == UI_SCREEN_CLOCK || prev == UI_SCREEN_CALCULATOR) &&
-        (target != UI_SCREEN_FIREWORKS && target != UI_SCREEN_CLOCK && target != UI_SCREEN_CALCULATOR)) {
+    if ((prev == UI_SCREEN_CLOCK || prev == UI_SCREEN_CALCULATOR) &&
+        (target != UI_SCREEN_CLOCK && target != UI_SCREEN_CALCULATOR)) {
         ui_app_background_free();
     }
 

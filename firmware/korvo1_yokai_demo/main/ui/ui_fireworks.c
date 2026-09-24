@@ -253,14 +253,8 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_size(scr, 800, 480);
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x020610), 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* Background: Real Yokai Moonlit Fireworks Lake artwork */
-    lv_obj_t *bg = lv_image_create(scr);
-    lv_image_set_src(bg, &ui_app_shared_bg);
-    lv_obj_set_pos(bg, 0, 0);
-    lv_obj_set_size(bg, 800, 480);
-    lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE);
 
     s_art = lv_obj_create(scr);
     lv_obj_set_pos(s_art, 0, 0);

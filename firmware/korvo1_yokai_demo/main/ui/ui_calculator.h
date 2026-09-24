@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb);
+void ui_calculator_set_active(bool active);
 
 #ifdef __cplusplus
 }

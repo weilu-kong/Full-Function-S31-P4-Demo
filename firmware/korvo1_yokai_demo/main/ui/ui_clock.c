@@ -19,6 +19,7 @@ static clock_tab_t s_tab;
 
 static lv_obj_t *s_page[3];
 static lv_obj_t *s_tab_btn[3];
+static lv_obj_t *s_img_bg;
 
 static lv_obj_t *s_clock_time;
 static lv_obj_t *s_clock_date;
@@ -192,11 +193,10 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Background: Real Yokai Moonlit Lake Minimalist artwork */
-    lv_obj_t *bg = lv_image_create(scr);
-    lv_image_set_src(bg, &ui_app_shared_bg);
-    lv_obj_set_pos(bg, 0, 0);
-    lv_obj_set_size(bg, 800, 480);
-    lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE);
+    s_img_bg = lv_image_create(scr);
+    lv_obj_set_pos(s_img_bg, 0, 0);
+    lv_obj_set_size(s_img_bg, 800, 480);
+    lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *home = lv_button_create(scr);
     lv_obj_add_style(home, &ui_style_btn_home, 0);
@@ -398,6 +398,16 @@ static void update_wall_clock(void)
 void ui_clock_set_active(bool active)
 {
     s_active = active;
+    if (active) {
+        if (s_img_bg && ui_app_shared_bg.data) {
+            lv_image_set_src(s_img_bg, &ui_app_shared_bg);
+            lv_obj_invalidate(s_img_bg);
+        }
+    } else {
+        if (s_img_bg) {
+            lv_image_set_src(s_img_bg, NULL);
+        }
+    }
 }
 
 void ui_clock_tick(void)

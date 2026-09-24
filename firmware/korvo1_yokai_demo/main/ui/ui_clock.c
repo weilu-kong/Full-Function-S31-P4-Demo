@@ -1,5 +1,5 @@
 #include "ui/ui_clock.h"
-#include "ui/ui_yokai_art.h"
+#include "ui/ui_image_loader.h"
 #include "ui/ui_theme.h"
 #include "clock_service.h"
 #include "weather_service.h"
@@ -191,10 +191,12 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(scr, 800, 480);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *art = lv_obj_create(scr);
-    lv_obj_set_size(art, 800, 480);
-    lv_obj_set_pos(art, 0, 0);
-    ui_yokai_art_attach(art, UI_YOKAI_ART_CLOCK_B);
+    /* Background: Real Yokai Moonlit Lake Minimalist artwork */
+    lv_obj_t *bg = lv_image_create(scr);
+    lv_image_set_src(bg, &ui_app_shared_bg);
+    lv_obj_set_pos(bg, 0, 0);
+    lv_obj_set_size(bg, 800, 480);
+    lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *home = lv_button_create(scr);
     lv_obj_add_style(home, &ui_style_btn_home, 0);
@@ -206,15 +208,9 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "狸屋の時計");
-    lv_obj_set_style_text_font(title, UI_FONT_LARGE, 0);
-    lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_set_pos(title, 154, 18);
-
     static const char *tabs[3] = {"時計", "タイマー", "ストップウォッチ"};
-    const int tx[3] = {393, 514, 635};
-    const int tw[3] = {116, 116, 150};
+    const int tx[3] = {410, 526, 642};
+    const int tw[3] = {110, 110, 146};
     for (int i = 0; i < 3; ++i) {
         s_tab_btn[i] = lv_button_create(scr);
         lv_obj_set_pos(s_tab_btn[i], tx[i], 14);

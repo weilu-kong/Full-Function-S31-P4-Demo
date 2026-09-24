@@ -1,5 +1,5 @@
 #include "ui/ui_calculator.h"
-#include "ui/ui_yokai_art.h"
+#include "ui/ui_image_loader.h"
 #include "ui/ui_theme.h"
 #include "calculator_engine.h"
 #include <stdint.h>
@@ -142,10 +142,12 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(scr, 800, 480);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *art = lv_obj_create(scr);
-    lv_obj_set_size(art, 800, 480);
-    lv_obj_set_pos(art, 0, 0);
-    ui_yokai_art_attach(art, UI_YOKAI_ART_CALCULATOR_A);
+    /* Background: Real Yokai Modern Soroban Glass artwork */
+    lv_obj_t *bg = lv_image_create(scr);
+    lv_image_set_src(bg, &ui_app_shared_bg);
+    lv_obj_set_pos(bg, 0, 0);
+    lv_obj_set_size(bg, 800, 480);
+    lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *home = lv_button_create(scr);
     lv_obj_add_style(home, &ui_style_btn_home, 0);
@@ -157,70 +159,64 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
 
-    /* Title at y=16 (generous clearance above keypad frame starting at y=58) */
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "和風そろばん");
-    lv_obj_set_pos(title, 144, 16);
-    lv_obj_set_style_text_font(title, UI_FONT_LARGE, 0);
-    lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
-
+    /* History button top-right: Japanese text only (fixes [x] mojibake) */
     lv_obj_t *hist = lv_button_create(scr);
     lv_obj_set_pos(hist, 674, 14);
     lv_obj_set_size(hist, 110, 42);
     lv_obj_set_style_radius(hist, 10, 0);
     lv_obj_set_style_bg_color(hist, lv_color_hex(0x101A24), 0);
+    lv_obj_set_style_bg_opa(hist, LV_OPA_80, 0);
     lv_obj_set_style_border_width(hist, 1, 0);
     lv_obj_set_style_border_color(hist, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_add_event_cb(hist, history_toggle_evt, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hist_l = lv_label_create(hist);
-    lv_label_set_text(hist_l, LV_SYMBOL_LIST " 履歴");
+    lv_label_set_text(hist_l, "履歴");
     lv_obj_set_style_text_font(hist_l, UI_FONT_REGULAR, 0);
     lv_obj_center(hist_l);
 
+    /* Display box positioned over the background art glass frame */
     lv_obj_t *disp_box = lv_obj_create(scr);
-    lv_obj_set_pos(disp_box, 296, 66);
-    lv_obj_set_size(disp_box, 486, 72);
-    lv_obj_set_style_radius(disp_box, 12, 0);
-    lv_obj_set_style_bg_color(disp_box, lv_color_hex(0x0A1119), 0);
-    lv_obj_set_style_bg_opa(disp_box, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(disp_box, 1, 0);
-    lv_obj_set_style_border_color(disp_box, UI_COLOR_GOLD_ACCENT, 0);
+    lv_obj_set_pos(disp_box, 296, 79);
+    lv_obj_set_size(disp_box, 488, 70);
+    lv_obj_set_style_bg_opa(disp_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(disp_box, 0, 0);
+    lv_obj_set_style_pad_all(disp_box, 0, 0);
     lv_obj_remove_flag(disp_box, LV_OBJ_FLAG_SCROLLABLE);
 
     s_display = lv_label_create(disp_box);
     lv_label_set_text(s_display, "0");
     lv_obj_set_style_text_font(s_display, UI_FONT_LARGE, 0);
     lv_obj_set_style_text_color(s_display, lv_color_hex(0xF3DDA1), 0);
-    lv_obj_align(s_display, LV_ALIGN_RIGHT_MID, -14, 0);
+    lv_obj_align(s_display, LV_ALIGN_RIGHT_MID, -24, 0);
 
-    /* 4 columns × 5 rows. */
-    const int x[4] = {296, 418, 540, 662};
-    const int y[5] = {148, 212, 276, 340, 404};
-    const int w = 112, h = 54;
+    /* 4 columns × 5 rows matching concept art layout */
+    const int x[4] = {299, 418, 537, 658};
+    const int y[5] = {160, 220, 280, 340, 400};
+    const int w = 112, h = 50;
 
     make_key(scr, x[0], y[0], w, h, "AC", CK_CLEAR, 2);
     make_key(scr, x[1], y[0], w, h, "±", CK_SIGN, 4);
     make_key(scr, x[2], y[0], w, h, "%", CK_PERCENT, 4);
-    make_key(scr, x[3], y[0], w, h, "÷", CK_DIV, 1);
+    make_key(scr, x[3], y[0], 122, h, "÷", CK_DIV, 1);
 
     make_key(scr, x[0], y[1], w, h, "7", CK_7, 0);
     make_key(scr, x[1], y[1], w, h, "8", CK_8, 0);
     make_key(scr, x[2], y[1], w, h, "9", CK_9, 0);
-    make_key(scr, x[3], y[1], w, h, "×", CK_MUL, 1);
+    make_key(scr, x[3], y[1], 122, h, "×", CK_MUL, 1);
 
     make_key(scr, x[0], y[2], w, h, "4", CK_4, 0);
     make_key(scr, x[1], y[2], w, h, "5", CK_5, 0);
     make_key(scr, x[2], y[2], w, h, "6", CK_6, 0);
-    make_key(scr, x[3], y[2], w, h, "-", CK_SUB, 1);
+    make_key(scr, x[3], y[2], 122, h, "-", CK_SUB, 1);
 
     make_key(scr, x[0], y[3], w, h, "1", CK_1, 0);
     make_key(scr, x[1], y[3], w, h, "2", CK_2, 0);
     make_key(scr, x[2], y[3], w, h, "3", CK_3, 0);
-    make_key(scr, x[3], y[3], w, h, "+", CK_ADD, 1);
+    make_key(scr, x[3], y[3], 122, h, "+", CK_ADD, 1);
 
-    make_key(scr, x[0], y[4], w*2+10, h, "0", CK_0, 0);
+    make_key(scr, x[0], y[4], 231, h, "0", CK_0, 0);
     make_key(scr, x[2], y[4], w, h, ".", CK_DOT, 0);
-    make_key(scr, x[3], y[4], w, h, "=", CK_EQ, 3);
+    make_key(scr, x[3], y[4], 122, h, "=", CK_EQ, 3);
 
     /* History overlay */
     s_hist_panel = lv_obj_create(scr);

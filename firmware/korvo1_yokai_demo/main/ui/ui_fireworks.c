@@ -1,5 +1,5 @@
 #include "ui/ui_fireworks.h"
-#include "ui/ui_yokai_art.h"
+#include "ui/ui_image_loader.h"
 #include "ui/ui_theme.h"
 #include "fireworks_engine.h"
 #include <stdint.h>
@@ -200,8 +200,8 @@ static void draw_particles(lv_layer_t *layer)
             lv_draw_rect(layer, &rd, &ra);
         }
 
-        /* Ambient specular reflection on lake water surface */
-        if (p[i].y < 345.0f && p[i].y > 60.0f) {
+        /* Ambient specular reflection on lake water surface for alternating sparks */
+        if ((i & 1) == 0 && p[i].y < 345.0f && p[i].y > 60.0f) {
             int32_t ry = 362 + (int32_t)((345.0f - p[i].y) * 0.30f);
             if (ry >= 360 && ry <= 470) {
                 lv_draw_line_dsc_t rd;
@@ -241,11 +241,7 @@ static void draw_particles(lv_layer_t *layer)
 
 static void art_draw_cb(lv_event_t *e)
 {
-    lv_obj_t *obj = lv_event_get_current_target(e);
     lv_layer_t *layer = lv_event_get_layer(e);
-    lv_area_t a;
-    lv_obj_get_coords(obj, &a);
-    ui_yokai_art_draw(layer, &a, UI_YOKAI_ART_FIREWORKS_B);
     draw_particles(layer);
 }
 
@@ -258,6 +254,13 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     lv_obj_set_size(scr, 800, 480);
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x020610), 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Background: Real Yokai Moonlit Fireworks Lake artwork */
+    lv_obj_t *bg = lv_image_create(scr);
+    lv_image_set_src(bg, &ui_app_shared_bg);
+    lv_obj_set_pos(bg, 0, 0);
+    lv_obj_set_size(bg, 800, 480);
+    lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE);
 
     s_art = lv_obj_create(scr);
     lv_obj_set_pos(s_art, 0, 0);
@@ -286,19 +289,6 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     lv_label_set_text(hl, "< ホーム");
     lv_obj_set_style_text_font(hl, UI_FONT_SMALL, 0);
     lv_obj_center(hl);
-
-    /* Title at y=10 and Subtitle at y=52: clean vertical separation with no overlap */
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "夜空の花火");
-    lv_obj_set_style_text_font(title, UI_FONT_LARGE, 0);
-    lv_obj_set_style_text_color(title, UI_COLOR_GOLD_ACCENT, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
-
-    lv_obj_t *sub = lv_label_create(scr);
-    lv_label_set_text(sub, "タップで花火を打ち上げよう");
-    lv_obj_set_style_text_font(sub, UI_FONT_SMALL, 0);
-    lv_obj_set_style_text_color(sub, UI_COLOR_TEXT_SUB, 0);
-    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 52);
 
     s_count = lv_label_create(scr);
     lv_label_set_text(s_count, "打上数: 0 発");

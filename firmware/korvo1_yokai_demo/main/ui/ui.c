@@ -307,12 +307,15 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             ui_vision_set_active(true);
             vision_service_start();
         } else if (s_pending_target == UI_SCREEN_FIREWORKS) {
+            ui_app_background_load(UI_APP_BG_FIREWORKS);
             ui_fireworks_set_active(true);
             app_health_log_heap("enter fireworks");
         } else if (s_pending_target == UI_SCREEN_CLOCK) {
+            ui_app_background_load(UI_APP_BG_CLOCK);
             ui_clock_set_active(true);
             app_health_log_heap("enter clock");
         } else if (s_pending_target == UI_SCREEN_CALCULATOR) {
+            ui_app_background_load(UI_APP_BG_CALCULATOR);
             app_health_log_heap("enter calculator");
         }
     }
@@ -362,6 +365,10 @@ void ui_switch_screen(ui_screen_t target)
     }
     if (prev == UI_SCREEN_CALCULATOR && target != UI_SCREEN_CALCULATOR) {
         app_health_log_heap("exit calculator");
+    }
+    if ((prev == UI_SCREEN_FIREWORKS || prev == UI_SCREEN_CLOCK || prev == UI_SCREEN_CALCULATOR) &&
+        (target != UI_SCREEN_FIREWORKS && target != UI_SCREEN_CLOCK && target != UI_SCREEN_CALCULATOR)) {
+        ui_app_background_free();
     }
 
     /*

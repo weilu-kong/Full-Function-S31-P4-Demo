@@ -28,6 +28,29 @@ extern const size_t ui_img_weather_rain_jpg_len;
 extern const uint8_t ui_img_weather_night_jpg[];
 extern const size_t ui_img_weather_night_jpg_len;
 
+extern const uint8_t ui_img_calculator_bg_jpg[];
+extern const size_t ui_img_calculator_bg_jpg_len;
+
+extern const uint8_t ui_img_clock_bg_jpg[];
+extern const size_t ui_img_clock_bg_jpg_len;
+
+extern const uint8_t ui_img_fireworks_bg_jpg[];
+extern const size_t ui_img_fireworks_bg_jpg_len;
+
+lv_image_dsc_t ui_app_shared_bg = {
+    .header = {
+        .magic = LV_IMAGE_HEADER_MAGIC,
+        .cf = LV_COLOR_FORMAT_RGB565,
+        .w = 800,
+        .h = 480,
+        .stride = 1600,
+    },
+    .data_size = 800 * 480 * 2,
+    .data = NULL,
+};
+
+static ui_app_bg_t s_current_app_bg = UI_APP_BG_NONE;
+
 static esp_err_t decode_jpeg_to_dsc(const char *name, const uint8_t *jpg_data, size_t jpg_len, lv_image_dsc_t *dsc)
 {
     if (!jpg_data || jpg_len == 0 || !dsc) {
@@ -167,3 +190,51 @@ esp_err_t ui_weather_background_load(weather_cond_t condition, bool is_day)
     }
     return ret;
 }
+
+esp_err_t ui_app_background_load(ui_app_bg_t bg)
+{
+    if (bg == s_current_app_bg && ui_app_shared_bg.data != NULL) {
+        return ESP_OK;
+    }
+    const uint8_t *jpg = NULL;
+    size_t len = 0;
+    const char *name = NULL;
+    switch (bg) {
+    case UI_APP_BG_FIREWORKS:
+        jpg = ui_img_fireworks_bg_jpg;
+        len = ui_img_fireworks_bg_jpg_len;
+        name = "ui_img_fireworks_bg";
+        break;
+    case UI_APP_BG_CLOCK:
+        jpg = ui_img_clock_bg_jpg;
+        len = ui_img_clock_bg_jpg_len;
+        name = "ui_img_clock_bg";
+        break;
+    case UI_APP_BG_CALCULATOR:
+        jpg = ui_img_calculator_bg_jpg;
+        len = ui_img_calculator_bg_jpg_len;
+        name = "ui_img_calculator_bg";
+        break;
+    default:
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t ret = decode_jpeg_to_dsc(name, jpg, len, &ui_app_shared_bg);
+    if (ret == ESP_OK) {
+        s_current_app_bg = bg;
+        lv_image_cache_drop(&ui_app_shared_bg);
+    }
+    return ret;
+}
+
+void ui_app_background_free(void)
+{
+    if (ui_app_shared_bg.data) {
+        lv_image_cache_drop(&ui_app_shared_bg);
+        heap_caps_free((void *)ui_app_shared_bg.data);
+        ui_app_shared_bg.data = NULL;
+        s_current_app_bg = UI_APP_BG_NONE;
+        ESP_LOGI(TAG, "Freed shared app background buffer (750KB returned to PSRAM)");
+    }
+}
+

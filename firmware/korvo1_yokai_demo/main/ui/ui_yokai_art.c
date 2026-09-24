@@ -261,25 +261,7 @@ static void draw_stone_lantern(lv_layer_t *layer, int32_t x, int32_t y)
     draw_line(layer, x - 5, y + 60, x + 5, y + 60, amber, LV_OPA_30, 1);
 }
 
-static void draw_pine_silhouette(lv_layer_t *layer)
-{
-    const lv_color_t trunk = lv_color_hex(0x0B1417);
-    const lv_color_t needle = lv_color_hex(0x060E10);
 
-    /* Gracefully curving Japanese pine branch from top-left */
-    draw_line(layer, 0, 10, 85, 92, trunk, LV_OPA_COVER, 10);
-    draw_line(layer, 65, 75, 168, 48, trunk, LV_OPA_COVER, 7);
-    draw_line(layer, 85, 92, 195, 115, trunk, LV_OPA_COVER, 6);
-
-    /* Needle fan clusters */
-    for (int i = 0; i < 9; ++i) {
-        int bx = 70 + i * 14;
-        draw_line(layer, bx, 55, bx - 14, 38, needle, LV_OPA_COVER, 4);
-        draw_line(layer, bx + 4, 58, bx + 16, 42, needle, LV_OPA_COVER, 4);
-        draw_line(layer, bx - 2, 98, bx - 16, 80, needle, LV_OPA_COVER, 4);
-        draw_line(layer, bx + 6, 102, bx + 18, 85, needle, LV_OPA_COVER, 4);
-    }
-}
 
 static void draw_gold_waves(lv_layer_t *layer, int32_t y0)
 {
@@ -345,7 +327,6 @@ static void draw_fireworks_b(lv_layer_t *layer, const lv_area_t *area)
     draw_sky_atmosphere(layer);
     draw_starfield(layer);
     draw_moon(layer, 130, 140, 56);
-    draw_pine_silhouette(layer);
     draw_mountains_rich(layer, 342);
     draw_lake_rich(layer, 356, 130);
     draw_stone_lantern(layer, 55, 340);
@@ -358,7 +339,6 @@ static void draw_clock_b(lv_layer_t *layer, const lv_area_t *area)
     draw_sky_atmosphere(layer);
     draw_starfield(layer);
     draw_moon(layer, 112, 155, 68);
-    draw_pine_silhouette(layer);
     draw_mountains_rich(layer, 348);
     draw_lake_rich(layer, 360, 112);
     draw_torii_rich(layer, 85, 298, 76);
@@ -375,7 +355,6 @@ static void draw_calculator_a(lv_layer_t *layer, const lv_area_t *area)
     draw_sky_atmosphere(layer);
     draw_starfield(layer);
     draw_moon(layer, 120, 150, 78);
-    draw_pine_silhouette(layer);
     draw_soroban(layer);
     draw_gold_waves(layer, 432);
 

@@ -7,6 +7,7 @@ idf_component_register(
          "ui/ui_wifi_signal.c" "ui/ui_img_key_icon.c" "ui/ui_image_loader.c"
          "ui/ui_img_home_p1.c" "ui/ui_img_home_p2.c"
          "ui/ui_img_weather_sunny.c" "ui/ui_img_weather_cloudy.c" "ui/ui_img_weather_rain.c" "ui/ui_img_weather_night.c"
+         "ui/ui_img_calculator_bg.c" "ui/ui_img_clock_bg.c" "ui/ui_img_fireworks_bg.c"
          "ui/ui_font_cjk_14.c" "ui/ui_font_cjk_16.c" "ui/ui_font_cjk_20.c" "ui/ui_font_cjk_32.c"
     INCLUDE_DIRS "." "ui"
     PRIV_REQUIRES esp_wifi esp_netif nvs_flash spiffs espressif__esp-sr espressif__esp_asrc espressif__esp-dl espressif__human_face_detect espressif__esp-dsp espressif__esp32_s31_korvo_1_noglib espressif__esp_audio_effects espressif__esp_codec_dev bt esp_ringbuf esp_http_client espressif__cjson mbedtls lvgl espressif__esp_lvgl_adapter espressif__esp_lv_lottie_player espressif__thorvg espressif__esp_new_jpeg)

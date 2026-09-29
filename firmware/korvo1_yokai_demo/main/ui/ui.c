@@ -304,7 +304,6 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             ui_weather_screen_update(&info);
         } else if (s_pending_target == UI_SCREEN_VISION) {
             ui_vision_set_active(true);
-            vision_service_start();
         } else if (s_pending_target == UI_SCREEN_FIREWORKS) {
             ui_fireworks_set_active(true);
             app_health_log_heap("enter fireworks");
@@ -318,6 +317,10 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             app_health_log_heap("enter calculator");
         }
         lv_screen_load(s_screen_objs[s_pending_target]);
+        if (s_pending_target == UI_SCREEN_VISION) {
+            ui_app_background_free();
+            vision_service_start();
+        }
     }
     if (card) {
         lv_obj_delete(card);

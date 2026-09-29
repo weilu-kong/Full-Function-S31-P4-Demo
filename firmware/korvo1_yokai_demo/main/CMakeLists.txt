@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "app_main.c" "app_state.c" "app_health.c" "app_regression.c" "storage_service.c" "board_ui.c" "synth_service.c"
+    SRCS "app_main.c" "app_state.c" "app_health.c" "storage_service.c" "board_ui.c" "synth_service.c"
          "vision_camera.c" "vision_service.cpp" "voice_service.c" "weather_service.c"
          "calculator_engine.c" "clock_service.c" "fireworks_engine.c"
          "ui/ui_theme.c" "ui/ui_weather.c" "ui/ui_synth.c" "ui/ui_home.c" "ui/ui_drawer.c" "ui/ui_wifi.c" "ui/ui_bluetooth.c"
@@ -10,6 +10,7 @@ idf_component_register(
          "ui/ui_img_calculator_bg.c" "ui/ui_img_clock_bg.c" "ui/ui_img_fireworks_bg.c"
          "ui/ui_font_cjk_14.c" "ui/ui_font_cjk_16.c" "ui/ui_font_cjk_20.c" "ui/ui_font_cjk_32.c"
     INCLUDE_DIRS "." "ui"
+    LDFRAGMENTS linker.lf
     PRIV_REQUIRES esp_wifi esp_netif nvs_flash spiffs espressif__esp-sr espressif__esp_asrc espressif__esp-dl espressif__human_face_detect espressif__esp-dsp espressif__esp32_s31_korvo_1_noglib espressif__esp_audio_effects espressif__esp_codec_dev bt esp_ringbuf esp_http_client espressif__cjson mbedtls lvgl espressif__esp_lvgl_adapter espressif__esp_lv_lottie_player espressif__thorvg espressif__esp_new_jpeg)
 
 # esp-dl 3.3.11 uses C-style typedefs for C++ structs with member

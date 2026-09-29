@@ -19,7 +19,6 @@ static const char *TAG = "yokai_demo";
 
 #include "storage_service.h"
 #include "app_health.h"
-#include "app_regression.h"
 
 void app_main(void)
 {
@@ -65,6 +64,4 @@ void app_main(void)
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_SIMD));
-
-    app_regression_start();
 }

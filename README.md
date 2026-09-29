@@ -35,6 +35,10 @@ The project has moved beyond a static UI prototype and now runs the main service
 
 Detailed hardware verification data and telemetry: [YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md](docs/YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md).
 
+**2026-09-29 boot fix:** The on-device regression task was accidentally started from `app_main()` in every production boot. It switched through Fireworks, Clock, Calculator, Vision, and Synth after a 9-second delay. The boot call and regression source were removed from the production build. The corrected firmware built and flashed successfully; a 35-second reset log showed the UI staying on Home (`screen=0`) with no regression task, crash, or reboot.
+
+**2026-09-29 Vision enrollment fix:** The shared Clock/Calculator background was decoded eagerly into a 750 KB PSRAM buffer, leaving no contiguous block for MobileFaceNet's 921,600-byte allocation. The background is now loaded on demand and freed before Vision starts. A second-sample crash was traced to two FreeRTOS coprocessor interrupt helpers linked into Flash; `main/linker.lf` places them in IRAM. The rebuilt firmware passed on-device five-sample enrollment, committed the face database, and produced accepted recognition matches without a crash during the serial capture.
+
 ---
 
 ## Hardware
@@ -298,17 +302,12 @@ Generated concept art is a **visual reference only**. Text, controls, touch geom
 
 ## Next milestones
 
-### Fireworks
-Replace the current expanding-circle placeholder with a bounded particle engine, fixed pool allocation, touch/drag launch behavior, multiple burst styles and optional sound feedback.
+Fireworks, Clock / Timer, and Calculator have passed the September 24 hardware regression. Remaining scoped work:
 
-### Clock / Timer
-Add accurate SNTP/local-time presentation, configurable timer presets, pause/resume/reset, deadline-based countdown, stopwatch and completion audio/visual feedback.
+- Complete Food freshness persistence and editing.
+- Reassess object recognition only after measuring Vision peak memory and defining a separate hardware acceptance gate.
 
-### Calculator
-Replace the current two-operand state machine with iPhone-style chained-operation semantics, `AC/C`, sign, percent, robust formatting, divide-by-zero handling and bounded history.
-
-### Later
-After the three low-memory apps are stable, reassess:
+Possible later extensions:
 
 - Matter / smart-home dashboard;
 - local voice + cloud/LLM assistant;

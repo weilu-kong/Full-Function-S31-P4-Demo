@@ -161,3 +161,35 @@ python firmware/korvo1_yokai_demo/test/monitor_audio_test.py --duration 660 --lo
 - `firmware/korvo1_yokai_demo/test/monitor_audio_test.py`
 - `docs/superpowers/plans/2026-09-30-synth-a2dp-repair.md`
 - `docs/reports/2026-09-30-synth-a2dp-repair.md`
+
+## 后续 Vision 流畅度与局部花屏排查
+
+用户授权继续推进后，临时启用 LVGL 原生 sysmon 串口统计，仓库默认配置保持关闭。Vision 原先 render 达 275–309 ms，flush 仅 4–24 ms，软件图像缩放占据明显耗时。
+
+显示改为原生 DOUBLE_DIRECT，仍使用两个完整帧缓冲。按用户选择，将预览改为 320×240 原尺寸居中，关闭图像抗锯齿，外框贴合图像，识别框采用原始坐标，标签按实际宽度约束在预览内。稳定窗口 46.041 秒中：相机约 15.64 帧/秒、预览消费约 13.68 帧/秒、推理约 3.56 次/秒；末尾 sysmon 中位数约 15 FPS、render 39 ms、flush 15 ms。CPU 百分比未校准，不用作整机负载结论。用户确认外框贴合、运行流畅。
+
+另外修正预览三缓冲交接竞争：捕获线程不得改写 ready 缓冲，因为 UI 或推理线程可随时取得它。全部缓冲被占用时跳过新帧，不覆盖已发布图像；生产函数的 host 回归覆盖这一情形。Vision host、UI regression、Synth/BT checks、构建及烧录均通过。
+
+**残余问题尚未解决：** 用户仍偶发看到彩色色块、杂点和画面偏移，并确认只影响摄像头小画面，旁边文字按钮正常。不能据此宣称花屏已修复，也没有证据支持修改整屏 LCD 时钟。
+
+IDF 6.1 DVP 驱动对非 JPEG 帧报告固定 fb_size，忽略实际 DMA descriptor 接收长度，现有 V4L2 取帧成功/错误计数不能证明输入完整。临时 CMake 选项 `YOKAI_CAMERA_DMA_DIAGNOSTICS=ON` 从已安装 IDF 生成诊断源副本，记录实际 DMA 长度范围、长度不匹配和 descriptor 错误，不修改已安装 SDK。同时检查捕获期间源帧采样哈希、推理前后完整预览 CRC，以定位是否发生发布后改写。默认诊断选项关闭，诊断完成后移除 CRC 和额外日志。
+
+原尺寸版本和修正交接版本的固件副本分别保存在本地忽略目录 `build-audio-validation/vision-native-final.bin` 与 `vision-preview-safe.bin`。后者用户实测仍有局部花屏，仅作为可回退基线。
+
+### DMA 实测与修复
+
+诊断固件 SHA256 `9c911fefcb6a86000309042974abcea4b40e53f09f55c44cb6d8cf3ed6a584f5`。1280×720 UYVY 每帧预期 1,843,200 字节；1280 次 DMA 完成中记录 4 次长度不匹配，实际短帧包括 1,752,647 和 1,761,564 字节。到重启前，1040 次转换源采样校验和 224 次推理完整 CRC 校验均没有发现图像被改写。这不能证明所有输入损坏都已定位，但确认了驱动把短帧伪装成完整帧这一缺陷。
+
+本轮还在约 109 秒 uptime 捕获 cache_msync NULL 导致 abort。栈地址映射到 DVP start_trans / frame_done ISR。esp_video 配置 bk_buffer_dis=true；应用尚未归还两个 DMA buffer 时，驱动没有 queued buffer，依赖 release 构建中被禁用的 assert，随后使用 NULL。剩余 PSRAM 约 284 KiB，无法增加一个 1.84 MiB 后备缓冲。
+
+生成的驱动源修复两处：非 JPEG 实际长度与预期不符时返回 received_size=0，保留完成回调让 V4L2 标记错误并由应用 QBUF；无 queued buffer 时，复用刚完成、尚未交付应用的 driver-owned buffer，跳过该帧完成回调，直到空闲缓冲返回再恢复发布。不会覆盖读者拥有的缓冲，也不增加帧缓冲。camera_acquire 同时校验 index、ERROR flag、bytesused 和映射容量，拒绝的帧立即归还。
+
+新增 test_camera_dma.py 从真实生成源抽取并编译 start_trans、get_recved_size、frame_done ISR，覆盖完整/短/零/超长/JPEG、缓冲耗尽复用、空闲缓冲返回恢复及初次启动无缓冲。host 回归和独立 ownership 审查通过。**最终花屏改善和板上稳定性仍需修复版实测，不能用测试通过替代听看验收。**
+
+### 修复版五分钟验证
+
+修复版已构建、烧录并通过写入数据校验。板上固件 SHA256 `820a67d137f669c192e6035ddbcaf84f8946ebcdd882ea0588336f0e334d2f5e`，最后构建依赖调整后的产物 SHA256 与板上副本一致。原始日志采集 300.1 秒，运行窗口 280.231 秒：相机 15.59 帧/秒，预览消费 15.25 帧/秒（包含不同人脸负载，不代表持续识别性能）。4400 次 DMA 完成中发现 10 帧长度异常，应用明确拒绝 10 帧并继续采集；没有额外开机、panic 或 abort。捕获源采样和推理完整 CRC 的 changed 均为 0。
+
+用户回复“已打开，暂未出现异常”。本轮改善得到日志和短时观察支持，尚不证明所有环境中的偶发损坏均消除。采集已正常结束。板上保留本轮诊断构建，仓库 `YOKAI_CAMERA_DMA_DIAGNOSTICS` 默认 OFF；开启诊断需额外传 `-DYOKAI_CAMERA_DMA_DIAGNOSTICS=ON`，原生 sysmon 仍使用临时 sdkconfig，未更改仓库默认配置。本轮没有蓝牙音频遥测，不将此窗口作为新增 A2DP 验收。
+
+复现驱动回归：`IDF_PATH=/path/to/esp-idf python3 firmware/korvo1_yokai_demo/test/test_camera_dma.py`。固件、构建/烧录日志、运行原始日志与汇总保存于本地忽略目录 build-audio-validation；`vision-camera-frame-fix-summary.json` 记录上述窗口与计数。

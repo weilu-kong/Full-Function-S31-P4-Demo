@@ -258,6 +258,22 @@ esp_err_t vision_camera_acquire(vision_camera_frame_t *frame, TickType_t timeout
         return ESP_ERR_TIMEOUT;
     }
 
+    if (buf.index >= VISION_CAM_BUFFER_COUNT) {
+        ESP_LOGE(TAG, "Invalid camera buffer index: %lu", (unsigned long)buf.index);
+        return ESP_FAIL;
+    }
+    size_t expected = (size_t)s_cam_width * s_cam_height * 2;
+    if ((buf.flags & V4L2_BUF_FLAG_ERROR) || buf.bytesused != expected ||
+        buf.bytesused > s_buffer_len[buf.index]) {
+        ESP_LOGW(TAG, "Discarding incomplete camera frame: index=%lu bytes=%lu expected=%u flags=0x%lx",
+                 (unsigned long)buf.index, (unsigned long)buf.bytesused,
+                 (unsigned)expected, (unsigned long)buf.flags);
+        if (ioctl(s_cam_fd, VIDIOC_QBUF, &buf) != 0) {
+            ESP_LOGE(TAG, "Failed to requeue rejected frame: errno=%d", errno);
+        }
+        return ESP_FAIL;
+    }
+
     frame->data = s_buffers[buf.index];
     frame->width = (uint16_t)s_cam_width;
     frame->height = (uint16_t)s_cam_height;

@@ -534,16 +534,17 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_pos(card, 16, 56);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Viewfinder Area (520x310) */
+    /* Border hugs the native preview, centered in the original viewfinder area. */
     lv_obj_t *vf = lv_obj_create(card);
-    lv_obj_set_size(vf, 520, 310);
-    lv_obj_set_pos(vf, 20, 20);
+    lv_obj_set_size(vf, VISION_PREVIEW_WIDTH + 4, VISION_PREVIEW_HEIGHT + 4);
+    lv_obj_set_pos(vf, 20 + (520 - VISION_PREVIEW_WIDTH - 4) / 2,
+                   20 + (310 - VISION_PREVIEW_HEIGHT - 4) / 2);
     lv_obj_set_style_bg_color(vf, lv_color_hex(0x06090E), 0);
     lv_obj_set_style_border_color(vf, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_border_width(vf, 2, 0);
-    lv_obj_set_style_radius(vf, 10, 0);
+    lv_obj_set_style_radius(vf, 0, 0);
     lv_obj_set_style_pad_all(vf, 0, 0);
-    lv_obj_set_style_clip_corner(vf, true, 0);
+    lv_obj_set_style_clip_corner(vf, false, 0);
     lv_obj_remove_flag(vf, LV_OBJ_FLAG_SCROLLABLE);
 
     s_lbl_vf_target = lv_label_create(vf);
@@ -552,11 +553,11 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(s_lbl_vf_target, UI_FONT_REGULAR, 0);
     lv_obj_center(s_lbl_vf_target);
 
-    /* Real-time camera preview image (fills 520x310 viewfinder frame) */
+    /* Native RGB565 preview centered in the viewfinder: no per-frame scaling. */
     s_vf_img = lv_image_create(vf);
     lv_obj_set_pos(s_vf_img, 0, 0);
-    lv_obj_set_size(s_vf_img, 520, 310);
-    lv_image_set_inner_align(s_vf_img, LV_IMAGE_ALIGN_STRETCH);
+    lv_obj_set_size(s_vf_img, VISION_PREVIEW_WIDTH, VISION_PREVIEW_HEIGHT);
+    lv_image_set_inner_align(s_vf_img, LV_IMAGE_ALIGN_CENTER);
     /* Live RGB565 video: avoid software bilinear filtering of every preview pixel. */
     lv_image_set_antialias(s_vf_img, false);
     lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
@@ -1106,16 +1107,16 @@ void ui_vision_screen_update(void)
             for (int i = 0; i < VISION_MAX_DETECTIONS; i++) {
                 if (!s_face_boxes[i] || !s_face_labels[i]) continue;
                 if (i < res.count) {
-                    int bx = (res.boxes[i].x * 520) / VISION_PREVIEW_WIDTH;
-                    int by = (res.boxes[i].y * 310) / VISION_PREVIEW_HEIGHT;
-                    int bw = (res.boxes[i].w * 520) / VISION_PREVIEW_WIDTH;
-                    int bh = (res.boxes[i].h * 310) / VISION_PREVIEW_HEIGHT;
+                    int bx = res.boxes[i].x;
+                    int by = res.boxes[i].y;
+                    int bw = res.boxes[i].w;
+                    int bh = res.boxes[i].h;
                     if (bw < 10) bw = 10;
                     if (bh < 10) bh = 10;
                     if (bx < 0) bx = 0;
                     if (by < 0) by = 0;
-                    if (bx + bw > 520) bw = 520 - bx;
-                    if (by + bh > 310) bh = 310 - by;
+                    if (bx + bw > VISION_PREVIEW_WIDTH) bw = VISION_PREVIEW_WIDTH - bx;
+                    if (by + bh > VISION_PREVIEW_HEIGHT) bh = VISION_PREVIEW_HEIGHT - by;
 
                     lv_obj_set_pos(s_face_boxes[i], bx, by);
                     lv_obj_set_size(s_face_boxes[i], bw, bh);
@@ -1132,10 +1133,10 @@ void ui_vision_screen_update(void)
 
                     int lbl_y = by - 24;
                     if (lbl_y < 2) lbl_y = by + 4;
-                    int lbl_x = bx;
-                    if (lbl_x > 400) lbl_x = 400;
-                    lv_obj_set_pos(s_face_labels[i], lbl_x, lbl_y);
                     lv_label_set_text(s_face_labels[i], res.boxes[i].label);
+                    lv_obj_update_layout(s_face_labels[i]);
+                    int lbl_x = LV_MIN(bx, LV_MAX(0, VISION_PREVIEW_WIDTH - lv_obj_get_width(s_face_labels[i])));
+                    lv_obj_set_pos(s_face_labels[i], lbl_x, lbl_y);
 
                     lv_obj_remove_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
                     lv_obj_remove_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);

@@ -29,6 +29,9 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
+#include "esp_rom_crc.h"
+#endif
 #include "human_face_detect.hpp"
 #include "human_face_recognition.hpp"
 #endif
@@ -65,7 +68,8 @@ static volatile bool s_infer_running = false;
 static int find_free_preview_buffer(void)
 {
     for (int i = 0; i < 3; ++i) {
-        if (i != s_disp_idx && i != s_infer_idx && i != s_write_idx) return i;
+        /* Readers can acquire ready at any time, so its pixels must stay complete. */
+        if (i != s_disp_idx && i != s_ready_idx && i != s_infer_idx && i != s_write_idx) return i;
     }
     return -1;
 }
@@ -475,10 +479,27 @@ static void release_infer_buffer(int idx)
 
 class InferBufferLease {
 public:
-    explicit InferBufferLease(int idx) : idx_(idx) {}
-    ~InferBufferLease() { release_infer_buffer(idx_); }
+    explicit InferBufferLease(int idx) : idx_(idx) {
+#ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
+        crc_ = esp_rom_crc32_le(0, s_preview_buf[idx_], PREVIEW_FRAME_SIZE);
+#endif
+    }
+    ~InferBufferLease() {
+#ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
+        static uint32_t checked, changed;
+        checked++;
+        if (crc_ != esp_rom_crc32_le(0, s_preview_buf[idx_], PREVIEW_FRAME_SIZE)) changed++;
+        if (checked % 16 == 0) {
+            ESP_LOGW(TAG, "[FRAME_INTEGRITY] inference_checked=%u changed=%u", (unsigned)checked, (unsigned)changed);
+        }
+#endif
+        release_infer_buffer(idx_);
+    }
 private:
     int idx_;
+#ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
+    uint32_t crc_;
+#endif
 };
 
 static HumanFaceDetect *s_face_detect = nullptr;
@@ -551,6 +572,18 @@ static void vision_health_task(void *arg)
     }
 }
 
+#ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
+static uint32_t sample_camera_frame(const vision_camera_frame_t &frame)
+{
+    uint32_t hash = 0;
+    const uint8_t *data = (const uint8_t *)frame.data;
+    for (size_t off = 0; off < (size_t)frame.width * frame.height * 2; off += 2048) {
+        hash = hash * 33 + data[off];
+    }
+    return hash;
+}
+#endif
+
 static void vision_capture_task(void *arg)
 {
     (void)arg;
@@ -581,6 +614,9 @@ static void vision_capture_task(void *arg)
             s_preview_no_free_buffer_count = s_preview_no_free_buffer_count + 1;
         }
         if (write_idx >= 0 && s_preview_buf[write_idx] && frame.data) {
+#ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
+            uint32_t source_hash = sample_camera_frame(frame);
+#endif
             uint16_t *dst = (uint16_t *)s_preview_buf[write_idx];
             if (frame.format == VISION_PIXFMT_RGB565) {
                 const uint16_t *src = (const uint16_t *)frame.data;
@@ -621,6 +657,14 @@ static void vision_capture_task(void *arg)
                 }
             }
 
+#ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
+            static uint32_t checked, changed;
+            checked++;
+            if (source_hash != sample_camera_frame(frame)) changed++;
+            if (checked % 80 == 0) {
+                ESP_LOGW(TAG, "[FRAME_INTEGRITY] capture_checked=%u changed=%u", (unsigned)checked, (unsigned)changed);
+            }
+#endif
             /* Publish only a fully written frame. */
             if (s_preview_mutex) {
                 xSemaphoreTake(s_preview_mutex, portMAX_DELAY);

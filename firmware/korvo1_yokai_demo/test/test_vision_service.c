@@ -139,6 +139,14 @@ int main(void)
     s_write_idx = -1;
     assert(find_free_preview_buffer() == 2);
 
+    /* A completed frame waiting for a reader must never become a writer. */
+    s_ready_idx = 2;
+    assert(find_free_preview_buffer() == -1);
+    s_infer_idx = -1;
+    assert(find_free_preview_buffer() == 1);
+    s_ready_idx = s_disp_idx;
+    s_infer_idx = 1;
+
     /* Consume each published sequence exactly once. */
     const uint8_t *preview = NULL;
     uint16_t preview_w = 0;

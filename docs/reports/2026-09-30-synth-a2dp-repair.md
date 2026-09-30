@@ -80,21 +80,43 @@ flowchart LR
 
 构建兼容修正均限定于已有第三方路径：GCC 16 特有的 esp-dl 选项按版本启用；IDF 6.1 Bluedroid 的 stringop-truncation 警告保留但不升为错误；已有 managed-component 补丁工具在 CMake generation 前修正 ThorVG/Meson 的响应文件参数引号。未关闭全局警告，也未改 Voice/Vision 实现。
 
-## 实板音频验收尚未完成
+## 实板播放结果（本版保留）
 
-启动观察窗口内没有 A2DP CONFIG/STARTED/PCM 事件，没有手机播放数据。下列数值是**未取得**，不能用零计数代替：
+音频代码提交 `5e79577792d7988029d7836ea276ac0eb898fdac` 已烧录。用户确认“效果还算不错，没有什么大问题”，随后要求停止采集、先定下这一版。已结束采集，不再启动串口或重刷板子。
 
-| 必需的十分钟实播数据 | 当前结果 |
+连续 STARTED→SUSPENDED 窗口 440.218 秒，约 7 分 20 秒；总采集 660.07 秒，**未完成十分钟连续播放验收**。输入为 SBC 44100 Hz、双声道，48k ASRC 尚未实板验证。
+
+| 指标 | 实测 |
 |---|---|
-| 协商输入采样率 / 48k ASRC 实测 | 未观察到 |
-| overflow count | 未取得 |
-| underflow count | 未取得 |
-| FIFO high watermark | 未取得 |
-| received bytes | 未取得 |
-| played bytes | 未取得 |
-| codec max write latency | 未取得 |
+| received / played bytes | 77,361,152 / 77,343,744 |
+| underflow | 启动前四秒累计 2 次，此后没有增长 |
+| overflow / short / dropped bytes | 0 / 0 / 0 |
+| codec write / ASRC errors | 0 / 0 |
+| FIFO high watermark | 24,576 / 40,960 bytes |
+| codec max write latency | 14,781 us |
+| final peak / limited samples | 32767 / 491346（Synth 混播时限幅工作） |
 
-C3/G3/C4/黑键、四种波形实际听感、双喇叭声道/高频/混响、Synth+BT 混播、跨 APP 十分钟播放、真实 Hi ESP/MultiNet/AEC 和 Vision 识别/重入，需要操作员测试。启动成功不能替代这些测试。
+Cutoff、Resonance 和混响只处理 Synth 缓冲，蓝牙 PCM 绕过这些效果；蓝牙音乐不会随这两个旋钮改变。观察到跨 Home、Synth、Weather、Vision、Fireworks、Clock、Calculator；真实语音命令/AEC 效果及所有钢琴键的逐项验收仍未确认。
+
+用户随后报告人脸识别预览卡顿。既有日志中蓝牙已暂停的 Vision 窗口，摄像头约 15.6 fps、预览消费约 4.8 次/秒，camera errors、预览锁竞争、无空闲缓冲计数均无增长。这是独立的显示性能问题，不能将 Vision 启动/推理成功视为流畅性验收通过。
+
+## Vision 预览优化实测
+
+用户授权“进行下一步”后，已以 920160 波特率烧录单行行为修改，数据校验通过；随后用 115200 波特率采集 240 秒日志。视频预览调用 `lv_image_set_antialias(s_vf_img, false)`，关闭默认软件双线性插值。预览大小和模型输入未改变；音频处理代码未改变。
+
+| 指标 | 优化前 | 优化后稳定窗口 |
+|---|---:|---:|
+| 摄像头采集 | 15.63 fps | 15.61 fps |
+| 预览消费/更新 | 4.79 次/秒 | 6.64 次/秒 |
+| 人脸推理 | 15.63 次/秒 | 15.63 次/秒 |
+
+旧窗口 92.156 秒，新稳定窗口 53.027 秒；预览消费频率提升约 39%，不等于 LCD 扫描帧率。用户实际操作时人脸内容不同，以上推理频率也不代表每次身份识别的频率。启动和有人脸的早期窗口推理速度更低，不能混为稳定无脸窗口的比较。
+
+新日志未见崩溃/Watchdog/STALL；摄像头错误与预览锁竞争未增长。这次优化有效，但预览仍只有约 6.6 次/秒，**尚不能宣称低帧率问题已完全解决**。进一步应测量 LVGL 渲染和 flush 耗时，区分缩放、圆角裁剪与整屏绘制，不盲目更改任务优先级或缓冲数。
+
+已烧录固件 SHA256：`94bb9b3e49a80d045060fba78a450d336bc903ee055ba8b758718c5fcc71bd48`。本地忽略目录保存 `vision-preview.bin`、`vision-preview-build.log`、`vision-preview-flash.log`、`vision-preview-check.log/json`，原音频固件副本继续保留。
+
+原始实播日志和 JSON 已保存到本地忽略目录 `firmware/korvo1_yokai_demo/build-audio-validation/`。
 
 ## 复现及实播采集
 

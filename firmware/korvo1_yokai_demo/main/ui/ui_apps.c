@@ -557,6 +557,8 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_pos(s_vf_img, 0, 0);
     lv_obj_set_size(s_vf_img, 520, 310);
     lv_image_set_inner_align(s_vf_img, LV_IMAGE_ALIGN_STRETCH);
+    /* Live RGB565 video: avoid software bilinear filtering of every preview pixel. */
+    lv_image_set_antialias(s_vf_img, false);
     lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
 
     /* Real-time Face Detection Bounding Boxes & Tracking Labels */

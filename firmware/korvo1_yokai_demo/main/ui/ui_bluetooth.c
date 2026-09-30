@@ -90,6 +90,7 @@ lv_obj_t *ui_bluetooth_screen_create(ui_bt_home_cb_t home_cb)
     lv_obj_add_style(btn_home, &ui_style_pill_badge, 0);
     lv_obj_set_size(btn_home, 106, 34);
     lv_obj_set_pos(btn_home, 16, 9);
+    ui_add_click_sfx(btn_home);
     lv_obj_add_event_cb(btn_home, home_click_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
@@ -136,6 +137,7 @@ lv_obj_t *ui_bluetooth_screen_create(ui_bt_home_cb_t home_cb)
     lv_obj_set_pos(s_sw_radio, 276, 46);
     lv_obj_set_style_bg_color(s_sw_radio, UI_COLOR_GOLD_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_add_state(s_sw_radio, LV_STATE_CHECKED);
+    ui_add_click_sfx(s_sw_radio);
     lv_obj_add_event_cb(s_sw_radio, radio_switch_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     /* Device Name Row */
@@ -226,6 +228,7 @@ lv_obj_t *ui_bluetooth_screen_create(ui_bt_home_cb_t home_cb)
     lv_obj_set_size(s_btn_disconnect, 110, 36);
     lv_obj_set_pos(s_btn_disconnect, 252, 140);
     lv_obj_set_style_bg_color(s_btn_disconnect, UI_COLOR_RED_ACCENT, 0);
+    ui_add_click_sfx(s_btn_disconnect);
     lv_obj_add_event_cb(s_btn_disconnect, disconnect_click_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(s_btn_disconnect, LV_OBJ_FLAG_HIDDEN);
 
@@ -258,12 +261,12 @@ lv_obj_t *ui_bluetooth_screen_create(ui_bt_home_cb_t home_cb)
     lv_obj_set_size(s_slider_bt_vol, 260, 14);
     lv_obj_set_pos(s_slider_bt_vol, 18, 88);
     lv_slider_set_range(s_slider_bt_vol, 0, 100);
-    lv_slider_set_value(s_slider_bt_vol, 75, LV_ANIM_OFF);
+    lv_slider_set_value(s_slider_bt_vol, (int)(synth_service_get_bt_volume() * 100.0f), LV_ANIM_OFF);
     lv_obj_set_style_bg_color(s_slider_bt_vol, UI_COLOR_CYAN_ACCENT, LV_PART_INDICATOR);
     lv_obj_add_event_cb(s_slider_bt_vol, bt_vol_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     s_lbl_bt_vol_val = lv_label_create(card_vol);
-    lv_label_set_text(s_lbl_bt_vol_val, "75%");
+    lv_label_set_text_fmt(s_lbl_bt_vol_val, "%d%%", (int)(synth_service_get_bt_volume() * 100.0f));
     lv_obj_set_style_text_color(s_lbl_bt_vol_val, UI_COLOR_TEXT_TITLE, 0);
     lv_obj_set_style_text_font(s_lbl_bt_vol_val, UI_FONT_REGULAR, 0);
     lv_obj_set_pos(s_lbl_bt_vol_val, 296, 84);

@@ -245,6 +245,7 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     lv_obj_add_style(home, &ui_style_btn_home, 0);
     lv_obj_set_pos(home, 18, 16);
     lv_obj_set_size(home, 112, 44);
+    ui_add_click_sfx(home);
     lv_obj_add_event_cb(home, home_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hl = lv_label_create(home);
     lv_label_set_text(hl, "< ホーム");
@@ -263,9 +264,12 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     s_style_btn[2] = make_pill(scr, 410, "柳");
     s_auto_btn = make_pill(scr, 562, "AUTO");
 
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
+        ui_add_click_sfx(s_style_btn[i]);
         lv_obj_add_event_cb(s_style_btn[i], mode_cb, LV_EVENT_CLICKED,
                             (void *)(intptr_t)i);
+    }
+    ui_add_click_sfx(s_auto_btn);
     lv_obj_add_event_cb(s_auto_btn, mode_cb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)99);
 

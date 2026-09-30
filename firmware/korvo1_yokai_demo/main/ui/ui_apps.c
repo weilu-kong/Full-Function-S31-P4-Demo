@@ -21,6 +21,7 @@ static lv_obj_t *create_screen_header(lv_obj_t *parent, const char *title, ui_ho
     lv_obj_set_size(btn_home, 106, 36);
     lv_obj_set_pos(btn_home, 16, 12);
     if (home_cb) {
+        ui_add_click_sfx(btn_home);
         lv_obj_add_event_cb(btn_home, (lv_event_cb_t)home_cb, LV_EVENT_CLICKED, NULL);
     }
 
@@ -473,6 +474,7 @@ static void refresh_manage_list(void)
         lv_obj_set_size(btn_re, 90, 36);
         lv_obj_align(btn_re, LV_ALIGN_RIGHT_MID, -105, 0);
         lv_obj_set_style_bg_color(btn_re, UI_COLOR_CYAN_ACCENT, 0);
+        ui_add_click_sfx(btn_re);
         lv_obj_add_event_cb(btn_re, reregister_person_btn_cb, LV_EVENT_CLICKED, (void *)(intptr_t)list[i].slot);
 
         lv_obj_t *lbl_re = lv_label_create(btn_re);
@@ -486,6 +488,7 @@ static void refresh_manage_list(void)
         lv_obj_set_size(btn_del, 90, 36);
         lv_obj_align(btn_del, LV_ALIGN_RIGHT_MID, -6, 0);
         lv_obj_set_style_bg_color(btn_del, UI_COLOR_RED_ACCENT, 0);
+        ui_add_click_sfx(btn_del);
         lv_obj_add_event_cb(btn_del, delete_person_btn_cb, LV_EVENT_CLICKED, (void *)(intptr_t)list[i].slot);
 
         lv_obj_t *lbl_del = lv_label_create(btn_del);
@@ -660,6 +663,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(s_btn_enroll_cancel, 160, 36);
     lv_obj_align(s_btn_enroll_cancel, LV_ALIGN_BOTTOM_MID, 0, -2);
     lv_obj_set_style_bg_color(s_btn_enroll_cancel, UI_COLOR_RED_ACCENT, 0);
+    ui_add_click_sfx(s_btn_enroll_cancel);
     lv_obj_add_event_cb(s_btn_enroll_cancel, enroll_stop_active_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_stop = lv_label_create(s_btn_enroll_cancel);
@@ -674,6 +678,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(s_btn_enroll_start, 180, 44);
     lv_obj_set_pos(s_btn_enroll_start, 550, 175);
     lv_obj_set_style_bg_color(s_btn_enroll_start, UI_COLOR_CYAN_ACCENT, 0);
+    ui_add_click_sfx(s_btn_enroll_start);
     lv_obj_add_event_cb(s_btn_enroll_start, enroll_open_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_enr = lv_label_create(s_btn_enroll_start);
@@ -688,6 +693,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_pos(s_btn_manage_open, 550, 235);
     lv_obj_set_style_border_color(s_btn_manage_open, UI_COLOR_GOLD_ACCENT, 0);
     lv_obj_set_style_border_width(s_btn_manage_open, 1, 0);
+    ui_add_click_sfx(s_btn_manage_open);
     lv_obj_add_event_cb(s_btn_manage_open, manage_open_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_mgr = lv_label_create(s_btn_manage_open);
@@ -702,6 +708,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_pos(s_btn_scan, 550, 295);
     lv_obj_set_style_border_color(s_btn_scan, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_border_width(s_btn_scan, 1, 0);
+    ui_add_click_sfx(s_btn_scan);
     lv_obj_add_event_cb(s_btn_scan, vision_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_scan = lv_label_create(s_btn_scan);
@@ -753,6 +760,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(btn_start, 115, 44);
     lv_obj_set_pos(btn_start, 470, 55);
     lv_obj_set_style_bg_color(btn_start, UI_COLOR_CYAN_ACCENT, 0);
+    ui_add_click_sfx(btn_start);
     lv_obj_add_event_cb(btn_start, enroll_start_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_st = lv_label_create(btn_start);
@@ -765,6 +773,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_style(btn_canc, &ui_style_pill_badge, 0);
     lv_obj_set_size(btn_canc, 120, 44);
     lv_obj_set_pos(btn_canc, 600, 55);
+    ui_add_click_sfx(btn_canc);
     lv_obj_add_event_cb(btn_canc, enroll_cancel_modal_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_cn = lv_label_create(btn_canc);
@@ -814,6 +823,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(btn_clear, 130, 42);
     lv_obj_set_pos(btn_clear, 20, 350);
     lv_obj_set_style_bg_color(btn_clear, UI_COLOR_RED_ACCENT, 0);
+    ui_add_click_sfx(btn_clear);
     lv_obj_add_event_cb(btn_clear, clear_all_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_clr = lv_label_create(btn_clear);
@@ -827,6 +837,7 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(btn_close, 130, 42);
     lv_obj_set_pos(btn_close, 530, 350);
     lv_obj_set_style_bg_color(btn_close, UI_COLOR_CYAN_ACCENT, 0);
+    ui_add_click_sfx(btn_close);
     lv_obj_add_event_cb(btn_close, manage_close_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_cls = lv_label_create(btn_close);

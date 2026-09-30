@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -29,6 +30,34 @@ typedef enum {
     SYNTH_MODE_MAX,
 } synth_mode_t;
 
+typedef enum {
+    SYNTH_SFX_CLICK, SYNTH_SFX_CONFIRM, SYNTH_SFX_BACK, SYNTH_SFX_ERROR,
+} synth_sfx_t;
+
+typedef struct {
+    uint64_t bt_rx_bytes;
+    uint64_t bt_played_bytes; /* input-format bytes consumed into successful DAC frames */
+    uint64_t bt_dropped_bytes;
+    uint64_t bt_flushed_bytes; /* stale FIFO PCM drained on a stream/config transition */
+    uint32_t bt_overflow_count;
+    uint32_t bt_underflow_count;
+    uint32_t bt_short_read_count;
+    uint32_t bt_input_rate;
+    uint32_t bt_fifo_fill_bytes;
+    uint32_t bt_fifo_high_watermark;
+    uint32_t codec_write_max_us;
+    uint32_t codec_write_errors;
+    uint32_t bt_asrc_errors;
+    uint32_t command_drop_count;
+    uint32_t output_peak;
+    uint32_t limited_samples;
+} synth_audio_stats_t;
+
+void synth_service_get_audio_stats(synth_audio_stats_t *stats);
+void synth_service_note_off(float note_freq);
+void synth_service_play_sfx(synth_sfx_t sfx);
+float synth_service_get_bt_volume(void);
+
 typedef struct {
     float cutoff_hz;     /* Low-pass cutoff frequency in Hz (200.0f .. 8000.0f) */
     float resonance_q;   /* Filter resonance Q (0.5f .. 5.0f) */
@@ -39,7 +68,7 @@ typedef struct {
 
 /**
  * @brief Initialize the synthesizer sound engine, Bluetooth A2DP Sink,
- *        and esp-audio-effects DSP pipeline (Mixer, EQ, Reverb, ALC).
+ *        and synth-only EQ/Reverb plus final saturating mix.
  *
  * @return ESP_OK on success, or an error code on failure.
  */
@@ -48,7 +77,7 @@ esp_err_t synth_service_init(void);
 /**
  * @brief Set whether the synthesizer audio engine is active.
  *
- * Activate when entering the synth scene; deactivate when leaving to save power.
+ * Controls the synth scene only; Bluetooth and UI SFX continue on all screens.
  */
 void synth_service_set_active(bool active);
 

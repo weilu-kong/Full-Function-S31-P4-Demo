@@ -69,6 +69,9 @@ LV_FONT_DECLARE(ui_font_cjk_32);
 /** Initialize the Japanese Yokai theme styles and tokens. */
 void ui_theme_init(void);
 
+/** Add subtle queued click feedback before the control action callback. */
+void ui_add_click_sfx(lv_obj_t *control);
+
 #ifdef __cplusplus
 }
 #endif

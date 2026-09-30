@@ -18,9 +18,16 @@ idf_component_register(
 # promotes warnings to errors. Keep the compatibility exception local to the
 # third-party target, without modifying its managed source.
 idf_component_get_property(esp_dl_target espressif__esp-dl COMPONENT_LIB)
-if(esp_dl_target)
+if(esp_dl_target AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
     target_compile_options(${esp_dl_target} PRIVATE
         -Wno-error=non-c-typedef-for-linkage)
+endif()
+
+# IDF 6.1's Bluedroid fixed-size name copies trigger GCC 15's truncation
+# diagnostic. Keep the warning visible, scoped to the SDK Bluetooth target.
+idf_component_get_property(bt_target bt COMPONENT_LIB)
+if(bt_target AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15)
+    target_compile_options(${bt_target} PRIVATE -Wno-error=stringop-truncation)
 endif()
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE LV_LVGL_H_INCLUDE_SIMPLE)

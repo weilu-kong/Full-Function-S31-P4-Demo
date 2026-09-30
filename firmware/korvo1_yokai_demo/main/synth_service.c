@@ -7,6 +7,7 @@
 #include "synth_service.h"
 #include "voice_service.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,9 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/ringbuf.h"
+#include "freertos/queue.h"
+#include "esp_timer.h"
+#include "esp_asrc.h"
 #include "esp_log.h"
 #include "bsp/esp32_s31_korvo_1.h"
 #include "esp_codec_dev.h"
@@ -27,10 +31,8 @@
 #include "esp_a2dp_api.h"
 
 /* ESP-Audio-Effects modules */
-#include "esp_ae_mixer.h"
 #include "esp_ae_eq.h"
 #include "esp_ae_reverb.h"
-#include "esp_ae_alc.h"
 
 static const char *TAG = "synth_service";
 
@@ -39,10 +41,16 @@ static const char *TAG = "synth_service";
 #define SYNTH_BITS_PER_SAMPLE   16
 #define SYNTH_CHUNK_SAMPLES     256
 #define SYNTH_MAX_VOICES        4
-#define BT_RINGBUF_SIZE         16384
+#define SYNTH_ATTACK_SAMPLES    ((SYNTH_SAMPLE_RATE * 5) / 1000)
+#define SYNTH_RELEASE_SAMPLES   ((SYNTH_SAMPLE_RATE * 40) / 1000)
+#define BT_RINGBUF_SIZE         (40 * 1024)
+#define BT_RESAMPLED_FRAMES     1024
+#define AUDIO_COMMAND_COUNT     32
 
 typedef struct {
     bool active;
+    bool releasing;
+    float release_step;
     float freq;
     float base_freq;
     float phase;
@@ -62,21 +70,42 @@ static bool s_bt_inited = false;
 static volatile bool s_bt_connected = false;
 static volatile bool s_bt_streaming = false;
 static bool s_bt_enabled = true;
-static volatile bool s_feedback_tone_pending = false;
+typedef enum { AUDIO_NOTE_ON, AUDIO_NOTE_OFF, AUDIO_SFX } audio_command_type_t;
+typedef struct {
+    audio_command_type_t type;
+    float freq;
+    float velocity;
+    synth_wave_t wave;
+    synth_sfx_t sfx;
+} audio_command_t;
+static QueueHandle_t s_audio_commands;
+static portMUX_TYPE s_bt_lock = portMUX_INITIALIZER_UNLOCKED;
+static volatile uint32_t s_bt_epoch;
+static uint32_t s_bt_input_rate = SYNTH_SAMPLE_RATE;
+static uint8_t s_bt_input_channels = 2;
+static synth_audio_stats_t s_stats;
+/* The following buffers and ASRC state belong exclusively to the audio task. */
+static esp_asrc_handle_t s_bt_asrc;
+static uint32_t s_bt_consumer_epoch;
+static uint32_t s_bt_consumer_rate;
+static uint8_t s_bt_consumer_channels;
+static bool s_bt_prebuffered;
+static bool s_bt_asrc_failed;
+static size_t s_bt_input_bytes;
+static uint32_t s_bt_output_frames;
+static int16_t s_bt_input[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS];
+static int16_t s_bt_output[BT_RESAMPLED_FRAMES * SYNTH_CHANNELS];
 static esp_bd_addr_t s_remote_bda = {0};
-static float s_bt_volume = 0.75f;
+static float s_bt_volume = 1.0f;
 static int s_master_volume = 80;
 
 static SemaphoreHandle_t s_synth_mutex = NULL;
 static RingbufHandle_t s_bt_ringbuf = NULL;
 
 static esp_codec_dev_handle_t s_speaker_dev = NULL;
-static esp_ae_mixer_handle_t s_mixer_handle = NULL;
 static esp_ae_eq_handle_t s_eq_handle = NULL;
 static esp_ae_reverb_handle_t s_reverb_handle = NULL;
-static esp_ae_alc_handle_t s_alc_handle = NULL;
 
-static esp_ae_mixer_info_t s_mixer_info[2];
 static esp_ae_eq_filter_para_t s_eq_filters[2];
 static synth_fx_params_t s_fx = {
     .cutoff_hz = 2800.0f,
@@ -88,8 +117,10 @@ static synth_fx_params_t s_fx = {
 
 static int16_t s_synth_buf[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS] __attribute__((aligned(16)));
 static int16_t s_bt_buf[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS] __attribute__((aligned(16)));
+static int32_t s_mix_buf[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS];
 static int16_t s_chunk_buf[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS] __attribute__((aligned(16)));
 
+static uint32_t bt_fifo_fill(void);
 static void synth_audio_task(void *arg);
 static void bt_a2dp_data_cb(const uint8_t *data, uint32_t len);
 static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
@@ -106,6 +137,8 @@ esp_err_t synth_service_init(void)
         return ESP_ERR_NO_MEM;
     }
 
+    s_audio_commands = xQueueCreate(AUDIO_COMMAND_COUNT, sizeof(audio_command_t));
+    if (s_audio_commands == NULL) return ESP_ERR_NO_MEM;
     memset(s_voices, 0, sizeof(s_voices));
 
     /* 1. Initialize speaker codec device from BSP at 44.1 kHz */
@@ -146,28 +179,7 @@ esp_err_t synth_service_init(void)
         ESP_LOGW(TAG, "Speaker codec handle NULL, audio will run in headless mode");
     }
 
-    /* 2. Configure and open esp-audio-effects Mixer (Synth + BT Accompaniment) */
-    s_mixer_info[0].weight1 = 0.85f;
-    s_mixer_info[0].weight2 = 0.85f;
-    s_mixer_info[0].transit_time = 20;
-
-    s_mixer_info[1].weight1 = 0.70f;
-    s_mixer_info[1].weight2 = 0.70f;
-    s_mixer_info[1].transit_time = 20;
-
-    esp_ae_mixer_cfg_t mixer_cfg = {
-        .sample_rate = SYNTH_SAMPLE_RATE,
-        .channel = SYNTH_CHANNELS,
-        .bits_per_sample = SYNTH_BITS_PER_SAMPLE,
-        .src_num = 2,
-        .src_info = s_mixer_info,
-    };
-    esp_ae_err_t ae_ret = esp_ae_mixer_open(&mixer_cfg, &s_mixer_handle);
-    if (ae_ret == ESP_AE_ERR_OK) {
-        ESP_LOGI(TAG, "esp_audio_effects Mixer initialized");
-    } else {
-        ESP_LOGE(TAG, "Failed to init esp_audio_effects Mixer: %d", ae_ret);
-    }
+    esp_ae_err_t ae_ret;
 
     /* 3. Configure and open esp-audio-effects Equalizer (LPF Cutoff + Timbre Peak) */
     s_eq_filters[0].filter_type = ESP_AE_EQ_FILTER_LOW_PASS;
@@ -217,22 +229,6 @@ esp_err_t synth_service_init(void)
         ESP_LOGE(TAG, "Failed to init esp_audio_effects Reverb: %d", ae_ret);
     }
 
-    /* 5. Configure and open esp-audio-effects Automatic Level Control (ALC) */
-    esp_ae_alc_cfg_t alc_cfg = {
-        .sample_rate = SYNTH_SAMPLE_RATE,
-        .channel = SYNTH_CHANNELS,
-        .bits_per_sample = SYNTH_BITS_PER_SAMPLE,
-    };
-    ae_ret = esp_ae_alc_open(&alc_cfg, &s_alc_handle);
-    if (ae_ret == ESP_AE_ERR_OK) {
-        esp_ae_alc_set_gain(s_alc_handle, 0, 0);
-        esp_ae_alc_set_gain(s_alc_handle, 1, 0);
-        esp_ae_alc_set_transit_time(s_alc_handle, 15);
-        ESP_LOGI(TAG, "esp_audio_effects ALC limiter initialized");
-    } else {
-        ESP_LOGE(TAG, "Failed to init esp_audio_effects ALC: %d", ae_ret);
-    }
-
     /* 6. Initialize Bluetooth A2DP Sink Accompaniment */
     (void)synth_service_bt_a2dp_init();
 
@@ -258,9 +254,26 @@ esp_err_t synth_service_init(void)
 
 static void bt_a2dp_data_cb(const uint8_t *data, uint32_t len)
 {
-    if (s_bt_ringbuf != NULL && data != NULL && len > 0) {
-        xRingbufferSend(s_bt_ringbuf, data, len, 0);
+    if (s_bt_ringbuf == NULL || data == NULL || len == 0) return;
+    /* BYTEBUF is a bounded SPSC byte FIFO. Send is all-or-nothing, preserving
+       sample alignment even on overflow; only the consumer assembles frames. */
+    bool accepted = xRingbufferSend(s_bt_ringbuf, data, len, 0) == pdTRUE;
+    uint32_t fill = bt_fifo_fill();
+    portENTER_CRITICAL(&s_bt_lock);
+    if (fill > s_stats.bt_fifo_high_watermark) s_stats.bt_fifo_high_watermark = fill;
+    s_stats.bt_rx_bytes += len;
+    if (!accepted) {
+        ++s_stats.bt_overflow_count;
+        s_stats.bt_dropped_bytes += len;
     }
+    portEXIT_CRITICAL(&s_bt_lock);
+}
+
+static void bt_stream_changed(void)
+{
+    portENTER_CRITICAL(&s_bt_lock);
+    ++s_bt_epoch;
+    portEXIT_CRITICAL(&s_bt_lock);
 }
 
 static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param)
@@ -277,6 +290,7 @@ static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
         } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
             s_bt_connected = false;
             s_bt_streaming = false;
+            bt_stream_changed();
             memset(s_remote_bda, 0, sizeof(esp_bd_addr_t));
             ESP_LOGI(TAG, "A2DP accompaniment disconnected");
             esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
@@ -285,9 +299,36 @@ static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
 
     case ESP_A2D_AUDIO_STATE_EVT:
         s_bt_streaming = (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED);
+        bt_stream_changed();
         ESP_LOGI(TAG, "A2DP audio stream state: %s", s_bt_streaming ? "STARTED" : "SUSPENDED");
         break;
 
+    case ESP_A2D_AUDIO_CFG_EVT: {
+        const esp_a2d_mcc_t *mcc = &param->audio_cfg.mcc;
+        uint32_t rate = 0;
+        uint8_t channels = 2;
+        if (mcc->type == ESP_A2D_MCT_SBC) {
+            switch (mcc->cie.sbc_info.samp_freq) {
+            case ESP_A2D_SBC_CIE_SF_44K: rate = 44100; break;
+            case ESP_A2D_SBC_CIE_SF_48K: rate = 48000; break;
+            case ESP_A2D_SBC_CIE_SF_32K: rate = 32000; break;
+            case ESP_A2D_SBC_CIE_SF_16K: rate = 16000; break;
+            default: break;
+            }
+            channels = mcc->cie.sbc_info.ch_mode == ESP_A2D_SBC_CIE_CH_MODE_MONO ? 1 : 2;
+        }
+        portENTER_CRITICAL(&s_bt_lock);
+        s_bt_input_rate = rate;
+        s_bt_input_channels = channels;
+        ++s_bt_epoch;
+        portEXIT_CRITICAL(&s_bt_lock);
+        if (rate == 0) {
+            ESP_LOGE(TAG, "[AUDIO] Unsupported A2DP codec/config type=%u", mcc->type);
+        } else {
+            ESP_LOGI(TAG, "[AUDIO] A2DP config codec=SBC rate=%" PRIu32 " channels=%u", rate, channels);
+        }
+        break;
+    }
     default:
         break;
     }
@@ -358,6 +399,7 @@ bool synth_service_is_bt_streaming(void)
 
 void synth_service_set_bt_volume(float volume)
 {
+    if (!isfinite(volume)) return;
     if (volume < 0.0f) volume = 0.0f;
     if (volume > 1.0f) volume = 1.0f;
     s_bt_volume = volume;
@@ -423,9 +465,26 @@ void synth_service_bt_disconnect(void)
     }
 }
 
+static void queue_audio_command(const audio_command_t *command)
+{
+    if (s_audio_commands == NULL) return;
+    if (xQueueSend(s_audio_commands, command, 0) != pdTRUE) {
+        portENTER_CRITICAL(&s_bt_lock);
+        ++s_stats.command_drop_count;
+        portEXIT_CRITICAL(&s_bt_lock);
+    }
+}
+
+void synth_service_play_sfx(synth_sfx_t sfx)
+{
+    if (sfx < SYNTH_SFX_CLICK || sfx > SYNTH_SFX_ERROR) return;
+    audio_command_t command = {.type = AUDIO_SFX, .sfx = sfx};
+    queue_audio_command(&command);
+}
+
 void synth_service_play_feedback_tone(void)
 {
-    s_feedback_tone_pending = true;
+    synth_service_play_sfx(SYNTH_SFX_CONFIRM);
 }
 
 void synth_service_set_active(bool active)
@@ -439,7 +498,8 @@ void synth_service_set_active(bool active)
         if (!active) {
             /* Silence any lingering voice notes when leaving */
             for (int i = 0; i < SYNTH_MAX_VOICES; i++) {
-                s_voices[i].active = false;
+                s_voices[i].releasing = true;
+                s_voices[i].release_step = s_voices[i].env / SYNTH_RELEASE_SAMPLES;
             }
         }
         xSemaphoreGive(s_synth_mutex);
@@ -447,7 +507,7 @@ void synth_service_set_active(bool active)
     ESP_LOGI(TAG, "Synth active state: %s", active ? "ON" : "OFF");
 }
 
-void synth_service_note_on(float note_freq, float velocity)
+static void start_note(float note_freq, float velocity, synth_wave_t wave)
 {
     if (note_freq <= 0.0f) {
         return;
@@ -470,12 +530,14 @@ void synth_service_note_on(float note_freq, float velocity)
 
         synth_voice_t *v = &s_voices[chosen_idx];
         v->active = true;
+        v->releasing = false;
+        v->release_step = 0.0f;
         v->freq = note_freq;
         v->base_freq = note_freq;
         v->phase = 0.0f;
         v->env = 0.0f; /* 5ms ramp-up prevents click */
         v->velocity = (velocity > 1.0f) ? 1.0f : (velocity < 0.1f ? 0.8f : velocity);
-        v->wave = s_current_wave;
+        v->wave = wave;
         v->sample_index = 0;
 
         if (v->wave == SYNTH_WAVE_DRUM) {
@@ -488,6 +550,22 @@ void synth_service_note_on(float note_freq, float velocity)
 
         xSemaphoreGive(s_synth_mutex);
     }
+}
+
+void synth_service_note_on(float note_freq, float velocity)
+{
+    if (!isfinite(note_freq) || note_freq <= 0.0f || note_freq >= SYNTH_SAMPLE_RATE / 2 ||
+        !isfinite(velocity)) return;
+    audio_command_t command = {.type = AUDIO_NOTE_ON, .freq = note_freq,
+                               .velocity = velocity, .wave = s_current_wave};
+    queue_audio_command(&command);
+}
+
+void synth_service_note_off(float note_freq)
+{
+    if (!isfinite(note_freq) || note_freq <= 0.0f) return;
+    audio_command_t command = {.type = AUDIO_NOTE_OFF, .freq = note_freq};
+    queue_audio_command(&command);
 }
 
 void synth_service_set_waveform(synth_wave_t wave)
@@ -557,16 +635,24 @@ void synth_service_get_fx(synth_fx_params_t *params)
 
 static inline float synth_render_sample(synth_voice_t *v)
 {
-    /* 5ms (~220 samples @ 44.1kHz) linear attack to eliminate transients */
-    if (v->sample_index < 220) {
-        v->env = (float)v->sample_index / 220.0f;
+    /* A queued press/release may precede sample zero. Complete the short attack
+       even then, so quick taps cannot become silent zero-envelope releases. */
+    if (v->sample_index < SYNTH_ATTACK_SAMPLES) {
+        v->env = ((float)v->sample_index + 1.0f) / SYNTH_ATTACK_SAMPLES;
+        if (v->releasing) v->release_step = v->env / SYNTH_RELEASE_SAMPLES;
+    } else if (v->releasing) {
+        v->env -= v->release_step;
+        if (v->env <= 0.0f) {
+            v->env = 0.0f;
+            v->active = false;
+            return 0.0f;
+        }
     } else {
         v->env *= v->env_decay_rate;
-    }
-
-    if (v->env < 0.001f) {
-        v->active = false;
-        return 0.0f;
+        if (v->env < 0.001f) {
+            v->active = false;
+            return 0.0f;
+        }
     }
 
     float out = 0.0f;
@@ -616,136 +702,326 @@ static inline float synth_render_sample(synth_voice_t *v)
     return out * v->env * v->velocity;
 }
 
+static uint32_t bt_fifo_fill(void)
+{
+    UBaseType_t bytes = 0;
+    if (s_bt_ringbuf) vRingbufferGetInfo(s_bt_ringbuf, NULL, NULL, NULL, NULL, &bytes);
+    return bytes;
+}
+
+void synth_service_get_audio_stats(synth_audio_stats_t *stats)
+{
+    if (stats == NULL) return;
+    uint32_t fill = bt_fifo_fill();
+    portENTER_CRITICAL(&s_bt_lock);
+    *stats = s_stats;
+    stats->bt_input_rate = s_bt_input_rate;
+    stats->bt_fifo_fill_bytes = fill;
+    portEXIT_CRITICAL(&s_bt_lock);
+}
+
+float synth_service_get_bt_volume(void)
+{
+    return s_bt_volume;
+}
+
+/* Called by the consumer only, including on suspend/config changes. No reset
+   of a FreeRTOS buffer while its producer might be inside a send. */
+static void bt_reset_consumer(uint32_t epoch, uint32_t rate, uint8_t channels)
+{
+    if (s_bt_asrc) esp_asrc_close(s_bt_asrc);
+    s_bt_asrc = NULL;
+    s_bt_consumer_epoch = epoch;
+    s_bt_consumer_rate = rate;
+    s_bt_consumer_channels = channels;
+    s_bt_prebuffered = false;
+    s_bt_asrc_failed = false;
+    s_bt_input_bytes = 0;
+    s_bt_output_frames = 0;
+    size_t discard = bt_fifo_fill();
+    while (discard) {
+        size_t bytes = 0;
+        void *item = xRingbufferReceiveUpTo(s_bt_ringbuf, &bytes, 0, discard);
+        if (item == NULL) break;
+        portENTER_CRITICAL(&s_bt_lock);
+        s_stats.bt_flushed_bytes += bytes;
+        portEXIT_CRITICAL(&s_bt_lock);
+        discard -= bytes;
+        vRingbufferReturnItem(s_bt_ringbuf, item);
+    }
+    if (rate && (rate != SYNTH_SAMPLE_RATE || channels != SYNTH_CHANNELS)) {
+        esp_asrc_cfg_t cfg = {
+            .src_info = {.sample_rate = rate, .channel = channels, .bits_per_sample = 16},
+            .dest_info = {.sample_rate = SYNTH_SAMPLE_RATE, .channel = SYNTH_CHANNELS, .bits_per_sample = 16},
+            /* Voice owns both S31 hardware ASRC streams. */
+            .perf_type = ESP_ASRC_PERF_TYPE_SW_SPEED,
+            .complexity = 3,
+        };
+        esp_asrc_err_t err = esp_asrc_open(&cfg, &s_bt_asrc);
+        if (err != ESP_ASRC_ERR_OK) {
+            s_bt_asrc_failed = true;
+            portENTER_CRITICAL(&s_bt_lock);
+            ++s_stats.bt_asrc_errors;
+            portEXIT_CRITICAL(&s_bt_lock);
+            ESP_LOGE(TAG, "[AUDIO] BT ASRC open failed err=%d input=%" PRIu32, err, rate);
+        } else {
+            ESP_LOGI(TAG, "[AUDIO] BT ASRC software %" PRIu32 " Hz/%u ch -> 44100 Hz/stereo", rate, channels);
+        }
+    }
+}
+
+/* Keep incomplete input AND fractional ASRC output across calls. A short
+   wrapped byte-buffer read is not an underflow and never pads a PCM frame. */
+static bool bt_epoch_matches(uint32_t epoch)
+{
+    portENTER_CRITICAL(&s_bt_lock);
+    bool matches = epoch == s_bt_epoch;
+    portEXIT_CRITICAL(&s_bt_lock);
+    return matches;
+}
+
+static bool bt_render_chunk(void)
+{
+    uint32_t epoch, rate;
+    uint8_t channels;
+    portENTER_CRITICAL(&s_bt_lock);
+    epoch = s_bt_epoch;
+    rate = s_bt_input_rate;
+    channels = s_bt_input_channels;
+    portEXIT_CRITICAL(&s_bt_lock);
+    if (epoch != s_bt_consumer_epoch || rate != s_bt_consumer_rate || channels != s_bt_consumer_channels)
+        bt_reset_consumer(epoch, rate, channels);
+    if (!s_bt_streaming || !rate || s_bt_asrc_failed) return false;
+
+    uint32_t fill = bt_fifo_fill();
+    portENTER_CRITICAL(&s_bt_lock);
+    if (fill > s_stats.bt_fifo_high_watermark) s_stats.bt_fifo_high_watermark = fill;
+    portEXIT_CRITICAL(&s_bt_lock);
+    if (!s_bt_prebuffered) {
+        if (fill + s_bt_input_bytes < rate * channels * sizeof(int16_t) * 30 / 1000) return false;
+        s_bt_prebuffered = true;
+    }
+
+    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(12);
+    size_t input_needed = SYNTH_CHUNK_SAMPLES * channels * sizeof(int16_t);
+    while (s_bt_output_frames < SYNTH_CHUNK_SAMPLES) {
+        while (s_bt_input_bytes < input_needed) {
+            size_t bytes = 0;
+            TickType_t now = xTaskGetTickCount();
+            TickType_t wait = (int32_t)(deadline - now) > 0 ? deadline - now : 0;
+            size_t needed = input_needed - s_bt_input_bytes;
+            uint8_t *item = xRingbufferReceiveUpTo(s_bt_ringbuf, &bytes, wait, needed);
+            if (!s_bt_streaming || !bt_epoch_matches(epoch)) {
+                if (item) vRingbufferReturnItem(s_bt_ringbuf, item);
+                return false;
+            }
+            if (item == NULL) {
+                portENTER_CRITICAL(&s_bt_lock);
+                ++s_stats.bt_underflow_count;
+                portEXIT_CRITICAL(&s_bt_lock);
+                s_bt_prebuffered = false;
+                return false;  /* deadline elapsed: silence whole output frame */
+            }
+            memcpy((uint8_t *)s_bt_input + s_bt_input_bytes, item, bytes);
+            s_bt_input_bytes += bytes;
+            vRingbufferReturnItem(s_bt_ringbuf, item);
+            if (bytes < needed) {
+                portENTER_CRITICAL(&s_bt_lock);
+                ++s_stats.bt_short_read_count;
+                portEXIT_CRITICAL(&s_bt_lock);
+            }
+        }
+        uint32_t frames = BT_RESAMPLED_FRAMES - s_bt_output_frames;
+        int16_t *out = s_bt_output + s_bt_output_frames * SYNTH_CHANNELS;
+        if (s_bt_asrc) {
+            esp_asrc_err_t err = esp_asrc_process(s_bt_asrc, (uint8_t *)s_bt_input,
+                SYNTH_CHUNK_SAMPLES, (uint8_t *)out, &frames);
+            if (err != ESP_ASRC_ERR_OK) {
+                portENTER_CRITICAL(&s_bt_lock);
+                ++s_stats.bt_asrc_errors;
+                portEXIT_CRITICAL(&s_bt_lock);
+                ESP_LOGE(TAG, "[AUDIO] BT ASRC process failed err=%d", err);
+                s_bt_asrc_failed = true;
+                return false;
+            }
+        } else {
+            frames = SYNTH_CHUNK_SAMPLES;
+            memcpy(out, s_bt_input, input_needed);
+        }
+        s_bt_input_bytes = 0;
+        s_bt_output_frames += frames;
+    }
+    memcpy(s_bt_buf, s_bt_output, sizeof(s_bt_buf));
+    s_bt_output_frames -= SYNTH_CHUNK_SAMPLES;
+    memmove(s_bt_output, s_bt_output + SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS,
+            s_bt_output_frames * SYNTH_CHANNELS * sizeof(int16_t));
+    return true;
+}
+
+static inline float audio_limiter_gain(float previous, uint32_t peak)
+{
+    float ceiling = peak > 32767 ? 32767.0f / peak : 1.0f;
+    /* Immediate peak protection, ~200 ms release at 256/44100 frames. */
+    return fminf(ceiling, previous + (1.0f - previous) * 0.03f);
+}
+
+static inline int16_t audio_mix_sample(int32_t sum, float limiter_gain)
+{
+    int32_t mixed = (int32_t)(sum * limiter_gain);
+    /* Unity BT bypass; S16 clamp is a final rounding guard after peak limiting. */
+    return (int16_t)(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
+}
+
 static void synth_audio_task(void *arg)
 {
-    ESP_LOGI(TAG, "Groovebox real-time audio task running @ %d Hz", SYNTH_SAMPLE_RATE);
-
-    int feedback_samples_left = 0;
-    float feedback_phase = 0.0f;
+    (void)arg;
+    ESP_LOGI(TAG, "[AUDIO] system output=44100 Hz synth_gain=0.73 bt_gain=1.00 sfx_peak=0.12");
+    const int sfx_ms[] = {18, 45, 30, 60};
+    const float sfx_hz[] = {1200.0f, 880.0f, 660.0f, 330.0f};
+    synth_sfx_t sfx = SYNTH_SFX_CLICK;
+    int sfx_left = 0, sfx_total = 0;
+    float sfx_phase = 0.0f;
+    audio_command_t commands[AUDIO_COMMAND_COUNT];
+    unsigned command_count = 0;
+    int synth_tail = 0;
+    int64_t next_log = esp_timer_get_time() + 2000000;
+    uint64_t played_fraction = 0;
+    float limiter_gain = 1.0f;
 
     while (1) {
-        if (s_feedback_tone_pending) {
-            s_feedback_tone_pending = false;
-            feedback_samples_left = SYNTH_SAMPLE_RATE * 60 / 1000;
-            feedback_phase = 0.0f;
+        /* Retain SFX in order while a previous sound is playing. The bounded
+           service queue never coalesces rapid clicks into one boolean. */
+        while (command_count < AUDIO_COMMAND_COUNT &&
+               xQueueReceive(s_audio_commands, &commands[command_count], 0) == pdTRUE)
+            ++command_count;
+        unsigned used = 0, retained = 0;
+        while (used < command_count) {
+            audio_command_t *c = &commands[used];
+            if (c->type == AUDIO_SFX && sfx_left > 0) {
+                commands[retained++] = *c;
+                ++used;
+                continue;
+            }
+            if (c->type == AUDIO_NOTE_ON && s_active) {
+                start_note(c->freq, c->velocity, c->wave);
+            } else if (c->type == AUDIO_NOTE_OFF) {
+                xSemaphoreTake(s_synth_mutex, portMAX_DELAY);
+                for (int i = 0; i < SYNTH_MAX_VOICES; ++i) {
+                    synth_voice_t *v = &s_voices[i];
+                    if (v->active && fabsf(v->freq - c->freq) < 0.01f && v->wave != SYNTH_WAVE_DRUM) {
+                        v->releasing = true;
+                        v->release_step = v->env / SYNTH_RELEASE_SAMPLES;
+                    }
+                }
+                xSemaphoreGive(s_synth_mutex);
+            } else if (c->type == AUDIO_SFX) {
+                sfx = c->sfx;
+                sfx_total = sfx_left = SYNTH_SAMPLE_RATE * sfx_ms[sfx] / 1000;
+                sfx_phase = 0.0f;
+            }
+            ++used;
         }
-        if (!s_active && feedback_samples_left == 0) {
-            vTaskDelay(pdMS_TO_TICKS(25));
+        command_count = retained;
+
+        bool has_voice = false;
+        memset(s_synth_buf, 0, sizeof(s_synth_buf));
+        xSemaphoreTake(s_synth_mutex, portMAX_DELAY);
+        for (int v = 0; v < SYNTH_MAX_VOICES; ++v) has_voice |= s_voices[v].active;
+        if (has_voice) {
+            for (int frame = 0; frame < SYNTH_CHUNK_SAMPLES; ++frame) {
+                float sum = 0.0f;
+                for (int v = 0; v < SYNTH_MAX_VOICES; ++v)
+                    if (s_voices[v].active) sum += synth_render_sample(&s_voices[v]);
+                int16_t sample = (int16_t)(tanhf(sum * 0.6f) * 24000.0f);
+                s_synth_buf[frame * 2] = s_synth_buf[frame * 2 + 1] = sample;
+            }
+            synth_tail = SYNTH_SAMPLE_RATE * 2;
+        }
+        /* FX state and knob updates share this mutex. Bluetooth and SFX never
+           enter either processor, including during tails. */
+        if (has_voice || synth_tail > 0) {
+            if (s_eq_handle) esp_ae_eq_process(s_eq_handle, SYNTH_CHUNK_SAMPLES, s_synth_buf, s_synth_buf);
+            if (s_reverb_handle) esp_ae_reverb_process(s_reverb_handle, SYNTH_CHUNK_SAMPLES, s_synth_buf, s_synth_buf);
+            synth_tail -= SYNTH_CHUNK_SAMPLES;
+        }
+        xSemaphoreGive(s_synth_mutex);
+
+        memset(s_bt_buf, 0, sizeof(s_bt_buf));
+        bool has_bt = bt_render_chunk();
+        if (!s_active && !s_bt_streaming && !has_voice && synth_tail <= 0 && sfx_left == 0 && command_count == 0) {
+            vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
 
-        bool has_active_voice = false;
-
-        /* 1. Render synthesizer keyboard / drum notes */
-        if (xSemaphoreTake(s_synth_mutex, portMAX_DELAY) == pdTRUE) {
-            for (int i = 0; i < SYNTH_MAX_VOICES; i++) {
-                if (s_voices[i].active) {
-                    has_active_voice = true;
-                    break;
-                }
+        uint32_t peak = 0, mix_peak = 0, limited = 0;
+        float bt_gain = s_bt_volume;
+        for (int frame = 0; frame < SYNTH_CHUNK_SAMPLES; ++frame) {
+            int32_t tone = 0;
+            if (sfx_left > 0) {
+                int elapsed = sfx_total - sfx_left;
+                int ramp = SYNTH_SAMPLE_RATE * 3 / 1000;
+                float envelope = fminf(1.0f, fminf((float)elapsed / ramp, (float)sfx_left / ramp));
+                float hz = sfx_hz[sfx];
+                if (sfx == SYNTH_SFX_ERROR && elapsed >= sfx_total / 2) hz *= 0.75f;
+                tone = (int32_t)(sinf(sfx_phase) * 4000.0f * envelope);
+                sfx_phase += 2.0f * (float)M_PI * hz / SYNTH_SAMPLE_RATE;
+                if (sfx_phase >= 2.0f * (float)M_PI) sfx_phase -= 2.0f * (float)M_PI;
+                --sfx_left;
             }
-
-            if (has_active_voice) {
-                for (int s = 0; s < SYNTH_CHUNK_SAMPLES; s++) {
-                    float sample_sum = 0.0f;
-                    for (int v = 0; v < SYNTH_MAX_VOICES; v++) {
-                        if (s_voices[v].active) {
-                            sample_sum += synth_render_sample(&s_voices[v]);
-                        }
-                    }
-
-                    float saturated = tanhf(sample_sum * 0.6f);
-                    int16_t sample_s16 = (int16_t)(saturated * 24000.0f);
-
-                    s_synth_buf[s * 2] = sample_s16;
-                    s_synth_buf[s * 2 + 1] = sample_s16;
-                }
-            } else {
-                memset(s_synth_buf, 0, sizeof(s_synth_buf));
+            for (int ch = 0; ch < SYNTH_CHANNELS; ++ch) {
+                int i = frame * SYNTH_CHANNELS + ch;
+                int32_t sum = (int32_t)((float)s_bt_buf[i] * bt_gain) + s_synth_buf[i] + tone;
+                s_mix_buf[i] = sum;
+                uint32_t magnitude = abs(sum);
+                if (magnitude > mix_peak) mix_peak = magnitude;
             }
-            xSemaphoreGive(s_synth_mutex);
+        }
+        limiter_gain = audio_limiter_gain(limiter_gain, mix_peak);
+        for (int i = 0; i < SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS; ++i) {
+            s_chunk_buf[i] = audio_mix_sample(s_mix_buf[i], limiter_gain);
+            if (limiter_gain < 0.999f && s_mix_buf[i] != 0) ++limited;
+            uint32_t magnitude = abs((int)s_chunk_buf[i]);
+            if (magnitude > peak) peak = magnitude;
         }
 
-        if (feedback_samples_left > 0) {
-            for (int s = 0; s < SYNTH_CHUNK_SAMPLES && feedback_samples_left > 0; ++s) {
-                int32_t tone = (int32_t)(sinf(feedback_phase) * 5000.0f);
-                feedback_phase += 2.0f * (float)M_PI * 880.0f / (float)SYNTH_SAMPLE_RATE;
-                for (int ch = 0; ch < SYNTH_CHANNELS; ++ch) {
-                    int32_t mixed = (int32_t)s_synth_buf[s * SYNTH_CHANNELS + ch] + tone;
-                    s_synth_buf[s * SYNTH_CHANNELS + ch] =
-                        (int16_t)(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
-                }
-                --feedback_samples_left;
-            }
-            has_active_voice = true;
-        }
-
-        /* 2. Retrieve Bluetooth A2DP accompaniment stream from ring buffer */
-        bool has_bt_chunk = false;
-        if (s_bt_ringbuf != NULL) {
-            size_t bytes_needed = SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS * sizeof(int16_t);
-            size_t received_bytes = 0;
-            uint8_t *item = (uint8_t *)xRingbufferReceiveUpTo(s_bt_ringbuf, &received_bytes, 0, bytes_needed);
-            if (item != NULL && received_bytes > 0) {
-                memcpy(s_bt_buf, item, received_bytes);
-                if (received_bytes < bytes_needed) {
-                    memset((uint8_t *)s_bt_buf + received_bytes, 0, bytes_needed - received_bytes);
-                }
-                vRingbufferReturnItem(s_bt_ringbuf, item);
-
-                /* Apply accompaniment volume scaling */
-                if (s_bt_volume < 0.99f) {
-                    for (int s = 0; s < SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS; s++) {
-                        s_bt_buf[s] = (int16_t)((float)s_bt_buf[s] * s_bt_volume);
-                    }
-                }
-                has_bt_chunk = true;
-            } else {
-                memset(s_bt_buf, 0, sizeof(s_bt_buf));
-            }
+        int write_result = ESP_CODEC_DEV_OK;
+        int64_t begin = esp_timer_get_time();
+        if (s_speaker_dev) {
+            voice_service_feed_playback(s_chunk_buf, SYNTH_CHUNK_SAMPLES);
+            write_result = esp_codec_dev_write(s_speaker_dev, s_chunk_buf, sizeof(s_chunk_buf));
         } else {
-            memset(s_bt_buf, 0, sizeof(s_bt_buf));
+            vTaskDelay(pdMS_TO_TICKS(6));
         }
+        uint32_t write_us = esp_timer_get_time() - begin;
+        portENTER_CRITICAL(&s_bt_lock);
+        if (s_speaker_dev && write_us > s_stats.codec_write_max_us) s_stats.codec_write_max_us = write_us;
+        if (write_result != ESP_CODEC_DEV_OK) ++s_stats.codec_write_errors;
+        if (peak > s_stats.output_peak) s_stats.output_peak = peak;
+        s_stats.limited_samples += limited;
+        if (has_bt && s_speaker_dev && write_result == ESP_CODEC_DEV_OK) {
+            /* input-equivalent played bytes, permitting rx/play comparisons
+               even for 48000 -> 44100 conversion. Preserve fractional bytes. */
+            played_fraction += (uint64_t)SYNTH_CHUNK_SAMPLES * s_bt_consumer_rate *
+                               s_bt_consumer_channels * sizeof(int16_t);
+            s_stats.bt_played_bytes += played_fraction / SYNTH_SAMPLE_RATE;
+            played_fraction %= SYNTH_SAMPLE_RATE;
+        }
+        portEXIT_CRITICAL(&s_bt_lock);
+        if (write_result != ESP_CODEC_DEV_OK) vTaskDelay(pdMS_TO_TICKS(6));
 
-        /* 3. Mix Synth + Bluetooth accompaniment using esp_ae_mixer */
-        if (has_active_voice || has_bt_chunk) {
-            esp_ae_sample_t in_ptrs[2] = { s_synth_buf, s_bt_buf };
-            if (s_mixer_handle != NULL) {
-                esp_ae_mixer_process(s_mixer_handle, SYNTH_CHUNK_SAMPLES, in_ptrs, s_chunk_buf);
-            } else {
-                for (int s = 0; s < SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS; s++) {
-                    int32_t mixed = (int32_t)s_synth_buf[s] + (int32_t)s_bt_buf[s];
-                    if (mixed > 32767) mixed = 32767;
-                    else if (mixed < -32768) mixed = -32768;
-                    s_chunk_buf[s] = (int16_t)mixed;
-                }
-            }
-
-            /* 4. Filter & Effects chain: EQ -> Reverb -> ALC Limiter -> DAC */
-            if (s_eq_handle != NULL) {
-                esp_ae_eq_process(s_eq_handle, SYNTH_CHUNK_SAMPLES, s_chunk_buf, s_chunk_buf);
-            }
-            if (s_reverb_handle != NULL) {
-                esp_ae_reverb_process(s_reverb_handle, SYNTH_CHUNK_SAMPLES, s_chunk_buf, s_chunk_buf);
-            }
-            if (s_alc_handle != NULL) {
-                esp_ae_alc_process(s_alc_handle, SYNTH_CHUNK_SAMPLES, s_chunk_buf, s_chunk_buf);
-            }
-
-            if (s_speaker_dev != NULL) {
-                voice_service_feed_playback(s_chunk_buf, SYNTH_CHUNK_SAMPLES);
-                esp_codec_dev_write(s_speaker_dev, s_chunk_buf, sizeof(s_chunk_buf));
-            } else {
-                vTaskDelay(pdMS_TO_TICKS(10));
-            }
-        } else {
-            memset(s_chunk_buf, 0, sizeof(s_chunk_buf));
-            if (s_speaker_dev != NULL) {
-                voice_service_feed_playback(s_chunk_buf, SYNTH_CHUNK_SAMPLES);
-                esp_codec_dev_write(s_speaker_dev, s_chunk_buf, sizeof(s_chunk_buf));
-            } else {
-                vTaskDelay(pdMS_TO_TICKS(15));
-            }
+        int64_t now = esp_timer_get_time();
+        if (s_bt_streaming && now >= next_log) {
+            synth_audio_stats_t st;
+            synth_service_get_audio_stats(&st);
+            ESP_LOGI(TAG, "[AUDIO] bt rate=%" PRIu32 " rx=%" PRIu64 " play=%" PRIu64
+                     " fifo=%" PRIu32 "/%u high=%" PRIu32 " under=%" PRIu32 " over=%" PRIu32
+                     " short=%" PRIu32 " drop=%" PRIu64 " flush=%" PRIu64 " write_max=%" PRIu32 "us write_err=%" PRIu32
+                     " asrc_err=%" PRIu32 " cmd_drop=%" PRIu32 " peak=%" PRIu32 " limited=%" PRIu32,
+                     st.bt_input_rate, st.bt_rx_bytes, st.bt_played_bytes, st.bt_fifo_fill_bytes,
+                     BT_RINGBUF_SIZE, st.bt_fifo_high_watermark, st.bt_underflow_count, st.bt_overflow_count,
+                     st.bt_short_read_count, st.bt_dropped_bytes, st.bt_flushed_bytes, st.codec_write_max_us, st.codec_write_errors,
+                     st.bt_asrc_errors, st.command_drop_count, st.output_peak, st.limited_samples);
+            next_log = now + 2000000;
         }
     }
 }

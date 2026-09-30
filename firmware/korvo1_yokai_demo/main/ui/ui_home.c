@@ -91,6 +91,7 @@ static lv_obj_t *create_touch_hotspot(lv_obj_t *parent, int32_t x, int32_t y, in
 
     lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
     if (cb) {
+        ui_add_click_sfx(btn);
         lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
     }
     return btn;
@@ -171,6 +172,7 @@ lv_obj_t *ui_home_screen_create(ui_app_launch_cb_t app_cb, ui_quick_settings_tog
     lv_obj_remove_flag(top_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(top_bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(top_bar, 16);
+    ui_add_click_sfx(top_bar);
     lv_obj_add_event_cb(top_bar, top_bar_touch_event_cb, LV_EVENT_ALL, NULL);
 
     lv_obj_t *lbl_logo = lv_label_create(top_bar);

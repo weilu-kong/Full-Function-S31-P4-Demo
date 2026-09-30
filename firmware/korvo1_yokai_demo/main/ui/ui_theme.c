@@ -1,4 +1,5 @@
 #include "ui/ui_theme.h"
+#include "synth_service.h"
 
 lv_style_t ui_style_glass_card;
 lv_style_t ui_style_glass_card_pressed;
@@ -58,4 +59,16 @@ void ui_theme_init(void)
     lv_style_set_text_font(&ui_style_btn_home, UI_FONT_SMALL);
     lv_style_set_pad_hor(&ui_style_btn_home, 12);
     lv_style_set_pad_ver(&ui_style_btn_home, 6);
+}
+
+static void click_sfx_cb(lv_event_t *event)
+{
+    /* Bubbled events must not create a second sound on the parent. */
+    if (lv_event_get_target(event) == lv_event_get_current_target(event))
+        synth_service_play_sfx(SYNTH_SFX_CLICK);
+}
+
+void ui_add_click_sfx(lv_obj_t *control)
+{
+    lv_obj_add_event_cb(control, click_sfx_cb, LV_EVENT_CLICKED, NULL);
 }

@@ -2,6 +2,7 @@
 """Apply required managed-component fixes and diagnostics after dependency resolution."""
 
 import argparse
+import re
 from pathlib import Path
 
 
@@ -120,6 +121,7 @@ PATCHES = (
         "    } else {",
         1,
     ),
+
 )
 
 
@@ -127,6 +129,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--build-root", type=Path)
     args = parser.parse_args()
 
     for relative, before, after, expected_count in PATCHES:
@@ -142,6 +145,19 @@ def main() -> int:
             raise SystemExit(f"unexpected upstream source; cannot patch safely: {relative}")
         path.write_text(text.replace(before, after))
         print(f"patched {relative}")
+    # project() resolves dependencies and prepares ThorVG's Meson template.
+    # Repair response-file argument quoting before CMake's generation phase;
+    # this also works on the first configure of a clean dependency download.
+    if args.build_root:
+        cross_file = args.build_root / "esp-idf/espressif__thorvg/thorvg_build/cross_file.txt.tmp"
+        if cross_file.is_file():
+            text = cross_file.read_text()
+            fixed = re.sub(r"'\"([^']*)\"'", r"'\1'", text)
+            if fixed != text:
+                if args.check:
+                    raise SystemExit("ThorVG Meson arguments contain literal GCC quotes")
+                cross_file.write_text(fixed)
+                print("patched ThorVG Meson response-file argument quotes")
     return 0
 
 

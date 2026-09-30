@@ -79,10 +79,8 @@ static void key_play_note(float freq, bool on)
         synth_service_note_on(freq, 1.0f);
         ESP_LOGD(TAG, "Note ON: %.2f Hz", freq);
     } else {
-        if (s_last_active_freq == freq) {
-            synth_service_note_on(0.0f, 0.0f);
-            s_last_active_freq = 0.0f;
-        }
+        synth_service_note_off(freq);
+        if (s_last_active_freq == freq) s_last_active_freq = 0.0f;
     }
 }
 
@@ -193,6 +191,7 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_add_style(btn_home, &ui_style_btn_home, 0);
     lv_obj_set_size(btn_home, 106, 36);
     lv_obj_set_pos(btn_home, 16, 12);
+    ui_add_click_sfx(btn_home);
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
@@ -232,6 +231,8 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
             lv_obj_set_style_text_color(lbl_m, UI_COLOR_TEXT_SUB, 0);
         }
         lv_obj_center(lbl_m);
+
+        ui_add_click_sfx(btn_m);
 
         lv_obj_add_event_cb(btn_m, mode_select_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
         s_btn_modes[i] = btn_m;
@@ -330,6 +331,7 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
     lv_obj_set_size(s_btn_wave, 138, 46);
     lv_obj_set_pos(s_btn_wave, 226, 40);
     lv_obj_set_style_pad_hor(s_btn_wave, 6, 0);
+    ui_add_click_sfx(s_btn_wave);
     lv_obj_add_event_cb(s_btn_wave, wave_switch_event_cb, LV_EVENT_CLICKED, NULL);
 
     s_lbl_wave = lv_label_create(s_btn_wave);

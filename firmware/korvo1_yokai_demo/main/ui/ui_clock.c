@@ -209,6 +209,7 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_style(home, &ui_style_btn_home, 0);
     lv_obj_set_pos(home, 16, 14);
     lv_obj_set_size(home, 112, 44);
+    ui_add_click_sfx(home);
     lv_obj_add_event_cb(home, home_evt, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hl = lv_label_create(home);
     lv_label_set_text(hl, "< ホーム");
@@ -225,6 +226,7 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
         lv_obj_set_size(s_tab_btn[i], tw[i], 42);
         lv_obj_set_style_radius(s_tab_btn[i], 10, 0);
         lv_obj_set_style_border_width(s_tab_btn[i], 1, 0);
+        ui_add_click_sfx(s_tab_btn[i]);
         lv_obj_add_event_cb(s_tab_btn[i], tab_evt, LV_EVENT_CLICKED,
                             (void *)(intptr_t)i);
         lv_obj_t *l = lv_label_create(s_tab_btn[i]);
@@ -307,6 +309,7 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
         lv_obj_t *b = make_text_btn(s_page[CLOCK_TAB_TIMER],
                                     460 + i*64, 44, 56, 34, txt,
                                     UI_COLOR_CYAN_ACCENT);
+        ui_add_click_sfx(b);
         lv_obj_add_event_cb(b, preset_evt, LV_EVENT_CLICKED,
                             (void *)(intptr_t)presets[i]);
     }
@@ -321,9 +324,11 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     for (int i = 0; i < 3; ++i) {
         lv_obj_t *u = make_text_btn(s_page[CLOCK_TAB_TIMER], bx[i]+10, 82, 52, 32, "^",
                                     lv_color_hex(0x4C7183));
+        ui_add_click_sfx(u);
         lv_obj_add_event_cb(u, adjust_evt, LV_EVENT_CLICKED, (void *)(intptr_t)up[i]);
         lv_obj_t *d = make_text_btn(s_page[CLOCK_TAB_TIMER], bx[i]+10, 186, 52, 32, "v",
                                     lv_color_hex(0x4C7183));
+        ui_add_click_sfx(d);
         lv_obj_add_event_cb(d, adjust_evt, LV_EVENT_CLICKED, (void *)(intptr_t)dn[i]);
     }
 
@@ -331,11 +336,13 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
                                   470, 226, 156, 40, "開始",
                                   UI_COLOR_CYAN_ACCENT);
     s_timer_start_label = lv_obj_get_child(s_timer_start, 0);
+    ui_add_click_sfx(s_timer_start);
     lv_obj_add_event_cb(s_timer_start, timer_start_evt, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *cancel = make_text_btn(s_page[CLOCK_TAB_TIMER],
                                      638, 226, 72, 40, "取消",
                                      UI_COLOR_RED_ACCENT);
+    ui_add_click_sfx(cancel);
     lv_obj_add_event_cb(cancel, timer_cancel_evt, LV_EVENT_CLICKED, NULL);
 
     update_set_labels();
@@ -353,11 +360,13 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
                                        250, 65, 210, 38, "開始",
                                        UI_COLOR_RED_ACCENT);
     s_sw_start_label = lv_obj_get_child(sw_start, 0);
+    ui_add_click_sfx(sw_start);
     lv_obj_add_event_cb(sw_start, sw_start_evt, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lap = make_text_btn(s_page[CLOCK_TAB_STOPWATCH],
                                  480, 65, 210, 38, "ラップ",
                                  lv_color_hex(0x5B7185));
+    ui_add_click_sfx(lap);
     lv_obj_add_event_cb(lap, sw_lap_reset_evt, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lap_box = lv_obj_create(s_page[CLOCK_TAB_STOPWATCH]);

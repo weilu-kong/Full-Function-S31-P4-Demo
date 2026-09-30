@@ -154,6 +154,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_style_border_width(s_drawer_modal, 0, 0);
     lv_obj_remove_flag(s_drawer_modal, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_drawer_modal, LV_OBJ_FLAG_CLICKABLE);
+    ui_add_click_sfx(s_drawer_modal);
     lv_obj_add_event_cb(s_drawer_modal, backdrop_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     /* Full-Screen Glassmorphic Drawer Panel (slides from above screen) */
@@ -189,6 +190,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_add_style(btn_close, &ui_style_pill_badge, 0);
     lv_obj_set_size(btn_close, 100, 34);
     lv_obj_set_pos(btn_close, 670, 14);
+    ui_add_click_sfx(btn_close);
     lv_obj_add_event_cb(btn_close, close_btn_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_close = lv_label_create(btn_close);
     lv_label_set_text(lbl_close, "閉じる");
@@ -202,6 +204,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_pos(s_card_wifi, 30, 70);
     lv_obj_remove_flag(s_card_wifi, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_card_wifi, LV_OBJ_FLAG_CLICKABLE);
+    ui_add_click_sfx(s_card_wifi);
     lv_obj_add_event_cb(s_card_wifi, wifi_card_click_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_wf = lv_label_create(s_card_wifi);
@@ -220,6 +223,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_pos(s_sw_wifi, 276, 24);
     lv_obj_set_style_bg_color(s_sw_wifi, UI_COLOR_CYAN_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_add_state(s_sw_wifi, LV_STATE_CHECKED);
+    ui_add_click_sfx(s_sw_wifi);
     lv_obj_add_event_cb(s_sw_wifi, wifi_switch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     /* 2. Bluetooth Card (358px wide, gap 24px -> x = 412, right margin = 30px) */
@@ -229,6 +233,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_pos(s_card_bt, 412, 70);
     lv_obj_remove_flag(s_card_bt, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_card_bt, LV_OBJ_FLAG_CLICKABLE);
+    ui_add_click_sfx(s_card_bt);
     lv_obj_add_event_cb(s_card_bt, bt_card_click_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_bt = lv_label_create(s_card_bt);
@@ -247,6 +252,7 @@ lv_obj_t *ui_drawer_create(lv_obj_t *parent,
     lv_obj_set_pos(s_sw_bt, 276, 24);
     lv_obj_set_style_bg_color(s_sw_bt, UI_COLOR_GOLD_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_add_state(s_sw_bt, LV_STATE_CHECKED);
+    ui_add_click_sfx(s_sw_bt);
     lv_obj_add_event_cb(s_sw_bt, bt_switch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     /* 3. Master Volume Slider Card (740px wide, left margin 30, right margin 30) */

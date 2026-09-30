@@ -121,6 +121,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_style(btn_home, &ui_style_btn_home, 0);
     lv_obj_set_size(btn_home, 96, 30);
     lv_obj_set_pos(btn_home, 16, 4);
+    ui_add_click_sfx(btn_home);
     lv_obj_add_event_cb(btn_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_home = lv_label_create(btn_home);
@@ -147,6 +148,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_style(btn_refresh, &ui_style_btn_home, 0);
     lv_obj_set_size(btn_refresh, 76, 30);
     lv_obj_set_pos(btn_refresh, 580, 4);
+    ui_add_click_sfx(btn_refresh);
     lv_obj_add_event_cb(btn_refresh, refresh_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
@@ -169,6 +171,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_remove_style_all(btn_bottom_home);
     lv_obj_set_size(btn_bottom_home, 140, 50);
     lv_obj_set_pos(btn_bottom_home, 330, 425);
+    ui_add_click_sfx(btn_bottom_home);
     lv_obj_add_event_cb(btn_bottom_home, home_click_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_set_style_radius(btn_bottom_home, 8, LV_STATE_PRESSED);
     lv_obj_set_style_bg_color(btn_bottom_home, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);

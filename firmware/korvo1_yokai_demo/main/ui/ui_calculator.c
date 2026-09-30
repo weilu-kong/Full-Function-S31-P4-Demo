@@ -123,6 +123,8 @@ static lv_obj_t *make_key(lv_obj_t *parent, int x, int y, int w, int h,
     lv_obj_set_style_border_opa(b, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(b, lv_color_hex(0x293C4E), LV_STATE_PRESSED);
 
+    ui_add_click_sfx(b);
+
     lv_obj_add_event_cb(b, key_evt, LV_EVENT_CLICKED, (void *)(intptr_t)key);
 
     lv_obj_t *l = lv_label_create(b);
@@ -160,6 +162,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_pos(home, 14, 13);
     lv_obj_set_size(home, 130, 44);
     lv_obj_set_style_radius(home, 12, 0);
+    ui_add_click_sfx(home);
     lv_obj_add_event_cb(home, home_evt, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hl = lv_label_create(home);
     lv_label_set_text(hl, "< ホーム");
@@ -176,6 +179,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_bg_opa(hist, LV_OPA_80, 0);
     lv_obj_set_style_border_width(hist, 1, 0);
     lv_obj_set_style_border_color(hist, UI_COLOR_GOLD_ACCENT, 0);
+    ui_add_click_sfx(hist);
     lv_obj_add_event_cb(hist, history_toggle_evt, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hist_l = lv_label_create(hist);
     lv_label_set_text(hist_l, "履歴");
@@ -256,6 +260,7 @@ lv_obj_t *ui_calculator_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_size(hc, 140, 40);
     lv_obj_set_style_radius(hc, 10, 0);
     lv_obj_set_style_bg_color(hc, lv_color_hex(0x572325), 0);
+    ui_add_click_sfx(hc);
     lv_obj_add_event_cb(hc, history_clear_evt, LV_EVENT_CLICKED, NULL);
     lv_obj_t *hcl = lv_label_create(hc);
     lv_label_set_text(hcl, "履歴を消去");

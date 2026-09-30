@@ -6,6 +6,9 @@ import re
 from pathlib import Path
 
 
+VISION_PPA = (Path(__file__).parent / "patches/lvgl_vision_ppa.c").read_text()
+
+
 PATCHES = (
     (
         "managed_components/espressif__esp-dl/vision/recognition/dl_recognition_database.cpp",
@@ -122,6 +125,58 @@ PATCHES = (
         1,
     ),
 
+
+    (
+        "managed_components/lvgl__lvgl/src/draw/espressif/ppa/lv_draw_ppa.c",
+        "    if(!ppa_dest_cf_supported(base->layer->color_format)) return 0;",
+        "    if(!ppa_dest_cf_supported(base->layer->color_format)) return 0;\n"
+        "    /* Keep other UI drawing on its existing software path. */\n"
+        "    if(t->type != LV_DRAW_TASK_TYPE_IMAGE) return 0;",
+        1,
+    ),
+    (
+        "managed_components/lvgl__lvgl/src/draw/espressif/ppa/lv_draw_ppa.c",
+        "                     && dsc->scale_x == 256\n                     && dsc->scale_y == 256",
+        "                     && dsc->scale_x == 320\n                     && dsc->scale_y == 320\n"
+        "                     && dsc->header.w == 320 && dsc->header.h == 240\n"
+        "                     && dsc->header.cf == LV_COLOR_FORMAT_RGB565\n"
+        "                     && base->layer->color_format == LV_COLOR_FORMAT_RGB565\n"
+        "                     && dsc->pivot.x == 0 && dsc->pivot.y == 0",
+        1,
+    ),
+    (
+        "managed_components/lvgl__lvgl/src/draw/espressif/ppa/lv_draw_ppa.c",
+        "                if(t->preference_score > DRAW_UNIT_PPA_PREF_SCORE) {",
+        "                /* SRM scales pixel extents, not the distance between corner pixels. */\n"
+        "                if(t->type == LV_DRAW_TASK_TYPE_IMAGE) {\n"
+        "                    t->_real_area.x2 = t->area.x1 + 399;\n"
+        "                    t->_real_area.y2 = t->area.y1 + 299;\n"
+        "                }\n"
+        "                if(t->preference_score > DRAW_UNIT_PPA_PREF_SCORE) {",
+        2,
+    ),
+    (
+        "managed_components/lvgl__lvgl/src/draw/espressif/ppa/lv_draw_ppa.c",
+        "    if(!lv_area_intersect(&area, &t->area, &t->clip_area)) return;",
+        "    if(!lv_area_intersect(&area, &t->_real_area, &t->clip_area)) return;",
+        1,
+    ),
+    (
+        "managed_components/lvgl__lvgl/src/draw/espressif/ppa/lv_draw_ppa_img.c",
+        "\nvoid lv_draw_ppa_img(lv_draw_task_t * t,",
+        "\n" + VISION_PPA + "\nvoid lv_draw_ppa_img(lv_draw_task_t * t,",
+        1,
+    ),
+    (
+        "managed_components/lvgl__lvgl/src/draw/espressif/ppa/lv_draw_ppa_img.c",
+        "    lv_draw_image_normal_helper(t, dsc, coords, lv_draw_img_ppa_core, NULL);",
+        "    if(dsc->scale_x == 320 && dsc->scale_y == 320) {\n"
+        "        lv_draw_ppa_vision_scale(t, dsc, coords);\n"
+        "        return;\n"
+        "    }\n"
+        "    lv_draw_image_normal_helper(t, dsc, coords, lv_draw_img_ppa_core, NULL);",
+        1,
+    ),
 )
 
 

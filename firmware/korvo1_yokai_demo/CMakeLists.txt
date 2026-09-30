@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(korvo1_yokai_demo)
 
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_CURRENT_LIST_DIR}/tools/apply_managed_component_patches.py"
+             "${CMAKE_CURRENT_LIST_DIR}/tools/patches/lvgl_vision_ppa.c")
+
 execute_process(
     COMMAND ${PYTHON} ${CMAKE_CURRENT_LIST_DIR}/tools/apply_managed_component_patches.py
             --project-root ${CMAKE_CURRENT_LIST_DIR}
@@ -10,6 +14,12 @@ execute_process(
 )
 if(NOT managed_patch_result EQUAL 0)
     message(FATAL_ERROR "Failed to apply required managed-component patches")
+endif()
+
+if(CONFIG_LV_USE_PPA)
+    # LVGL's private API exposes PPA headers to image decoders as well.
+    idf_component_get_property(lvgl_target lvgl__lvgl COMPONENT_LIB)
+    target_link_libraries(${lvgl_target} PUBLIC idf::esp_driver_ppa idf::esp_mm)
 endif()
 
 option(YOKAI_CAMERA_DMA_DIAGNOSTICS "Temporarily trace camera DMA and frame integrity" OFF)

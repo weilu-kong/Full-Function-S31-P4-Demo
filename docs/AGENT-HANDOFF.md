@@ -1,10 +1,12 @@
 # Full-Function-S31-P4-Demo 开发交接（Yokai OS）
 
 更新时间：2026-10-01
-当前修复分支：**`codex/vision-ai`**，工作树 `.worktrees/vision-ai`；代码提交 `4d6c3d4`。
-当前验证环境：**ESP-IDF 6.1、ESP32-S31 Korvo-1、LVGL DOUBLE_DIRECT 两帧缓冲、320×240 原尺寸预览**。
+当前修复分支：**`codex/vision-ai`**，工作树 `.worktrees/vision-ai`；320×240 修复基线提交 `4d6c3d4`；后续 400×300 PPA 修改见下方报告。
+当前验证环境：**ESP-IDF 6.1、ESP32-S31 Korvo-1、LVGL DOUBLE_DIRECT 两帧缓冲、400×300 PPA 显示／320×240 识别输入**。
 
-最新状态以 [2026-10-01 进展总结](reports/2026-10-01-progress-summary.md) 和 [详细修复报告](reports/2026-09-30-synth-a2dp-repair.md) 为准：Synth/A2DP 修复已有听感确认；Vision 已修正预览竞争、DVP 短帧发布与缓冲耗尽重启，五分钟验证拦截 10 个坏帧且无重启。长期花屏与十分钟蓝牙验收仍需观察。
+400×300 版本已构建、刷入并确认启动，摄像头运行验收尚待设备进入识别页面；详情见 [400×300 PPA 报告](reports/2026-10-01-vision-400x300-ppa.md)。
+
+此前 320×240 修复状态以 [2026-10-01 进展总结](reports/2026-10-01-progress-summary.md) 和 [详细修复报告](reports/2026-09-30-synth-a2dp-repair.md) 为准：Synth/A2DP 修复已有听感确认；Vision 已修正预览竞争、DVP 短帧发布与缓冲耗尽重启，五分钟验证拦截 10 个坏帧且无重启。长期花屏与十分钟蓝牙验收仍需观察。
 
 **下文为 2026-09-17 开始维护的历史架构记录。** 旧分支、IDF master、TRIPLE_FULL、帧率与“全面验证”描述不能代替上面的当前状态。
 历史基线：**LVGL v9 + ThorVG + esp_lvgl_adapter** + **ESP-SR 全局中英双语语音控制闭环**。

@@ -244,6 +244,9 @@ void ui_voice_screen_update(const voice_result_t *result, int volume,
 /* -------------------------------------------------------------
  * 2. Vision AI Screen (目目連の眼)
  * ------------------------------------------------------------- */
+#define VISION_DISPLAY_WIDTH 400
+#define VISION_DISPLAY_HEIGHT 300
+
 static lv_obj_t *s_vf_img = NULL;
 static lv_obj_t *s_lbl_vf_target = NULL;
 static lv_obj_t *s_face_boxes[VISION_MAX_DETECTIONS] = {NULL};
@@ -534,11 +537,11 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_pos(card, 16, 56);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Border hugs the native preview, centered in the original viewfinder area. */
+    /* Border hugs the PPA-scaled preview in the original viewfinder area. */
     lv_obj_t *vf = lv_obj_create(card);
-    lv_obj_set_size(vf, VISION_PREVIEW_WIDTH + 4, VISION_PREVIEW_HEIGHT + 4);
-    lv_obj_set_pos(vf, 20 + (520 - VISION_PREVIEW_WIDTH - 4) / 2,
-                   20 + (310 - VISION_PREVIEW_HEIGHT - 4) / 2);
+    lv_obj_set_size(vf, VISION_DISPLAY_WIDTH + 4, VISION_DISPLAY_HEIGHT + 4);
+    lv_obj_set_pos(vf, 20 + (520 - VISION_DISPLAY_WIDTH - 4) / 2,
+                   20 + (310 - VISION_DISPLAY_HEIGHT - 4) / 2);
     lv_obj_set_style_bg_color(vf, lv_color_hex(0x06090E), 0);
     lv_obj_set_style_border_color(vf, UI_COLOR_CYAN_ACCENT, 0);
     lv_obj_set_style_border_width(vf, 2, 0);
@@ -553,11 +556,13 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(s_lbl_vf_target, UI_FONT_REGULAR, 0);
     lv_obj_center(s_lbl_vf_target);
 
-    /* Native RGB565 preview centered in the viewfinder: no per-frame scaling. */
+    /* Scale into the existing drawing framebuffer; inference stays 320x240. */
     s_vf_img = lv_image_create(vf);
     lv_obj_set_pos(s_vf_img, 0, 0);
-    lv_obj_set_size(s_vf_img, VISION_PREVIEW_WIDTH, VISION_PREVIEW_HEIGHT);
-    lv_image_set_inner_align(s_vf_img, LV_IMAGE_ALIGN_CENTER);
+    lv_obj_set_size(s_vf_img, VISION_DISPLAY_WIDTH, VISION_DISPLAY_HEIGHT);
+    lv_image_set_inner_align(s_vf_img, LV_IMAGE_ALIGN_TOP_LEFT);
+    lv_image_set_pivot(s_vf_img, 0, 0);
+    lv_image_set_scale(s_vf_img, 320);
     /* Live RGB565 video: avoid software bilinear filtering of every preview pixel. */
     lv_image_set_antialias(s_vf_img, false);
     lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
@@ -1107,16 +1112,16 @@ void ui_vision_screen_update(void)
             for (int i = 0; i < VISION_MAX_DETECTIONS; i++) {
                 if (!s_face_boxes[i] || !s_face_labels[i]) continue;
                 if (i < res.count) {
-                    int bx = res.boxes[i].x;
-                    int by = res.boxes[i].y;
-                    int bw = res.boxes[i].w;
-                    int bh = res.boxes[i].h;
+                    int bx = res.boxes[i].x * 5 / 4;
+                    int by = res.boxes[i].y * 5 / 4;
+                    int bw = res.boxes[i].w * 5 / 4;
+                    int bh = res.boxes[i].h * 5 / 4;
                     if (bw < 10) bw = 10;
                     if (bh < 10) bh = 10;
-                    if (bx < 0) bx = 0;
-                    if (by < 0) by = 0;
-                    if (bx + bw > VISION_PREVIEW_WIDTH) bw = VISION_PREVIEW_WIDTH - bx;
-                    if (by + bh > VISION_PREVIEW_HEIGHT) bh = VISION_PREVIEW_HEIGHT - by;
+                    bx = LV_CLAMP(0, bx, VISION_DISPLAY_WIDTH - 1);
+                    by = LV_CLAMP(0, by, VISION_DISPLAY_HEIGHT - 1);
+                    if (bx + bw > VISION_DISPLAY_WIDTH) bw = VISION_DISPLAY_WIDTH - bx;
+                    if (by + bh > VISION_DISPLAY_HEIGHT) bh = VISION_DISPLAY_HEIGHT - by;
 
                     lv_obj_set_pos(s_face_boxes[i], bx, by);
                     lv_obj_set_size(s_face_boxes[i], bw, bh);
@@ -1135,7 +1140,7 @@ void ui_vision_screen_update(void)
                     if (lbl_y < 2) lbl_y = by + 4;
                     lv_label_set_text(s_face_labels[i], res.boxes[i].label);
                     lv_obj_update_layout(s_face_labels[i]);
-                    int lbl_x = LV_MIN(bx, LV_MAX(0, VISION_PREVIEW_WIDTH - lv_obj_get_width(s_face_labels[i])));
+                    int lbl_x = LV_MIN(bx, LV_MAX(0, VISION_DISPLAY_WIDTH - lv_obj_get_width(s_face_labels[i])));
                     lv_obj_set_pos(s_face_labels[i], lbl_x, lbl_y);
 
                     lv_obj_remove_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);

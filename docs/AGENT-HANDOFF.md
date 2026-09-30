@@ -1,10 +1,10 @@
 # Full-Function-S31-P4-Demo 开发交接（Yokai OS）
 
 更新时间：2026-10-01
-当前修复分支：**`codex/vision-ai`**，工作树 `.worktrees/vision-ai`；320×240 修复基线提交 `4d6c3d4`；后续 400×300 PPA 修改见下方报告。
+当前修复分支：**`codex/vision-ai`**，工作树 `.worktrees/vision-ai`；320×240 修复基线提交 `4d6c3d4`；400×300 PPA 实现提交 `352c8ca`，见下方报告。
 当前验证环境：**ESP-IDF 6.1、ESP32-S31 Korvo-1、LVGL DOUBLE_DIRECT 两帧缓冲、400×300 PPA 显示／320×240 识别输入**。
 
-400×300 版本已构建、刷入并确认启动，摄像头运行验收尚待设备进入识别页面；详情见 [400×300 PPA 报告](reports/2026-10-01-vision-400x300-ppa.md)。
+400×300 版本已构建、刷入并确认 PPA 实际启用，约 7 分 17 秒运行窗口预览平均 15.01 帧/秒，拦截 16 个短帧，无重启或缓冲改写；长期稳定性与视觉验收仍待观察。详情见 [400×300 PPA 报告](reports/2026-10-01-vision-400x300-ppa.md)。
 
 此前 320×240 修复状态以 [2026-10-01 进展总结](reports/2026-10-01-progress-summary.md) 和 [详细修复报告](reports/2026-09-30-synth-a2dp-repair.md) 为准：Synth/A2DP 修复已有听感确认；Vision 已修正预览竞争、DVP 短帧发布与缓冲耗尽重启，五分钟验证拦截 10 个坏帧且无重启。长期花屏与十分钟蓝牙验收仍需观察。
 

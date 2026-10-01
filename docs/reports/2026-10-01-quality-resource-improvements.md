@@ -57,3 +57,10 @@ Food 内置名称键盘是拉丁输入；服务接受有效 UTF-8，但没有增
 崩溃日志 `/tmp/yokai-quality-diag-board.log`；补充采集 `/tmp/yokai-quality-diag-vision.log`；回滚日志 `/tmp/yokai-quality-rollback.log`；本机回归 `/tmp/yokai-quality-host.log`；构建 `/tmp/yokai-quality-build.log`。所有采集均有限时，不留下常驻监控。
 
 下一步先完成 8 KiB 天气栈的 HTTPS 实板复测并记录最小剩余栈/内部堆，验证无崩溃后再测 Vision、A2DP/Voice 混合负载与 Food 触控、持久化。确认远端 CI 通过后才考虑 main 整合。不能将本轮主机检查通过等同于设备稳定验收。
+
+
+### TLS 修正后的生产配置实测
+
+`/tmp/yokai-quality-production-board.log` 有限 90 秒记录：HTTPS 请求成功，`WEATHER_HEALTH http_ok=1 stack_min_bytes=4044`；17 份堆/服务快照，最后 `int_free=69239`、历史最低 `int_min=31108`、最大内部块 `31744`；PSRAM `5964744`、历史最低 `5948444`、最大连续块 `5898240` 字节。此段为 Home（vstate=0），没有 panic、栈保护或显示超时，不能代替 Vision 或混合负载结果。
+
+生产镜像加入天气高水位日志后为 10,573,568 字节，应用分区余 1,485,056 字节。此前 Clang 专用 Food UI 检查选项改为 GCC/Clang 通用选项；本机统一检查再次通过。最终 CPU 采集、生产配置恢复及远端 CI 结果仍待更新。

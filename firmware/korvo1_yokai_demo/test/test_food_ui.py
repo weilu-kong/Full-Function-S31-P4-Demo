@@ -135,7 +135,7 @@ with tempfile.TemporaryDirectory() as tmp:
     path = Path(tmp) / 'food_ui.c'
     path.write_text(harness + source + checks)
     exe = Path(tmp) / 'food_ui'
-    subprocess.run(['cc', '-std=c11', '-Werror=cast-function-type-strict', '-fsanitize=address,undefined',
+    subprocess.run(['cc', '-std=c11', '-Werror=cast-function-type', '-fsanitize=address,undefined',
                     '-I', str(project / 'main'), str(path), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
 print('Food Home callback and 20 UI lifecycle cycles passed')

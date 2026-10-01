@@ -396,7 +396,10 @@ static void weather_worker_task(void *arg)
             snprintf(time_buf, sizeof(time_buf), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
         }
 
-        if (fetch_open_meteo_http(s_json_buffer, sizeof(s_json_buffer))) {
+        bool fetched = fetch_open_meteo_http(s_json_buffer, sizeof(s_json_buffer));
+        ESP_LOGI(TAG, "[WEATHER_HEALTH] http_ok=%d stack_min_bytes=%u", fetched,
+                 (unsigned)uxTaskGetStackHighWaterMark(NULL));
+        if (fetched) {
             int temp_c = 0;
             int wmo_code = 0;
             bool is_day = true;

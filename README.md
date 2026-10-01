@@ -3,6 +3,10 @@
 An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9, ESP-SR, ESP-DL, Wi-Fi, Bluetooth audio, camera/Vision AI, and a Japanese `Yokai OS` visual theme.
 
 > **Active development branch:** `codex/vision-ai`  
+> **Integration:** [PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2), not yet merged into `main`
+>
+> **Status updated:** 2026-10-01 (JST)
+>
 > **Target board:** ESP32-S31-Korvo-1  
 > **UI language:** Japanese  
 > **ESP-IDF:** 6.1, pinned SDK commit `fff9895c82d744c7237be8847347bdd1b07c6643` (preview target)
@@ -21,17 +25,29 @@ The project has moved beyond a static UI prototype and now runs the main service
 | App / subsystem | Status | Current implementation |
 | --- | --- | --- |
 | Home / Shell | ✅ Hardware verified | 2-page TileView launcher, 95 ms screen transition, global quick settings |
-| Synth | ✅ Implemented | Polyphonic synth, waveform presets, cutoff / resonance, oscilloscope, ES8311 output |
-| Weather | ✅ Implemented | Wi-Fi, SNTP, Open-Meteo, dynamic weather background, Lottie effects |
+| Synth | ✅ Implemented | Polyphonic synth, waveform presets, cutoff / resonance, oscilloscope, ES8389 shared output |
+| Weather | ✅ Implemented | Wi-Fi, SNTP, Open-Meteo, stale-data/error feedback, on-demand backgrounds, 8 KiB HTTPS worker stack |
 | Voice Shrine | ✅ Implemented | ESP-SR AFE/AEC, WakeNet, MultiNet, Japanese + English offline commands |
-| Vision AI | ✅ Face pipeline implemented | DVP camera preview, face detection, MobileFaceNet recognition, 5-sample enrollment, persistent face DB |
-| Object recognition | ⏸ Paused | Intentionally not part of the current completion gate |
+| Vision AI | ✅ Face pipeline implemented | 400×300 PPA preview, face detection/recognition, 5-sample enrollment, persistent face DB; startup resource limitation below |
+| Object recognition | ⏸ Unavailable | UI identifies it as unsupported; no object model or simulated confidence |
 | Wi-Fi | ✅ Implemented | Scan, password entry, saved STA config, connection/error feedback |
 | Bluetooth audio | ✅ Implemented | Classic BT / A2DP sink and shared audio output |
 | Fireworks | ✅ Production (Style B) | Torii & lake procedural art, custom LVGL layer draw callback, fixed pool (160 particles, 4 rockets), 3 styles (菊/牡丹/柳), manual tap + auto fireworks, zero per-frame malloc |
 | Clock / Timer | ✅ Production (Style B) | Torii & lake twilight procedural art, SNTP-backed clock, `esp_timer_get_time()` monotonic deadline countdown, stopwatch with 8 rolling laps |
 | Calculator | ✅ Production (Style A) | Dark lacquer & gold procedural bezel, AC/C, +/-, %, 4 basic operations, decimal handling, chained evaluation, operator replacement, repeated equals, divide-by-zero protection, max 8-record rolling history |
-| Food freshness | ✅ Bounded implementation | Up to 32 records; add/edit/delete; validated expiry date; CRC-protected two-slot persistence |
+| Food freshness | ✅ Bounded implementation | Up to 32 records; add/edit/delete; validated expiry date; CRC-protected two-slot persistence; touch acceptance pending |
+
+### Latest verified state — 2026-10-01
+
+Firmware commit [`96f3aca`](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/commit/96f3aca) is flashed on the reference board using the production configuration. Local firmware build, unified host checks, Flash budget check and flash readback verification passed. The preceding `b456681` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36822533159) passed; the CI runs for the inference-stack fix were still in progress at this update.
+
+Two faults were captured and addressed: the Weather HTTPS worker exhausted its former 4 KiB stack, and Vision SIMD preprocessing failed when the inference stack was allocated in RTC RAM. Weather now uses an 8 KiB stack; Vision keeps its 12 KiB stack in DMA-capable internal SRAM, with owner-managed cleanup. Production HTTPS succeeded with 4,044 bytes of stack remaining.
+
+The latest finite 120-second production capture recorded 578 face inferences, approximately 15.58 camera fps and 14.84 displayed preview fps during the stable interval, with no panic, watchdog or display stall. The user confirmed Vision opened after returning Home and retrying. This is a limited verification, not long-duration or mixed audio/voice/Vision acceptance.
+
+**Known startup limitation:** opening Vision while Weather HTTPS is active can fail because regular SRAM is temporarily insufficient for the required inference stack. The failure stops capture safely instead of falling back to RTC RAM. Return Home, allow the weather request to finish, then reopen Vision. Eliminating this startup contention remains pending.
+
+See the [quality and resource report](docs/reports/2026-10-01-quality-resource-improvements.md) for the crash evidence, fixes, measurements and remaining checks.
 
 Detailed hardware verification data and telemetry: [YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md](docs/YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md).
 
@@ -52,12 +68,13 @@ Current reference platform:
 | PSRAM | 16 MB Octal |
 | LCD | 800×480 RGB |
 | Touch | GT1151 |
-| Audio codec | ES8311 |
+| Audio codec | ES8389 |
 | Camera | SC101IOT |
 | Camera format | 1280×720 UYVY |
 | Camera buffers | 2 V4L2 MMAP buffers |
 | LCD frame buffers | 2 full RGB565 frame buffers |
 | Vision preview | 3 × 320×240 RGB565 buffers |
+| Vision display | 400×300 via PPA into the existing LCD draw buffer |
 
 ---
 
@@ -118,16 +135,19 @@ Detailed documents:
 
 Do **not** interpret the HOME-screen free-PSRAM number as the Vision peak headroom.
 
-The validated memory history shows roughly:
+The latest production measurements for firmware `96f3aca` are:
 
-| Stage | Representative free PSRAM |
+| Measurement | Bytes |
 | --- | ---: |
-| HOME before first Vision entry | ~5.25 MB |
-| After camera MMAP allocation | ~1.56 MB |
-| After first detector run | ~1.25 MB |
-| After first MFN feature operation | ~0.33–0.34 MB |
+| HOME / UI ready: free PSRAM | 5,964,884 |
+| Vision: observed minimum free PSRAM | 1,013,420 |
+| Vision: latest largest free PSRAM block | 999,424 |
+| Observed minimum free internal heap | 30,580 |
+| Inference task: minimum remaining stack | 7,920 |
+| Application image | 10,574,336 |
+| Application partition reserve | 1,484,288 |
 
-The first MFN feature operation was observed to consume about **916 KB** of PSRAM. In a long Vision run with MFN loaded, internal SRAM was about **71 KB free**, with an observed historical minimum below that.
+These numbers come from the limited production capture above and do not bound every workload. Weather background release removes a persistent 768,000-byte (750 KiB) PSRAM allocation. Camera + detector + MobileFaceNet still consume most PSRAM; earlier firmware had only about 233 KiB remaining at its measured peak. Internal heap totals include RTC RAM and do not prove a DMA-capable SRAM block is available for the inference stack. Concurrent TLS creates additional transient pressure.
 
 Therefore new apps must avoid large new persistent PSRAM allocations. Prefer:
 
@@ -243,13 +263,14 @@ Hardware acceptance should additionally verify:
 
 ## Current reliability constraints
 
-These are known engineering constraints, not necessarily active failures:
+Current constraints and remaining validation:
 
 1. **PSRAM peak headroom is tight after camera + detector + MFN are resident.** New full-screen persistent buffers are not acceptable.
 2. **Camera MMAP buffers are intentionally retained after STREAMOFF.** Previous deinit/restart experiments recovered memory but made later full-resolution camera allocation unreliable.
-3. **The face detector/recognizer objects are retained once loaded.** This improves re-entry stability but keeps memory committed.
+3. **Vision startup can fail during concurrent Weather HTTPS.** The inference stack requires regular DMA-capable internal SRAM; returning Home and retrying after HTTPS completes currently recovers. Detector/recognizer objects are deleted after inference exits on a successful stop; camera MMAP buffers remain retained.
 4. **Managed components currently require local source patches.** Dependency upgrades must be treated as a controlled migration.
 5. **Object detection is paused.** Do not add another model until the memory budget is re-measured and a separate acceptance gate is defined.
+6. **Vision CPU and mixed-load headroom are not yet verified.** Production runtime statistics are disabled; the LVGL sysmon `CPU 100%` value is not a valid capacity measurement. Use bounded diagnostic captures, then restore production.
 
 ---
 
@@ -260,7 +281,8 @@ firmware/korvo1_yokai_demo/
 ├── sdkconfig.defaults
 ├── partitions.csv
 ├── tools/
-│   └── apply_managed_component_patches.py
+│   ├── apply_managed_component_patches.py
+│   └── check_firmware_size.py
 ├── test/
 └── main/
     ├── app_main.c
@@ -268,6 +290,8 @@ firmware/korvo1_yokai_demo/
     ├── synth_service.c
     ├── voice_service.c
     ├── weather_service.c
+    ├── food_service.c
+    ├── app_health.c
     ├── vision_camera.c
     ├── vision_service.cpp
     └── ui/
@@ -280,6 +304,7 @@ firmware/korvo1_yokai_demo/
         ├── ui_wifi.c
         ├── ui_bluetooth.c
         ├── ui_apps.c
+        ├── ui_food.c
         └── ui_image_loader.c
 ```
 
@@ -303,7 +328,10 @@ Generated concept art is a **visual reference only**. Text, controls, touch geom
 
 Fireworks, Clock / Timer, and Calculator have passed the September 24 hardware regression. Remaining scoped work:
 
-- Complete Food freshness persistence and editing.
+- Resolve first-entry Vision / Weather HTTPS SRAM contention without increasing persistent image memory.
+- Verify repeated Vision entry/exit and long-duration operation on the inference-stack fix.
+- Complete Food touch/persistence acceptance and mixed A2DP / Voice / Vision checks.
+- Measure Vision and mixed-load CPU usage with a bounded diagnostic configuration, then restore production.
 - Reassess object recognition only after measuring Vision peak memory and defining a separate hardware acceptance gate.
 
 Possible later extensions:

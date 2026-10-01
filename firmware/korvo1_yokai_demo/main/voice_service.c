@@ -121,7 +121,7 @@ static int16_t *s_ref_ring;
 static size_t s_ref_read;
 static size_t s_ref_write;
 static size_t s_ref_count;
-static SemaphoreHandle_t s_ref_mutex;
+static portMUX_TYPE s_ref_lock = portMUX_INITIALIZER_UNLOCKED;
 static QueueHandle_t s_result_queue;
 static TaskHandle_t s_feed_task;
 static TaskHandle_t s_fetch_task;
@@ -592,9 +592,16 @@ static bool allocate_feed_buffers(void)
 
 void voice_service_feed_playback(const int16_t *stereo, size_t frames)
 {
-    if (stereo == NULL || frames == 0 || s_ref_ring == NULL || s_ref_mutex == NULL ||
-        xSemaphoreTake(s_ref_mutex, 0) != pdTRUE) {
+    if (stereo == NULL || frames == 0 || !s_ready) return;
+    portENTER_CRITICAL(&s_ref_lock);
+    if (!s_ready || s_ref_ring == NULL) {
+        portEXIT_CRITICAL(&s_ref_lock);
         return;
+    }
+    /* Only the newest ring capacity can survive an oversized playback call. */
+    if (frames > VOICE_REF_RING_FRAMES) {
+        stereo += (frames - VOICE_REF_RING_FRAMES) * 2;
+        frames = VOICE_REF_RING_FRAMES;
     }
     for (size_t i = 0; i < frames; ++i) {
         if (s_ref_count == VOICE_REF_RING_FRAMES) {
@@ -606,13 +613,15 @@ void voice_service_feed_playback(const int16_t *stereo, size_t frames)
         s_ref_write = (s_ref_write + 1) % VOICE_REF_RING_FRAMES;
         ++s_ref_count;
     }
-    xSemaphoreGive(s_ref_mutex);
+    portEXIT_CRITICAL(&s_ref_lock);
 }
 
 static void read_reference(int16_t *out, size_t frames)
 {
     memset(out, 0, frames * 2 * sizeof(*out));
-    if (xSemaphoreTake(s_ref_mutex, pdMS_TO_TICKS(2)) != pdTRUE) {
+    portENTER_CRITICAL(&s_ref_lock);
+    if (s_ref_ring == NULL) {
+        portEXIT_CRITICAL(&s_ref_lock);
         return;
     }
     size_t target = VOICE_AEC_DELAY_FRAMES + frames;
@@ -632,23 +641,40 @@ static void read_reference(int16_t *out, size_t frames)
         s_ref_read = (s_ref_read + 1) % VOICE_REF_RING_FRAMES;
         --s_ref_count;
     }
-    xSemaphoreGive(s_ref_mutex);
+    portEXIT_CRITICAL(&s_ref_lock);
 }
 
 static void publish_event(voice_event_t event, voice_command_t command,
                           voice_language_t language, float confidence)
 {
     voice_result_t result = {event, command, language, confidence};
-    if (xQueueSend(s_result_queue, &result, 0) != pdTRUE && event == VOICE_EVENT_COMMAND) {
+    if (xQueueSend(s_result_queue, &result, 0) != pdTRUE && (event == VOICE_EVENT_COMMAND || event == VOICE_EVENT_ERROR)) {
         voice_result_t stale;
         (void)xQueueReceive(s_result_queue, &stale, 0);
         (void)xQueueSend(s_result_queue, &result, 0);
     }
 }
 
+/* Retain ownership and the result queue until stop/start reaps this instance.
+ * Self-deletion here would prevent cleanup; deleting the queue loses ERROR. */
+static void fail_runtime(const char *message)
+{
+    snprintf(s_error, sizeof(s_error), "%s", message);
+    if (s_fetch_task != NULL) {
+        vTaskDelete(s_fetch_task);
+        s_fetch_task = NULL;
+    }
+    s_ready = false;
+    publish_event(VOICE_EVENT_ERROR, VOICE_COMMAND_NONE, VOICE_LANGUAGE_ENGLISH, 0);
+    ESP_LOGE(TAG, "%s", s_error);
+    for (;;) vTaskSuspend(NULL);
+}
+
 static void voice_feed_task(void *arg)
 {
     (void)arg;
+    /* Startup owns rollback until both tasks exist and all handles are ready. */
+    while (!s_ready) vTaskDelay(pdMS_TO_TICKS(1));
     size_t pending = 0;
     unsigned dropped = 0;
     unsigned consecutive_failures = 0;
@@ -656,8 +682,7 @@ static void voice_feed_task(void *arg)
         if (esp_codec_dev_read(s_mic_dev, s_feed.mic_44k,
                                VOICE_IO_FRAMES * 4) != ESP_CODEC_DEV_OK) {
             if (++consecutive_failures >= 100) {
-                fail_start("Microphone capture stopped");
-                publish_event(VOICE_EVENT_ERROR, VOICE_COMMAND_NONE, VOICE_LANGUAGE_ENGLISH, 0);
+                fail_runtime("Microphone capture stopped");
                 break;
             }
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -679,8 +704,7 @@ static void voice_feed_task(void *arg)
                 ESP_LOGW(TAG, "Dropped ASRC frame (%u total)", dropped);
             }
             if (++consecutive_failures >= 100) {
-                fail_start("Audio resampler stopped");
-                publish_event(VOICE_EVENT_ERROR, VOICE_COMMAND_NONE, VOICE_LANGUAGE_ENGLISH, 0);
+                fail_runtime("Audio resampler stopped");
                 break;
             }
             continue;
@@ -695,18 +719,12 @@ static void voice_feed_task(void *arg)
             }
         }
     }
-    if (s_fetch_task != NULL) {
-        vTaskDelete(s_fetch_task);
-        s_fetch_task = NULL;
-    }
-    free_feed_buffers();
-    s_feed_task = NULL;
-    vTaskDelete(NULL);
 }
 
 static void voice_fetch_task(void *arg)
 {
     (void)arg;
+    while (!s_ready) vTaskDelay(pdMS_TO_TICKS(1));
     bool command_window = false;
     voice_mode_t active_mode = VOICE_MODE_GLOBAL_WAKE;
     for (;;) {
@@ -769,6 +787,7 @@ static void voice_fetch_task(void *arg)
 
 static void voice_service_cleanup_start_failure(void)
 {
+    s_ready = false;
     if (s_fetch_task != NULL) {
         vTaskDelete(s_fetch_task);
         s_fetch_task = NULL;
@@ -813,25 +832,19 @@ static void voice_service_cleanup_start_failure(void)
         s_mic_dev = NULL;
     }
 
-    if (s_ref_ring != NULL) {
-        free(s_ref_ring);
-        s_ref_ring = NULL;
-    }
+    portENTER_CRITICAL(&s_ref_lock);
+    int16_t *ref_ring = s_ref_ring;
+    s_ref_ring = NULL;
     s_ref_read = 0;
     s_ref_write = 0;
     s_ref_count = 0;
-
-    if (s_ref_mutex != NULL) {
-        vSemaphoreDelete(s_ref_mutex);
-        s_ref_mutex = NULL;
-    }
+    portEXIT_CRITICAL(&s_ref_lock);
+    free(ref_ring);
 
     if (s_result_queue != NULL) {
         vQueueDelete(s_result_queue);
         s_result_queue = NULL;
     }
-
-    s_ready = false;
 }
 
 void voice_service_stop(void)
@@ -842,10 +855,11 @@ void voice_service_stop(void)
 
 bool voice_service_start(void)
 {
+    if (s_ready) return true;
+    voice_service_cleanup_start_failure();
     s_result_queue = xQueueCreate(8, sizeof(voice_result_t));
-    s_ref_mutex = xSemaphoreCreateMutex();
     s_ref_ring = heap_caps_calloc(VOICE_REF_RING_FRAMES * 2, sizeof(int16_t), MALLOC_CAP_SPIRAM);
-    if (!s_result_queue || !s_ref_mutex || !s_ref_ring) return fail_start("Voice buffers unavailable");
+    if (!s_result_queue || !s_ref_ring) return fail_start("Voice buffers unavailable");
     if (!open_microphone()) return fail_start("Microphone open failed");
     if (!open_asrc()) return fail_start("S31 ASRC open failed");
     if (!open_speech_models()) return fail_start("Speech models unavailable");
@@ -863,8 +877,8 @@ bool voice_service_start(void)
         free_feed_buffers();
         return fail_start("Voice fetch task failed");
     }
-    s_ready = true;
     s_error[0] = '\0';
+    s_ready = true;
     ESP_LOGI(TAG, "Voice service ready: global Japanese wake + bilingual commands");
     return true;
 }

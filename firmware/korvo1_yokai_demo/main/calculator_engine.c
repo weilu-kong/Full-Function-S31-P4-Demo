@@ -241,6 +241,7 @@ void calculator_press_sign(calculator_engine_t *c)
     if (!c || c->state == CALC_STATE_ERROR) return;
     double v = -input_value(c);
     set_input_from_double(c, v);
+    if (c->state == CALC_STATE_OPERATOR) c->state = CALC_STATE_INPUT_B;
 }
 
 void calculator_press_percent(calculator_engine_t *c)

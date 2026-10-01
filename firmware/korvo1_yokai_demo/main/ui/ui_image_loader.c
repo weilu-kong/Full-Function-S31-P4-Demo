@@ -131,7 +131,7 @@ static esp_err_t decode_jpeg_to_dsc(const char *name, const uint8_t *jpg_data, s
 
 esp_err_t ui_images_init(void)
 {
-    if (ui_img_home_p1.data != NULL) {
+    if (ui_img_home_p1.data != NULL && ui_img_home_p2.data != NULL) {
         return ESP_OK; /* Already initialized */
     }
 
@@ -145,13 +145,7 @@ esp_err_t ui_images_init(void)
     ret = decode_jpeg_to_dsc("ui_img_home_p2", ui_img_home_p2_jpg, ui_img_home_p2_jpg_len, &ui_img_home_p2);
     if (ret != ESP_OK) return ret;
 
-    /* Decode the initial weather background; later states reuse this 750KB buffer. */
-    ret = decode_jpeg_to_dsc("ui_img_weather_sunny", ui_img_weather_sunny_jpg, ui_img_weather_sunny_jpg_len, &ui_img_weather_sunny);
-    if (ret != ESP_OK) return ret;
-
-    s_weather_background = 0;
-
-    ESP_LOGI(TAG, "Background images decompressed (app background allocated on demand)");
+    ESP_LOGI(TAG, "Home images decompressed (weather/app backgrounds allocated on demand)");
     return ESP_OK;
 }
 
@@ -179,7 +173,7 @@ esp_err_t ui_weather_background_load(weather_cond_t condition, bool is_day)
         jpg_len = ui_img_weather_cloudy_jpg_len;
     }
 
-    if (background == s_weather_background) {
+    if (background == s_weather_background && ui_img_weather_sunny.data != NULL) {
         return ESP_OK;
     }
 
@@ -189,6 +183,16 @@ esp_err_t ui_weather_background_load(weather_cond_t condition, bool is_day)
         lv_image_cache_drop(&ui_img_weather_sunny);
     }
     return ret;
+}
+
+void ui_weather_background_free(void)
+{
+    /* Caller must first detach the hidden image on the LVGL thread. */
+    if (!ui_img_weather_sunny.data) return;
+    lv_image_cache_drop(&ui_img_weather_sunny);
+    heap_caps_free((void *)ui_img_weather_sunny.data);
+    ui_img_weather_sunny.data = NULL;
+    s_weather_background = -1;
 }
 
 esp_err_t ui_app_background_load(ui_app_bg_t bg)

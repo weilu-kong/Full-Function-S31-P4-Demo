@@ -21,6 +21,8 @@ typedef struct {
 
 void app_health_capture_heap(app_heap_snapshot_t *out);
 void app_health_log_heap(const char *tag);
+/* Optional runtime-stat profile; no-op in the production configuration. */
+void app_health_log_resources(void);
 
 #ifdef __cplusplus
 }

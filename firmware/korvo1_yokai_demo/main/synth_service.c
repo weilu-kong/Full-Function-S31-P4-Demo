@@ -69,7 +69,7 @@ static bool s_inited = false;
 static bool s_bt_inited = false;
 static volatile bool s_bt_connected = false;
 static volatile bool s_bt_streaming = false;
-static bool s_bt_enabled = true;
+static volatile bool s_bt_enabled = true;
 typedef enum { AUDIO_NOTE_ON, AUDIO_NOTE_OFF, AUDIO_SFX } audio_command_type_t;
 typedef struct {
     audio_command_type_t type;
@@ -254,7 +254,7 @@ esp_err_t synth_service_init(void)
 
 static void bt_a2dp_data_cb(const uint8_t *data, uint32_t len)
 {
-    if (s_bt_ringbuf == NULL || data == NULL || len == 0) return;
+    if (!s_bt_enabled || s_bt_ringbuf == NULL || data == NULL || len == 0) return;
     /* BYTEBUF is a bounded SPSC byte FIFO. Send is all-or-nothing, preserving
        sample alignment even on overflow; only the consumer assembles frames. */
     bool accepted = xRingbufferSend(s_bt_ringbuf, data, len, 0) == pdTRUE;
@@ -269,11 +269,16 @@ static void bt_a2dp_data_cb(const uint8_t *data, uint32_t len)
     portEXIT_CRITICAL(&s_bt_lock);
 }
 
-static void bt_stream_changed(void)
+/* GAP queues asynchronously. If a toggle overtakes this call, enqueue the
+ * current setting again; never hold the audio spinlock across a GAP API. */
+static void bt_update_scan_mode(void)
 {
-    portENTER_CRITICAL(&s_bt_lock);
-    ++s_bt_epoch;
-    portEXIT_CRITICAL(&s_bt_lock);
+    bool enabled;
+    do {
+        enabled = s_bt_enabled;
+        esp_bt_gap_set_scan_mode(enabled ? ESP_BT_CONNECTABLE : ESP_BT_NON_CONNECTABLE,
+                                 enabled ? ESP_BT_GENERAL_DISCOVERABLE : ESP_BT_NON_DISCOVERABLE);
+    } while (enabled != s_bt_enabled);
 }
 
 static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param)
@@ -281,25 +286,39 @@ static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
     switch (event) {
     case ESP_A2D_CONNECTION_STATE_EVT:
         if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-            s_bt_connected = true;
-            memcpy(s_remote_bda, param->conn_stat.remote_bda, sizeof(esp_bd_addr_t));
+            portENTER_CRITICAL(&s_bt_lock);
+            bool accepted = s_bt_enabled;
+            if (accepted) {
+                s_bt_connected = true;
+                memcpy(s_remote_bda, param->conn_stat.remote_bda, sizeof(esp_bd_addr_t));
+            }
+            portEXIT_CRITICAL(&s_bt_lock);
+            if (!accepted) {
+                esp_a2d_sink_disconnect(param->conn_stat.remote_bda);
+                break;
+            }
             ESP_LOGI(TAG, "A2DP accompaniment connected from: %02x:%02x:%02x:%02x:%02x:%02x",
                      param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
                      param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
                      param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
         } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+            portENTER_CRITICAL(&s_bt_lock);
             s_bt_connected = false;
             s_bt_streaming = false;
-            bt_stream_changed();
+            ++s_bt_epoch;
             memset(s_remote_bda, 0, sizeof(esp_bd_addr_t));
+            portEXIT_CRITICAL(&s_bt_lock);
             ESP_LOGI(TAG, "A2DP accompaniment disconnected");
-            esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+            bt_update_scan_mode();
         }
         break;
 
     case ESP_A2D_AUDIO_STATE_EVT:
-        s_bt_streaming = (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED);
-        bt_stream_changed();
+        portENTER_CRITICAL(&s_bt_lock);
+        s_bt_streaming = s_bt_enabled && s_bt_connected &&
+                         param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED;
+        ++s_bt_epoch;
+        portEXIT_CRITICAL(&s_bt_lock);
         ESP_LOGI(TAG, "A2DP audio stream state: %s", s_bt_streaming ? "STARTED" : "SUSPENDED");
         break;
 
@@ -318,6 +337,10 @@ static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
             channels = mcc->cie.sbc_info.ch_mode == ESP_A2D_SBC_CIE_CH_MODE_MONO ? 1 : 2;
         }
         portENTER_CRITICAL(&s_bt_lock);
+        if (!s_bt_enabled) {
+            portEXIT_CRITICAL(&s_bt_lock);
+            break;
+        }
         s_bt_input_rate = rate;
         s_bt_input_channels = channels;
         ++s_bt_epoch;
@@ -380,7 +403,7 @@ esp_err_t synth_service_bt_a2dp_init(void)
     esp_a2d_register_callback(bt_a2dp_event_cb);
     esp_a2d_sink_register_data_callback(bt_a2dp_data_cb);
     esp_a2d_sink_init();
-    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+    bt_update_scan_mode();
 
     s_bt_inited = true;
     ESP_LOGI(TAG, "Bluetooth A2DP Sink initialized (device name: Yokai-Groovebox)");
@@ -427,18 +450,25 @@ bool synth_service_is_bt_enabled(void)
 
 void synth_service_set_bt_enabled(bool enabled)
 {
+    esp_bd_addr_t remote;
+    portENTER_CRITICAL(&s_bt_lock);
     s_bt_enabled = enabled;
+    bool disconnect = !enabled && s_bt_connected;
+    if (disconnect) memcpy(remote, s_remote_bda, sizeof(remote));
+    if (!enabled) {
+        s_bt_streaming = false;
+        ++s_bt_epoch;
+    }
+    portEXIT_CRITICAL(&s_bt_lock);
     if (enabled) {
         if (!s_bt_inited) {
             synth_service_bt_a2dp_init();
         } else {
-            esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+            bt_update_scan_mode();
         }
     } else {
-        if (s_bt_connected) {
-            synth_service_bt_disconnect();
-        }
-        esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
+        if (disconnect) esp_a2d_sink_disconnect(remote);
+        bt_update_scan_mode();
     }
 }
 

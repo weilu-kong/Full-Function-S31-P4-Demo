@@ -148,6 +148,21 @@ static void test_sign_and_percent(void)
     assert(strcmp(calculator_display(&c), "220") == 0);
 }
 
+static void test_sign_starts_second_operand(void)
+{
+    calculator_engine_t c;
+    calculator_init(&c);
+    calculator_press_digit(&c, 5);
+    calculator_press_operator(&c, CALC_OP_ADD);
+    calculator_press_sign(&c);
+    assert(strcmp(calculator_display(&c), "-5") == 0);
+    calculator_press_equals(&c);
+    assert(strcmp(calculator_display(&c), "0") == 0);
+    assert(strcmp(c.history[0].expression, "5 + -5") == 0);
+    calculator_press_equals(&c);
+    assert(strcmp(calculator_display(&c), "-5") == 0);
+}
+
 static void test_history_limit(void)
 {
     calculator_engine_t c;
@@ -178,6 +193,7 @@ int main(void)
     test_repeat_equals();
     test_divide_by_zero();
     test_sign_and_percent();
+    test_sign_starts_second_operand();
     test_history_limit();
 
     printf("All calculator_engine tests PASS\n");

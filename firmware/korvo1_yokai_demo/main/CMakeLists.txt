@@ -1,9 +1,9 @@
 idf_component_register(
     SRCS "app_main.c" "app_state.c" "app_health.c" "storage_service.c" "board_ui.c" "synth_service.c"
          "vision_camera.c" "vision_service.cpp" "voice_service.c" "weather_service.c"
-         "calculator_engine.c" "clock_service.c" "fireworks_engine.c"
+         "calculator_engine.c" "clock_service.c" "fireworks_engine.c" "food_service.c"
          "ui/ui_theme.c" "ui/ui_weather.c" "ui/ui_synth.c" "ui/ui_home.c" "ui/ui_drawer.c" "ui/ui_wifi.c" "ui/ui_bluetooth.c"
-         "ui/ui_apps.c" "ui/ui_calculator.c" "ui/ui_clock.c" "ui/ui_fireworks.c" "ui/ui_yokai_art.c" "ui/ui.c"
+         "ui/ui_apps.c" "ui/ui_food.c" "ui/ui_calculator.c" "ui/ui_clock.c" "ui/ui_fireworks.c" "ui/ui_yokai_art.c" "ui/ui.c"
          "ui/ui_wifi_signal.c" "ui/ui_img_key_icon.c" "ui/ui_image_loader.c"
          "ui/ui_img_home_p1.c" "ui/ui_img_home_p2.c"
          "ui/ui_img_weather_sunny.c" "ui/ui_img_weather_cloudy.c" "ui/ui_img_weather_rain.c" "ui/ui_img_weather_night.c"

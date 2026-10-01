@@ -34,8 +34,17 @@ static void test_fixed_pool_and_limits(void)
         fireworks_engine_tap(200.0f + i * 10.0f, 200.0f);
     }
     fireworks_engine_get_stats(&stats);
-    assert(stats.active_particles <= FW_MAX_PARTICLES);
-    assert(stats.dropped_particles > 0); /* Particles dropped due to pool exhaustion */
+    assert(stats.active_particles == FW_MAX_PARTICLES);
+    assert(stats.dropped_particles == 0); /* full pool recycles faded particles */
+    size_t count = 0;
+    const fw_particle_t *particles = fireworks_engine_particles(&count);
+    bool latest_burst_present = false;
+    for (size_t i = 0; i < count; ++i) {
+        if (particles[i].active && particles[i].x == 390.0f && particles[i].y == 200.0f) {
+            latest_burst_present = true;
+        }
+    }
+    assert(latest_burst_present);
 }
 
 static void test_particle_lifecycle_and_gravity(void)

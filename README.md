@@ -5,7 +5,7 @@ An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9
 > **Active development branch:** `codex/vision-ai`  
 > **Target board:** ESP32-S31-Korvo-1  
 > **UI language:** Japanese  
-> **ESP-IDF:** 6.2.0 development baseline used by the current hardware validation  
+> **ESP-IDF:** 6.1, pinned SDK commit `fff9895c82d744c7237be8847347bdd1b07c6643` (preview target)
 > **Flash / PSRAM:** 16 MB / 16 MB Octal  
 > **LCD:** 800×480 RGB  
 > **Camera:** SC101IOT, DVP, 1280×720 UYVY
@@ -31,7 +31,7 @@ The project has moved beyond a static UI prototype and now runs the main service
 | Fireworks | ✅ Production (Style B) | Torii & lake procedural art, custom LVGL layer draw callback, fixed pool (160 particles, 4 rockets), 3 styles (菊/牡丹/柳), manual tap + auto fireworks, zero per-frame malloc |
 | Clock / Timer | ✅ Production (Style B) | Torii & lake twilight procedural art, SNTP-backed clock, `esp_timer_get_time()` monotonic deadline countdown, stopwatch with 8 rolling laps |
 | Calculator | ✅ Production (Style A) | Dark lacquer & gold procedural bezel, AC/C, +/-, %, 4 basic operations, decimal handling, chained evaluation, operator replacement, repeated equals, divide-by-zero protection, max 8-record rolling history |
-| Food freshness | 🟡 Prototype | UI/demo state; persistence/editing remains future work |
+| Food freshness | ✅ Bounded implementation | Up to 32 records; add/edit/delete; validated expiry date; CRC-protected two-slot persistence |
 
 Detailed hardware verification data and telemetry: [YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md](docs/YOKAI_3APPS_PRODUCTION_VERIFICATION_2026-09-24.md).
 
@@ -86,7 +86,7 @@ app_main
             └── Food
 ```
 
-The UI screens are created once and kept resident. Heavy runtime services are controlled independently from screen routing. Vision capture/inference is started when entering the Vision screen and stopped when leaving it.
+Screen shells are kept resident. Food list/editor objects are created on entry and freed on exit; the weather decode buffer is released when leaving Weather. Heavy runtime services are controlled independently from screen routing. Vision capture/inference is started when entering the Vision screen and stopped when leaving it.
 
 ---
 
@@ -97,7 +97,7 @@ The face-recognition path is the most heavily validated part of the project.
 Implemented features include:
 
 - SC101IOT 1280×720 UYVY DVP camera capture.
-- 320×240 RGB565 live preview.
+- 320×240 RGB565 pipeline with a 400×300 PPA-scaled display; no additional enlarged preview buffer.
 - Three-buffer preview ownership model for display / ready / inference.
 - ESP-DL human face detection.
 - MobileFaceNet-based recognition.
@@ -144,10 +144,10 @@ Therefore new apps must avoid large new persistent PSRAM allocations. Prefer:
 Current display configuration:
 
 - `CONFIG_BSP_LCD_RGB_BUFFER_NUMS=2`
-- LVGL adapter: `DOUBLE_FULL`
+- LVGL adapter: `DOUBLE_DIRECT`
 - 800×480 RGB565
 
-Current background strategy already saves PSRAM by keeping weather variants compressed in Flash and reusing one decoded weather buffer.
+Two Home backgrounds remain resident. Weather variants stay compressed in Flash; one 750 KiB buffer is decoded only while Weather is active and released on exit.
 
 When adding new themed screens, **do not allocate one 800×480 RGB565 buffer per app**. One such buffer is about **750 KiB**. Fireworks, Clock and Calculator should reuse a common scene/background buffer or use procedural UI.
 
@@ -164,15 +164,14 @@ firmware/korvo1_yokai_demo
 Activate the ESP-IDF environment used by the project:
 
 ```bash
-source /Users/kongweilu/esp/esp-idf-master/export.sh
+source "$IDF_PATH/export.sh" # use the pinned ESP-IDF 6.1 checkout
 cd "firmware/korvo1_yokai_demo"
 ```
 
 Configure/build:
 
 ```bash
-idf.py set-target esp32s31
-idf.py build
+idf.py --preview -DIDF_TARGET=esp32s31 build
 ```
 
 The project applies required managed-component patches from:
@@ -193,13 +192,13 @@ The project hardware workflow uses:
 - flashing baud rate: **920160**
 
 ```bash
-idf.py -p /dev/cu.usbserial-1120 -b 920160 flash
+idf.py --preview -p /dev/cu.usbserial-1120 -b 920160 flash
 ```
 
 Monitor:
 
 ```bash
-idf.py -p /dev/cu.usbserial-1120 monitor
+idf.py --preview -p /dev/cu.usbserial-1120 monitor
 ```
 
 For regression work, keep the flash baud rate at **920160** unless there is a hardware/transport reason to change it.
@@ -226,7 +225,7 @@ Before accepting changes to display/Vision code, also run:
 
 ```bash
 python3 tools/apply_managed_component_patches.py --project-root . --check
-idf.py build
+idf.py --preview build
 ```
 
 Hardware acceptance should additionally verify:
@@ -330,3 +329,30 @@ Before modifying the firmware:
 6. Use **920160 baud** for hardware flashing.
 7. Build and run the relevant host tests before hardware acceptance.
 8. Do not declare a feature complete from compilation alone; record hardware evidence.
+
+
+## Quality and resource gates
+
+The unified host entry point exercises engines, lifecycle races, SDK error paths, storage failures, camera DMA preparation, preview ownership, and UI resource release:
+
+```bash
+python3 test/run_host_checks.py
+python3 tools/check_firmware_size.py build
+```
+
+Run these commands from the firmware directory after activating ESP-IDF and resolving managed components. Keep `dependencies.lock` in version control; this quality update retains the previously validated component versions. The Flash gate requires at least **1 MiB free in the application partition** and checks that the speech-model image fits. GitHub Actions builds the pinned SDK and runs the same checks.
+
+Production leaves FreeRTOS runtime statistics disabled. To measure CPU with a separate diagnostic configuration:
+
+```bash
+idf.py --preview -B build-diagnostics \
+  -DSDKCONFIG=sdkconfig.diagnostics.generated \
+  -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.diagnostics" \
+  -DIDF_TARGET=esp32s31 build
+```
+
+Use a fresh generated configuration for the overlay. Diagnostics adds a bounded 40-task snapshot to the existing health task, without a new task or heap buffer. Per-task CPU is expressed as a percentage of both cores combined; idle/busy is also logged per core. A baseline sample and new/reset task counters are reported as unknown.
+
+The Food service reserves about **3.8 KiB internal static RAM**, displays six records per page, and allocates its editor only while open. Names are limited to 48 UTF-8 bytes, dates to 2020–2099. Invalid/corrupt storage and failed writes are shown explicitly; the previous valid snapshot is retained. The built-in name keyboard uses Latin input. Expiry status remains unavailable until the clock is synchronized.
+
+Object recognition remains unavailable in the UI. Additional large models and dual-application OTA do not fit the current resource budget without a separate redesign. See the [quality implementation report](docs/reports/2026-10-01-quality-resource-improvements.md) for measured results and remaining hardware checks.

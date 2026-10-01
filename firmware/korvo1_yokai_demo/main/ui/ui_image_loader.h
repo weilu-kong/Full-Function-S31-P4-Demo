@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /**
- * @brief Decompress all 6 Yokai background JPEG images into 16-byte aligned
+ * @brief Decompress the two home background JPEG images into 16-byte aligned
  *        PSRAM buffers using ESP32-S31 hardware acceleration, and populate
  *        the corresponding global lv_image_dsc_t descriptors.
  *
@@ -21,6 +21,9 @@ esp_err_t ui_images_init(void);
 
 /** Decode the requested weather background into the shared 800x480 buffer. */
 esp_err_t ui_weather_background_load(weather_cond_t condition, bool is_day);
+
+/** Detach weather LVGL image references before releasing its decoded buffer. */
+void ui_weather_background_free(void);
 
 typedef enum {
     UI_APP_BG_NONE = 0,

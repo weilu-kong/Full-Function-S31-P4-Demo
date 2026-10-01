@@ -81,6 +81,8 @@ const voice_command_info_t *voice_service_command_info(voice_command_t command);
 voice_command_t voice_service_normalize_multinet_id(int id, voice_language_t *language);
 int voice_service_apply_volume(voice_command_t command, int current, int *saved_nonzero);
 
+/* Serialize lifecycle and result queue calls on one owner task (startup, then
+ * LVGL). Playback reference feeding is safe across stop/restart on the audio task. */
 bool voice_service_start(void);
 void voice_service_stop(void);
 bool voice_service_is_ready(void);

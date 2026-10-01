@@ -128,6 +128,9 @@ typedef struct {
 
 typedef struct {
     uint32_t frame_id;
+    /* Persistent completion sequence survives dropped inference results. */
+    uint32_t management_sequence;
+    esp_err_t management_error;
     vision_mode_t mode;
     uint8_t count;
     vision_box_t boxes[VISION_MAX_DETECTIONS];

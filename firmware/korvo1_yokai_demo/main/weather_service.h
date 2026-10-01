@@ -40,7 +40,11 @@ typedef enum {
 } weather_theme_t;
 
 typedef struct {
-    bool is_live;             /* true if fetched from live network, false if DEMO */
+    bool is_live;             /* Latest fetch succeeded and data is fresh. */
+    bool has_last_success;    /* Retained readings exist even when stale/offline. */
+    bool refreshing;
+    bool refresh_failed;
+    int64_t last_success_ms;  /* Monotonic time; independent of SNTP clock changes. */
     bool is_day;              /* true if daytime, false if nighttime */
     weather_cond_t condition; /* Sunny, Cloudy, Rainy, Snowy, Thunder */
     int temp_c;               /* e.g. 26 */
@@ -77,11 +81,13 @@ bool weather_service_is_dirty(void);
 void weather_service_clear_dirty(void);
 
 /**
- * @brief Reset weather service to offline DEMO state.
+ * @brief Mark offline; retain the last successful readings, or the DEMO baseline.
  */
 void weather_service_set_offline(void);
 
 /* Pure logic helpers exposed for unit testability */
+bool weather_info_is_fresh(const weather_info_t *info, int64_t now_ms);
+void weather_set_refresh_state(weather_info_t *info, bool refreshing, bool failed);
 weather_cond_t weather_map_wmo_code(int wmo_code);
 weather_background_t weather_background_for_condition(weather_cond_t condition);
 weather_theme_t weather_theme_for_info(const weather_info_t *info, int local_hour);

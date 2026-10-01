@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define HOST_TEST 1
 #include "../main/vision_service.h"
@@ -96,6 +98,16 @@ int main(void)
     assert(s_enroll_txn.target_slot == 0);
     assert(strcmp(s_enroll_txn.name, "Alice2") == 0);
     s_enroll_txn.active = false;
+
+    /* A failed metadata commit must not delete the person in memory. */
+    const char *blocked_target = s_people_active_alt ? VISION_PEOPLE_META_PATH : VISION_PEOPLE_ALT_PATH;
+    remove(blocked_target);
+    assert(mkdir(blocked_target, 0700) == 0);
+    assert(vision_service_delete_person(0) == ESP_FAIL);
+    assert(vision_service_clear_all_people() == ESP_FAIL);
+    assert(s_people_file.person_count == 1);
+    assert(s_people_file.persons[0].active == true);
+    assert(rmdir(blocked_target) == 0);
 
     assert(vision_service_delete_person(0) == ESP_OK);
     assert(s_people_file.person_count == 0);

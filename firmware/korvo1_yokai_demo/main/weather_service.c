@@ -6,6 +6,7 @@
 
 #include "weather_service.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@
 
 #ifndef HOST_TEST
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -73,13 +75,27 @@ bool weather_parse_open_meteo_json(const char *json_str, int *out_temp_c, int *o
         return false;
     }
     cJSON *current = cJSON_GetObjectItem(root, "current");
-    if (!current) {
+    if (!cJSON_IsObject(current)) {
         cJSON_Delete(root);
         return false;
     }
     cJSON *temp_item = cJSON_GetObjectItem(current, "temperature_2m");
     cJSON *code_item = cJSON_GetObjectItem(current, "weather_code");
-    if (!temp_item || !code_item) {
+    cJSON *is_day_item = cJSON_GetObjectItem(current, "is_day");
+    static const int wmo_codes[] = {0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57,
+                                  61, 63, 65, 66, 67, 71, 73, 75, 77,
+                                  80, 81, 82, 85, 86, 95, 96, 99};
+    bool valid_code = false;
+    if (cJSON_IsNumber(code_item) && isfinite(code_item->valuedouble)) {
+        for (size_t i = 0; i < sizeof(wmo_codes) / sizeof(wmo_codes[0]); ++i) {
+            if (code_item->valuedouble == wmo_codes[i]) valid_code = true;
+        }
+    }
+    /* Celsius bounds exclude nonsensical payloads before rounding to int. */
+    if (!cJSON_IsNumber(temp_item) || !isfinite(temp_item->valuedouble) ||
+        temp_item->valuedouble < -100 || temp_item->valuedouble > 100 || !valid_code ||
+        (is_day_item && (!cJSON_IsNumber(is_day_item) ||
+                        (is_day_item->valuedouble != 0 && is_day_item->valuedouble != 1)))) {
         cJSON_Delete(root);
         return false;
     }
@@ -87,7 +103,6 @@ bool weather_parse_open_meteo_json(const char *json_str, int *out_temp_c, int *o
     *out_temp_c = (int)(temp >= 0 ? (temp + 0.5) : (temp - 0.5));
     *out_wmo_code = code_item->valueint;
     if (out_is_day) {
-        cJSON *is_day_item = cJSON_GetObjectItem(current, "is_day");
         *out_is_day = is_day_item ? (is_day_item->valueint != 0) : true;
     }
     cJSON_Delete(root);
@@ -101,6 +116,7 @@ void weather_format_info(weather_info_t *info, bool is_live, int temp_c, int wmo
     }
     memset(info, 0, sizeof(*info));
     info->is_live = is_live;
+    info->has_last_success = is_live;
     info->is_day = is_day;
     info->temp_c = temp_c;
     info->condition = weather_map_wmo_code(wmo_code);
@@ -165,7 +181,7 @@ void weather_format_info(weather_info_t *info, bool is_live, int temp_c, int wmo
     if (time_str && strlen(time_str) > 0) {
         snprintf(info->update_time, sizeof(info->update_time), "%s", time_str);
     } else {
-        snprintf(info->update_time, sizeof(info->update_time), "09:41");
+        snprintf(info->update_time, sizeof(info->update_time), "%s", is_live ? "--:--" : "09:41");
     }
 
     if (is_live) {
@@ -181,6 +197,24 @@ void weather_format_info(weather_info_t *info, bool is_live, int temp_c, int wmo
     snprintf(info->lore_text, sizeof(info->lore_text), "%s", lore_str);
 }
 
+bool weather_info_is_fresh(const weather_info_t *info, int64_t now_ms)
+{
+    return info && info->has_last_success && !info->refresh_failed &&
+           now_ms >= info->last_success_ms &&
+           now_ms - info->last_success_ms < 15 * 60 * 1000;
+}
+
+void weather_set_refresh_state(weather_info_t *info, bool refreshing, bool failed)
+{
+    if (!info) return;
+    info->refreshing = refreshing;
+    if (failed) info->refresh_failed = true;
+    if (failed) {
+        info->is_live = false;
+        snprintf(info->badge, sizeof(info->badge), "%s", info->has_last_success ? "STALE" : "DEMO");
+    }
+}
+
 #ifndef HOST_TEST
 
 static weather_info_t s_current_info;
@@ -188,6 +222,16 @@ static bool s_dirty = true;
 static SemaphoreHandle_t s_weather_mutex = NULL;
 static TaskHandle_t s_worker_task_handle = NULL;
 static bool s_sntp_initialized = false;
+static uint32_t s_connection_generation;
+
+static void set_refresh_state(bool refreshing, bool failed)
+{
+    if (s_weather_mutex && xSemaphoreTake(s_weather_mutex, portMAX_DELAY) == pdTRUE) {
+        weather_set_refresh_state(&s_current_info, refreshing, failed);
+        s_dirty = true;
+        xSemaphoreGive(s_weather_mutex);
+    }
+}
 
 static void init_sntp_if_needed(void)
 {
@@ -299,48 +343,48 @@ static void weather_worker_task(void *arg)
     /* Ensure Wi-Fi STA subsystem is initialized */
     (void)board_ui_wifi_ensure_started();
 
-    wifi_config_t wifi_cfg = {0};
-    bool has_credentials = false;
+    board_wifi_info_t wifi_info;
+    board_ui_wifi_get_info(&wifi_info);
+    if (wifi_info.state != BOARD_WIFI_CONNECTING && wifi_info.state != BOARD_WIFI_CONNECTED) {
 #ifdef CONFIG_YOKAI_WIFI_SSID
-    if (strlen(CONFIG_YOKAI_WIFI_SSID) > 0) {
-        strncpy((char *)wifi_cfg.sta.ssid, CONFIG_YOKAI_WIFI_SSID, sizeof(wifi_cfg.sta.ssid) - 1);
+        if (CONFIG_YOKAI_WIFI_SSID[0] != '\0') {
 #ifdef CONFIG_YOKAI_WIFI_PASSWORD
-        strncpy((char *)wifi_cfg.sta.password, CONFIG_YOKAI_WIFI_PASSWORD, sizeof(wifi_cfg.sta.password) - 1);
+            board_ui_wifi_connect(CONFIG_YOKAI_WIFI_SSID, CONFIG_YOKAI_WIFI_PASSWORD);
+#else
+            board_ui_wifi_connect(CONFIG_YOKAI_WIFI_SSID, "");
 #endif
-        has_credentials = true;
-        (void)esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
-        (void)esp_wifi_connect();
-        ESP_LOGI(TAG, "Connecting to Kconfig Wi-Fi SSID '%s'...", CONFIG_YOKAI_WIFI_SSID);
-    }
+        } else
 #endif
-
-    if (!has_credentials) {
-        if (esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg) == ESP_OK && strlen((char *)wifi_cfg.sta.ssid) > 0) {
-            if (strlen((char *)wifi_cfg.sta.password) >= 8) {
-                wifi_cfg.sta.pmf_cfg.capable = true;
-                wifi_cfg.sta.pmf_cfg.required = false;
-                wifi_cfg.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
-                wifi_cfg.sta.threshold.authmode = WIFI_AUTH_OPEN;
-                (void)esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
-                has_credentials = true;
-                (void)esp_wifi_connect();
-                ESP_LOGI(TAG, "Connecting to stored Wi-Fi SSID '%s'...", (char *)wifi_cfg.sta.ssid);
-            }
+        {
+            board_ui_wifi_reconnect_saved();
         }
     }
 
     while (1) {
+        uint32_t generation;
+        xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
+        generation = s_connection_generation;
+        xSemaphoreGive(s_weather_mutex);
         esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
         esp_netif_ip_info_t ip_info;
         bool has_ip = (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0);
 
         if (!has_ip) {
+            set_refresh_state(false, true);
             /* Sleep until explicitly woken up by IP_EVENT_STA_GOT_IP or manual trigger.
              * NEVER call esp_wifi_connect() here so user disconnect/turn-off is respected! */
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
             continue;
         }
 
+        xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
+        if (generation != s_connection_generation) {
+            xSemaphoreGive(s_weather_mutex);
+            continue;
+        }
+        weather_set_refresh_state(&s_current_info, true, false);
+        s_dirty = true;
+        xSemaphoreGive(s_weather_mutex);
         init_sntp_if_needed();
 
         char time_buf[16] = {0};
@@ -360,11 +404,14 @@ static void weather_worker_task(void *arg)
                 weather_info_t new_info;
                 weather_format_info(&new_info, true, temp_c, wmo_code, is_day, time_buf[0] ? time_buf : NULL);
 
-                if (xSemaphoreTake(s_weather_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                new_info.last_success_ms = esp_timer_get_time() / 1000;
+                xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
+                /* A disconnect while HTTP was in flight invalidates its result. */
+                if (generation == s_connection_generation) {
                     s_current_info = new_info;
                     s_dirty = true;
-                    xSemaphoreGive(s_weather_mutex);
                 }
+                xSemaphoreGive(s_weather_mutex);
                 ESP_LOGI(TAG, "Weather updated: %s", new_info.main_text);
                 /* Wait 15 minutes before next normal poll */
                 ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(15 * 60 * 1000));
@@ -372,6 +419,7 @@ static void weather_worker_task(void *arg)
             }
         }
 
+        set_refresh_state(false, true);
         /* Fetch failed; retry in 30 seconds if still connected */
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(30000));
     }
@@ -408,44 +456,69 @@ esp_err_t weather_service_init(void)
 
 void weather_service_trigger_refresh(void)
 {
-    if (s_worker_task_handle) {
-        xTaskNotifyGive(s_worker_task_handle);
+    if (s_worker_task_handle && s_weather_mutex) {
+        xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
+        bool notify = !s_current_info.refreshing;
+        if (notify) {
+            weather_set_refresh_state(&s_current_info, true, false);
+            s_dirty = true;
+        }
+        xSemaphoreGive(s_weather_mutex);
+        if (notify) xTaskNotifyGive(s_worker_task_handle);
     }
 }
 
 void weather_service_get_info(weather_info_t *out_info)
 {
-    if (!out_info) {
-        return;
-    }
-    if (s_weather_mutex && xSemaphoreTake(s_weather_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (!out_info) return;
+    if (s_weather_mutex) {
+        xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
+        bool fresh = weather_info_is_fresh(&s_current_info, esp_timer_get_time() / 1000);
+        if (s_current_info.is_live != fresh) {
+            s_dirty = true;
+            snprintf(s_current_info.badge, sizeof(s_current_info.badge), "%s",
+                     fresh ? "LIVE" : s_current_info.has_last_success ? "STALE" : "DEMO");
+        }
+        s_current_info.is_live = fresh;
         *out_info = s_current_info;
         xSemaphoreGive(s_weather_mutex);
     } else {
-        *out_info = s_current_info;
+        weather_format_info(out_info, false, 26, 0, true, "14:30");
     }
 }
 
 bool weather_service_is_dirty(void)
 {
-    return s_dirty;
+    if (!s_weather_mutex) return false;
+    xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
+    bool fresh = weather_info_is_fresh(&s_current_info, esp_timer_get_time() / 1000);
+    if (s_current_info.is_live != fresh) {
+        s_current_info.is_live = fresh;
+        snprintf(s_current_info.badge, sizeof(s_current_info.badge), "%s",
+                 fresh ? "LIVE" : s_current_info.has_last_success ? "STALE" : "DEMO");
+        s_dirty = true;
+    }
+    bool dirty = s_dirty;
+    xSemaphoreGive(s_weather_mutex);
+    return dirty;
 }
 
 void weather_service_clear_dirty(void)
 {
+    if (!s_weather_mutex) return;
+    xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
     s_dirty = false;
+    xSemaphoreGive(s_weather_mutex);
 }
 
 void weather_service_set_offline(void)
 {
-    if (s_weather_mutex && xSemaphoreTake(s_weather_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        weather_format_info(&s_current_info, false, 26, 0, true, "14:30");
-        s_dirty = true;
-        xSemaphoreGive(s_weather_mutex);
-    } else {
-        weather_format_info(&s_current_info, false, 26, 0, true, "14:30");
-        s_dirty = true;
-    }
+    if (!s_weather_mutex) return;
+    xSemaphoreTake(s_weather_mutex, portMAX_DELAY);
+    ++s_connection_generation;
+    weather_set_refresh_state(&s_current_info, false, true);
+    s_dirty = true;
+    xSemaphoreGive(s_weather_mutex);
 }
 
 #endif /* !HOST_TEST */

@@ -6,6 +6,7 @@
 #include "ui/ui_wifi.h"
 #include "ui/ui_bluetooth.h"
 #include "ui/ui_apps.h"
+#include "ui/ui_food.h"
 #include "ui/ui_fireworks.h"
 #include "ui/ui_clock.h"
 #include "ui/ui_calculator.h"
@@ -17,6 +18,7 @@
 #include "synth_service.h"
 #include "voice_service.h"
 #include "vision_service.h"
+#include "clock_service.h"
 #include "esp_log.h"
 #include <time.h>
 #include <stdio.h>
@@ -315,11 +317,17 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             ui_app_background_load(UI_APP_BG_CALCULATOR);
             ui_calculator_set_active(true);
             app_health_log_heap("enter calculator");
+        } else if (s_pending_target == UI_SCREEN_FOOD) {
+            ui_food_set_active(true);
+            app_health_log_heap("enter food");
         }
         lv_screen_load(s_screen_objs[s_pending_target]);
+        if (s_pending_target != UI_SCREEN_FOOD) ui_food_set_active(false);
         if (s_pending_target == UI_SCREEN_VISION) {
             ui_app_background_free();
-            vision_service_start();
+            if (vision_service_start() != ESP_OK) {
+                show_voice_toast("カメラを開始できません");
+            }
         }
     }
     if (card) {
@@ -465,6 +473,11 @@ void ui_tick_periodic(void)
 
     /* 6. Update Clock / Timer and Fireworks */
     ui_clock_tick();
+    ui_food_tick();
+    if (clock_service_consume_timer_finished_event()) {
+        synth_service_play_feedback_tone();
+        show_voice_toast("タイマー終了");
+    }
     if (s_current_screen == UI_SCREEN_FIREWORKS) {
         ui_fireworks_tick();
     }
@@ -485,6 +498,8 @@ void ui_tick_periodic(void)
             show_voice_toast("御用でしょうか");
         } else if (result.event == VOICE_EVENT_RETRY) {
             show_voice_toast("もう一度");
+        } else if (result.event == VOICE_EVENT_ERROR) {
+            show_voice_toast("音声入力を停止しました");
         } else if (result.event == VOICE_EVENT_COMMAND) {
             const voice_command_info_t *info = voice_service_command_info(result.command);
             execute_voice_command(&result);

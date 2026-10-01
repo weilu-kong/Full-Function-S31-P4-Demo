@@ -292,24 +292,32 @@ static int s_enroll_target_slot = -1;
 /* Management Modal */
 static lv_obj_t *s_manage_modal = NULL;
 static lv_obj_t *s_lbl_manage_title = NULL;
+static lv_obj_t *s_lbl_manage_status = NULL;
 static lv_obj_t *s_manage_list = NULL;
+static bool s_manage_pending = false;
+static uint32_t s_manage_sequence_seen = 0;
 
 static bool s_vision_active = false;
-static int s_vision_step = 0;
 
 static void refresh_manage_list(void);
 
-static void vision_btn_cb(lv_event_t *e)
+static void manage_command_started(esp_err_t error)
 {
-    (void)e;
-    s_vision_step = (s_vision_step + 1) % 3;
-    const char *dets[] = {
-        "[物体検出] 雪女の気配を検知 (信頼度 98%)",
-        "[物体検出] 狸の置物を識別 (信頼度 94%)",
-        "[物体検出] 障子に目目連が現れました (信頼度 99%)"
-    };
-    if (s_lbl_vision_target) {
-        lv_label_set_text(s_lbl_vision_target, dets[s_vision_step]);
+    s_manage_pending = error == ESP_OK;
+    if (s_lbl_manage_status) {
+        lv_label_set_text(s_lbl_manage_status, s_manage_pending ? "処理中…" : "処理できません。再試行してください");
+    }
+}
+
+static void manage_result_update(const vision_result_t *result)
+{
+    if (result->management_sequence == s_manage_sequence_seen) return;
+    s_manage_sequence_seen = result->management_sequence;
+    if (!s_manage_pending) return;
+    s_manage_pending = false;
+    refresh_manage_list();
+    if (s_lbl_manage_status) {
+        lv_label_set_text(s_lbl_manage_status, result->management_error == ESP_OK ? "保存しました" : "保存できませんでした");
     }
 }
 
@@ -398,9 +406,9 @@ static void enroll_kb_event_cb(lv_event_t *e)
 
 static void delete_person_btn_cb(lv_event_t *e)
 {
+    if (s_manage_pending) return;
     uint8_t slot = (uint8_t)(intptr_t)lv_event_get_user_data(e);
-    vision_service_delete_person(slot);
-    refresh_manage_list();
+    manage_command_started(vision_service_delete_person(slot));
 }
 
 static void reregister_person_btn_cb(lv_event_t *e)
@@ -518,8 +526,8 @@ static void manage_close_btn_cb(lv_event_t *e)
 static void clear_all_btn_cb(lv_event_t *e)
 {
     (void)e;
-    vision_service_clear_all_people();
-    refresh_manage_list();
+    if (s_manage_pending) return;
+    manage_command_started(vision_service_clear_all_people());
 }
 
 lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
@@ -717,10 +725,10 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_border_color(s_btn_scan, UI_COLOR_TEXT_SUB, 0);
     lv_obj_set_style_border_width(s_btn_scan, 1, 0);
     ui_add_click_sfx(s_btn_scan);
-    lv_obj_add_event_cb(s_btn_scan, vision_btn_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_state(s_btn_scan, LV_STATE_DISABLED);
 
     lv_obj_t *lbl_scan = lv_label_create(s_btn_scan);
-    lv_label_set_text(lbl_scan, "霊視スキャン");
+    lv_label_set_text(lbl_scan, "物体認識 (未対応)");
     lv_obj_set_style_text_font(lbl_scan, UI_FONT_SMALL, 0);
     lv_obj_set_style_text_color(lbl_scan, UI_COLOR_TEXT_SUB, 0);
     lv_obj_center(lbl_scan);
@@ -818,9 +826,15 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_set_style_text_font(s_lbl_manage_title, UI_FONT_TITLE, 0);
     lv_obj_set_pos(s_lbl_manage_title, 20, 14);
 
+    s_lbl_manage_status = lv_label_create(manage_panel);
+    lv_label_set_text(s_lbl_manage_status, "");
+    lv_obj_set_style_text_font(s_lbl_manage_status, UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_color(s_lbl_manage_status, UI_COLOR_TEXT_SUB, 0);
+    lv_obj_set_pos(s_lbl_manage_status, 20, 44);
+
     s_manage_list = lv_obj_create(manage_panel);
-    lv_obj_set_size(s_manage_list, 640, 275);
-    lv_obj_set_pos(s_manage_list, 20, 55);
+    lv_obj_set_size(s_manage_list, 640, 250);
+    lv_obj_set_pos(s_manage_list, 20, 80);
     lv_obj_set_style_bg_opa(s_manage_list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(s_manage_list, 0, 0);
     lv_obj_set_style_pad_all(s_manage_list, 4, 0);
@@ -862,7 +876,10 @@ lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
 void ui_vision_set_active(bool active)
 {
     s_vision_active = active;
+    s_manage_pending = false;
     if (active) {
+        s_manage_sequence_seen = 0;
+        if (s_lbl_manage_status) lv_label_set_text(s_lbl_manage_status, "");
         if (s_lbl_vision_status) {
             lv_label_set_text(s_lbl_vision_status, "常時顔認識中");
             lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_CYAN_ACCENT, 0);
@@ -899,6 +916,23 @@ void ui_vision_screen_update(void)
         return;
     }
 
+    if (vision_service_get_state() == VISION_STATE_ERROR) {
+        s_manage_pending = false;
+        if (s_lbl_vision_status) {
+            lv_label_set_text(s_lbl_vision_status, "カメラを開始できません");
+            lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_RED_ACCENT, 0);
+        }
+        if (s_lbl_vision_target) lv_label_set_text(s_lbl_vision_target, "ホームに戻って再試行してください");
+        if (s_lbl_vision_perf) lv_label_set_text(s_lbl_vision_perf, "");
+        if (s_lbl_manage_status) lv_label_set_text(s_lbl_manage_status, "処理を確認できません。再試行してください");
+        if (s_vf_img) lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < VISION_MAX_DETECTIONS; ++i) {
+            if (s_face_boxes[i]) lv_obj_add_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
+            if (s_face_labels[i]) lv_obj_add_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+
     bool modal_visible = (s_enroll_modal && !lv_obj_has_flag(s_enroll_modal, LV_OBJ_FLAG_HIDDEN)) ||
                          (s_manage_modal && !lv_obj_has_flag(s_manage_modal, LV_OBJ_FLAG_HIDDEN));
     if (modal_visible && s_vf_img && !lv_obj_has_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN)) {
@@ -923,6 +957,7 @@ void ui_vision_screen_update(void)
     /* 2. Poll inference detection results */
     vision_result_t res;
     while (vision_service_poll_result(&res)) {
+        manage_result_update(&res);
         if (modal_visible) continue;
         if (res.mode == VISION_MODE_FACE) {
             /* Check if enrollment session is active */
@@ -1157,60 +1192,6 @@ void ui_vision_screen_update(void)
 /* -------------------------------------------------------------
  * 6. Food Expiration Tracker Screen (百鬼の台所)
  * ------------------------------------------------------------- */
-lv_obj_t *ui_food_screen_create(ui_home_btn_cb_t home_cb)
-{
-    lv_obj_t *scr = lv_obj_create(NULL);
-    lv_obj_set_size(scr, 800, 480);
-    lv_obj_set_style_bg_color(scr, UI_COLOR_BG_DARK, 0);
-    lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-
-    create_screen_header(scr, "百鬼の台所 (Food Freshness Tracker)", home_cb);
-
-    lv_obj_t *card = lv_obj_create(scr);
-    lv_obj_add_style(card, &ui_style_glass_card, 0);
-    lv_obj_set_size(card, 768, 412);
-    lv_obj_set_pos(card, 16, 56);
-    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(card, 10, 0);
-    lv_obj_set_style_pad_row(card, 8, 0);
-
-    const struct {
-        const char *name;
-        const char *days;
-        lv_color_t color;
-    } foods[5] = {
-        {"妖怪豆腐 (Yokai Tofu)", "残り 2 日 [要注意]", UI_COLOR_RED_ACCENT},
-        {"清流山女魚 (Mountain Trout)", "残り 4 日 [新鮮]", UI_COLOR_CYAN_ACCENT},
-        {"笹団子 (Sasa Dango)", "残り 7 日 [良好]", UI_COLOR_GOLD_ACCENT},
-        {"天狗の生姜 (Tengu Ginger)", "残り 12 日 [新鮮]", UI_COLOR_CYAN_ACCENT},
-        {"秘伝鬼味噌 (Demon Miso)", "残り 30 日 [熟成]", UI_COLOR_GOLD_ACCENT},
-    };
-
-    for (int i = 0; i < 5; i++) {
-        lv_obj_t *row = lv_obj_create(card);
-        lv_obj_set_size(row, 740, 52);
-        lv_obj_set_style_bg_color(row, UI_COLOR_KEY_WHITE, 0);
-        lv_obj_set_style_radius(row, 8, 0);
-        lv_obj_set_style_border_color(row, lv_color_hex(0x2D3748), 0);
-        lv_obj_set_style_border_width(row, 1, 0);
-        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-
-        lv_obj_t *lbl_name = lv_label_create(row);
-        lv_label_set_text(lbl_name, foods[i].name);
-        lv_obj_set_style_text_color(lbl_name, UI_COLOR_TEXT_TITLE, 0);
-        lv_obj_set_style_text_font(lbl_name, UI_FONT_REGULAR, 0);
-        lv_obj_align(lbl_name, LV_ALIGN_LEFT_MID, 12, 0);
-
-        lv_obj_t *lbl_days = lv_label_create(row);
-        lv_label_set_text(lbl_days, foods[i].days);
-        lv_obj_set_style_text_color(lbl_days, foods[i].color, 0);
-        lv_obj_set_style_text_font(lbl_days, UI_FONT_REGULAR, 0);
-        lv_obj_align(lbl_days, LV_ALIGN_RIGHT_MID, -12, 0);
-    }
-
-    return scr;
-}
-
 void ui_apps_tick_periodic(void)
 {
     /* Clock, Timer, Stopwatch, and Fireworks are now handled in their dedicated modules. */

@@ -1,0 +1,48 @@
+name: Yokai host checks and S31 firmware
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firmware-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      IDF_TOOLS_PATH: ${{ runner.temp }}/idf-tools
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out validated ESP-IDF 6.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: espressif/esp-idf
+          ref: fff9895c82d744c7237be8847347bdd1b07c6643
+          path: .ci/esp-idf
+          submodules: recursive
+      - name: Install SDK tools
+        run: .ci/esp-idf/install.sh esp32s31
+      - name: Build, host checks, and Flash budget
+        shell: bash
+        run: |
+          source .ci/esp-idf/export.sh
+          cd firmware/korvo1_yokai_demo
+          idf.py --preview -DIDF_TARGET=esp32s31 build
+          python3 test/run_host_checks.py
+          python3 tools/check_firmware_size.py build
+      - name: Save reviewable firmware and build configuration
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: korvo1-s31-idf61-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            firmware/korvo1_yokai_demo/build/korvo1_yokai_demo.bin
+            firmware/korvo1_yokai_demo/build/bootloader/bootloader.bin
+            firmware/korvo1_yokai_demo/build/partition_table/partition-table.bin
+            firmware/korvo1_yokai_demo/build/srmodels/srmodels.bin
+            firmware/korvo1_yokai_demo/build/flasher_args.json
+            firmware/korvo1_yokai_demo/build/config/sdkconfig.h

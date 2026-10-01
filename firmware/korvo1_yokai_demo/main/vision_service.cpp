@@ -42,6 +42,10 @@ static bool s_inited = false;
 static vision_mode_t s_mode = VISION_MODE_FACE;
 static vision_state_t s_state = VISION_STATE_OFF;
 static vision_diag_t s_diag = {};
+static uint32_t s_management_sequence = 0;
+static esp_err_t s_management_error = ESP_OK;
+static esp_err_t commit_person_delete(uint8_t slot);
+static esp_err_t commit_people_clear(void);
 
 /* Preview buffers have distinct display, ready, and inference ownership. */
 #define PREVIEW_FRAME_SIZE (VISION_PREVIEW_WIDTH * VISION_PREVIEW_HEIGHT * 2)
@@ -772,22 +776,8 @@ static void vision_inference_task(void *arg)
                     break;
                 }
                 case VISION_CMD_DELETE_PERSON: {
-                    if (cmd.slot < VISION_MAX_PERSONS && s_people_file.persons[cmd.slot].active) {
-                        vision_person_record_t old = s_people_file.persons[cmd.slot];
-                        vision_people_file_t next = s_people_file;
-                        next.persons[cmd.slot].active = false;
-                        next.person_count--;
-                        if (face_people_save_atomic(&next) == ESP_OK) {
-                            if (s_face_recognizer) {
-                                for (int i = 0; i < old.feature_count; i++) {
-                                    s_face_recognizer->delete_feat(old.feature_ids[i]);
-                                }
-                            }
-                            ESP_LOGI(TAG, "Deleted person slot %d", cmd.slot);
-                        } else {
-                            ESP_LOGE(TAG, "Deletion of person slot %d not committed", cmd.slot);
-                        }
-                    }
+                    s_management_error = commit_person_delete(cmd.slot);
+                    ++s_management_sequence;
                     break;
                 }
                 case VISION_CMD_REREGISTER_PERSON: {
@@ -812,18 +802,8 @@ static void vision_inference_task(void *arg)
                     break;
                 }
                 case VISION_CMD_CLEAR_ALL: {
-                    vision_people_file_t next = s_people_file;
-                    memset(next.persons, 0, sizeof(next.persons));
-                    next.person_count = 0;
-                    if (face_people_save_atomic(&next) == ESP_OK) {
-                        if (s_face_recognizer) s_face_recognizer->clear_all_feats();
-                        enroll_journal_remove();
-                        s_enroll_txn.active = false;
-                        s_enroll_txn.state = VISION_ENROLL_IDLE;
-                        ESP_LOGI(TAG, "Cleared all people and face database");
-                    } else {
-                        ESP_LOGE(TAG, "Clear-all metadata not committed");
-                    }
+                    s_management_error = commit_people_clear();
+                    ++s_management_sequence;
                     break;
                 }
                 default:
@@ -1255,6 +1235,8 @@ static void vision_inference_task(void *arg)
             s_diag.avg_face_ms = (s_diag.avg_face_ms == 0) ? infer_ms : (s_diag.avg_face_ms * 3 + infer_ms) / 4;
 
             /* Push latest result to result queue (discard oldest if full) */
+            res.management_sequence = s_management_sequence;
+            res.management_error = s_management_error;
             if (s_result_queue) {
                 if (uxQueueSpacesAvailable(s_result_queue) == 0) {
                     vision_result_t dummy;
@@ -1289,6 +1271,44 @@ private:
     int idx_;
 };
 #endif
+
+static esp_err_t commit_person_delete(uint8_t slot)
+{
+    if (slot >= VISION_MAX_PERSONS) return ESP_ERR_INVALID_ARG;
+    if (!s_people_file.persons[slot].active) return ESP_ERR_INVALID_STATE;
+    vision_person_record_t old = s_people_file.persons[slot];
+    vision_people_file_t next = s_people_file;
+    next.persons[slot].active = false;
+    --next.person_count;
+    esp_err_t error = face_people_save_atomic(&next);
+    if (error != ESP_OK) return error;
+#ifndef HOST_TEST
+    if (s_face_recognizer) {
+        for (int i = 0; i < old.feature_count; ++i) {
+            s_face_recognizer->delete_feat(old.feature_ids[i]);
+        }
+    }
+#else
+    (void)old;
+#endif
+    return ESP_OK;
+}
+
+static esp_err_t commit_people_clear(void)
+{
+    vision_people_file_t next = s_people_file;
+    memset(next.persons, 0, sizeof(next.persons));
+    next.person_count = 0;
+    esp_err_t error = face_people_save_atomic(&next);
+    if (error != ESP_OK) return error;
+#ifndef HOST_TEST
+    if (s_face_recognizer) s_face_recognizer->clear_all_feats();
+#endif
+    enroll_journal_remove();
+    s_enroll_txn.active = false;
+    s_enroll_txn.state = VISION_ENROLL_IDLE;
+    return ESP_OK;
+}
 
 static void vision_service_cleanup_partial_init(void)
 {
@@ -1458,6 +1478,8 @@ extern "C" esp_err_t vision_service_start(void)
     }
 
     s_state = VISION_STATE_STARTING;
+    s_management_sequence = 0;
+    s_management_error = ESP_OK;
     s_write_idx = -1;
     s_preview_last_publish_ms = 0;
     s_preview_last_consume_ms = 0;
@@ -1776,18 +1798,15 @@ extern "C" esp_err_t vision_service_delete_person(uint8_t person_slot)
     }
 
 #ifndef HOST_TEST
-    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    if (!s_cmd_queue || s_state != VISION_STATE_RUNNING) return ESP_ERR_INVALID_STATE;
     vision_cmd_t cmd = {};
     cmd.type = VISION_CMD_DELETE_PERSON;
     cmd.slot = person_slot;
-    if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
+    if (xQueueSend(s_cmd_queue, &cmd, 0) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
 #else
-    if (s_people_file.persons[person_slot].active) {
-        s_people_file.persons[person_slot].active = false;
-        s_people_file.person_count--;
-    }
+    return commit_person_delete(person_slot);
 #endif
     return ESP_OK;
 }
@@ -1837,14 +1856,14 @@ extern "C" esp_err_t vision_service_reregister_person(uint8_t person_slot, const
 extern "C" esp_err_t vision_service_clear_all_people(void)
 {
 #ifndef HOST_TEST
-    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    if (!s_cmd_queue || s_state != VISION_STATE_RUNNING) return ESP_ERR_INVALID_STATE;
     vision_cmd_t cmd = {};
     cmd.type = VISION_CMD_CLEAR_ALL;
-    if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
+    if (xQueueSend(s_cmd_queue, &cmd, 0) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
 #else
-    face_people_init_empty();
+    return commit_people_clear();
 #endif
     return ESP_OK;
 }

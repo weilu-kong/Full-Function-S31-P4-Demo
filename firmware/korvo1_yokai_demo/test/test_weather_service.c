@@ -109,6 +109,56 @@ static void test_json_parsing(void)
     assert(!ok);
 }
 
+static void test_rejects_invalid_numbers(void)
+{
+    const char *invalid[] = {
+        "{\"current\":{\"temperature_2m\":\"26\",\"weather_code\":0}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":null}}",
+        "{\"current\":{\"temperature_2m\":1e999,\"weather_code\":0}}",
+        "{\"current\":{\"temperature_2m\":-101,\"weather_code\":0}}",
+        "{\"current\":{\"temperature_2m\":101,\"weather_code\":0}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":-1}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":100}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":4}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":61.5}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":0,\"is_day\":null}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":0,\"is_day\":2}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":0,\"is_day\":0.5}}",
+        "{\"current\":{\"temperature_2m\":26,\"weather_code\":0,\"is_day\":\"0\"}}",
+    };
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        int temp = 123, code = 123;
+        bool day = false;
+        assert(!weather_parse_open_meteo_json(invalid[i], &temp, &code, &day));
+        assert(temp == 123 && code == 123 && !day);
+        assert(!weather_parse_open_meteo_json(invalid[i], &temp, &code, NULL));
+    }
+}
+
+static void test_refresh_state(void)
+{
+    weather_info_t info;
+    weather_format_info(&info, true, 26, 0, true, "14:30");
+    info.last_success_ms = 1000;
+    assert(weather_info_is_fresh(&info, 1000));
+    assert(weather_info_is_fresh(&info, 1000 + 15 * 60 * 1000 - 1));
+    assert(!weather_info_is_fresh(&info, 1000 + 15 * 60 * 1000));
+    assert(!weather_info_is_fresh(&info, 999));
+    weather_set_refresh_state(&info, true, false);
+    assert(info.refreshing && !info.refresh_failed && info.has_last_success);
+    weather_set_refresh_state(&info, false, true);
+    assert(!info.refreshing && info.refresh_failed && !info.is_live);
+    assert(info.has_last_success && info.temp_c == 26);
+    assert(strcmp(info.badge, "STALE") == 0);
+    assert(strcmp(info.update_time, "14:30") == 0);
+    assert(!weather_info_is_fresh(&info, 1000));
+    weather_set_refresh_state(&info, true, false);
+    assert(info.refreshing && info.refresh_failed && !weather_info_is_fresh(&info, 1000));
+    weather_format_info(&info, false, 26, 0, true, "14:30");
+    weather_set_refresh_state(&info, false, true);
+    assert(!info.has_last_success && !info.is_live && info.refresh_failed);
+}
+
 static void test_formatting_and_lore(void)
 {
     weather_info_t info;
@@ -116,6 +166,7 @@ static void test_formatting_and_lore(void)
     /* Live sunny Tokyo (Daytime) */
     weather_format_info(&info, true, 26, 0, true, "14:30");
     assert(info.is_live == true);
+    assert(info.has_last_success);
     assert(info.is_day == true);
     assert(info.condition == WEATHER_COND_SUNNY);
     assert(info.temp_c == 26);
@@ -139,6 +190,9 @@ static void test_formatting_and_lore(void)
     assert(strstr(info.main_text, "雨　18℃　更新　11:30") != NULL);
     assert(strstr(info.lore_text, "しとしと降る雨と提灯の灯り。") != NULL);
 
+    weather_format_info(&info, true, 26, 0, true, NULL);
+    assert(strcmp(info.update_time, "--:--") == 0);
+
     /* DEMO fallback */
     weather_format_info(&info, false, 26, 0, true, "09:41");
     assert(info.is_live == false);
@@ -151,7 +205,9 @@ int main(void)
     test_wmo_code_mapping();
     test_background_mapping();
     test_json_parsing();
+    test_rejects_invalid_numbers();
     test_formatting_and_lore();
+    test_refresh_state();
     printf("All weather service unit tests passed.\n");
     return 0;
 }

@@ -19,6 +19,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "app_health.h"
 #include <string.h>
 
 static const char *TAG = "board_ui";
@@ -28,7 +29,7 @@ static lv_indev_t *s_touch_indev = NULL;
 
 static bool s_wifi_ready = false;
 static bool s_wifi_enabled = false;
-static bool s_wifi_scan_running = false;
+static volatile bool s_wifi_scan_running = false;
 static volatile uint32_t s_wifi_scan_generation = 0;
 static wifi_ap_record_t s_wifi_aps[MAX_WIFI_APS];
 static uint16_t s_wifi_ap_count = 0;
@@ -74,6 +75,7 @@ static void ui_health_task(void *arg)
                      (unsigned)exit_age, (unsigned)s_ui_stage,
                      (unsigned)s_ui_tick_enter_count, (unsigned)s_ui_tick_exit_count);
         }
+        app_health_log_resources();
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
@@ -149,11 +151,16 @@ static void on_board_wifi_event(void *arg, esp_event_base_t base, int32_t id, vo
         if (id == WIFI_EVENT_STA_START) {
             ESP_LOGI(TAG, "Wi-Fi STA started");
             wifi_config_t cfg = {0};
-            if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
-                strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+            /* A delayed STA_START must not restart an explicit connection request. */
+            if (s_wifi_state == BOARD_WIFI_DISCONNECTED &&
+                esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && cfg.sta.ssid[0] != 0) {
+                memcpy(s_connecting_ssid, cfg.sta.ssid, sizeof(cfg.sta.ssid));
+                s_connecting_ssid[sizeof(cfg.sta.ssid)] = '\0';
                 s_wifi_state = BOARD_WIFI_CONNECTING;
                 s_wifi_results_dirty = true;
-                (void)esp_wifi_connect();
+                if (esp_wifi_connect() != ESP_OK) {
+                    s_wifi_state = BOARD_WIFI_FAILED;
+                }
             }
         } else if (id == WIFI_EVENT_STA_CONNECTED) {
             wifi_event_sta_connected_t *conn = (wifi_event_sta_connected_t *)data;
@@ -250,8 +257,9 @@ esp_err_t board_ui_wifi_ensure_started(void)
         s_wifi_state = BOARD_WIFI_CONNECTED;
         snprintf(s_connected_ip, sizeof(s_connected_ip), IPSTR, IP2STR(&ip_info.ip));
         wifi_config_t cfg = {0};
-        if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
-            strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+        if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && cfg.sta.ssid[0] != 0) {
+            memcpy(s_connecting_ssid, cfg.sta.ssid, sizeof(cfg.sta.ssid));
+            s_connecting_ssid[sizeof(cfg.sta.ssid)] = '\0';
         }
     }
 
@@ -269,6 +277,11 @@ static void wifi_scan_worker_task(void *arg)
     }
 
     esp_err_t err = board_ui_wifi_ensure_started();
+    if (generation != s_wifi_scan_generation) {
+        s_wifi_scan_running = false;
+        vTaskDelete(NULL);
+        return;
+    }
     if (err != ESP_OK) {
         s_wifi_scan_failed = true;
         s_wifi_results_dirty = true;
@@ -387,65 +400,68 @@ void board_ui_wifi_clear_dirty(void)
 
 void board_ui_wifi_connect(const char *ssid, const char *password)
 {
-    if (!ssid || strlen(ssid) == 0) return;
-    board_ui_wifi_ensure_started();
+    if (!ssid || ssid[0] == '\0') return;
+    size_t ssid_len = strnlen(ssid, 33);
+    size_t password_len = password ? strnlen(password, 65) : 0;
+    esp_err_t err = ESP_ERR_INVALID_ARG;
+    if (ssid_len > 32 || password_len > 64) goto failed;
+    err = board_ui_wifi_ensure_started();
+    if (err != ESP_OK) goto failed;
+
     s_wifi_enabled = true;
     s_wifi_state = BOARD_WIFI_CONNECTING;
     s_wifi_last_disconnect_reason = 0;
     s_wifi_results_dirty = true;
-    strncpy(s_connecting_ssid, ssid, sizeof(s_connecting_ssid) - 1);
-    s_connecting_ssid[sizeof(s_connecting_ssid) - 1] = '\0';
+    memcpy(s_connecting_ssid, ssid, ssid_len + 1);
     s_connected_ip[0] = '\0';
+    weather_service_set_offline();
 
     ++s_wifi_scan_generation;
-    s_wifi_scan_running = false;
+    /* The canceled worker retains running ownership until it exits. */
+    if (s_wifi_scan_running) (void)esp_wifi_scan_stop();
 
     wifi_config_t wifi_cfg = {0};
-    if (esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg) == ESP_OK &&
-        strcmp((char *)wifi_cfg.sta.ssid, ssid) == 0) {
-        /* Matching saved network: only update password if caller supplied a non-empty password */
-        if (password && strlen(password) > 0) {
-            strncpy((char *)wifi_cfg.sta.password, password, sizeof(wifi_cfg.sta.password) - 1);
-            wifi_cfg.sta.password[sizeof(wifi_cfg.sta.password) - 1] = '\0';
-        }
-    } else {
+    if (esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg) != ESP_OK ||
+        strnlen((const char *)wifi_cfg.sta.ssid, sizeof(wifi_cfg.sta.ssid)) != ssid_len ||
+        memcmp(wifi_cfg.sta.ssid, ssid, ssid_len) != 0) {
         memset(&wifi_cfg, 0, sizeof(wifi_cfg));
-        strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
-        if (password && strlen(password) > 0) {
-            strncpy((char *)wifi_cfg.sta.password, password, sizeof(wifi_cfg.sta.password) - 1);
-        }
+        memcpy(wifi_cfg.sta.ssid, ssid, ssid_len);
     }
-    /* Configure PMF, SAE, and threshold for maximum AP compatibility (Wi-Fi 6 / WPA2 / WPA3) */
+    /* Preserve saved credentials unless a replacement password is supplied. */
+    if (password_len > 0) {
+        memset(wifi_cfg.sta.password, 0, sizeof(wifi_cfg.sta.password));
+        memcpy(wifi_cfg.sta.password, password, password_len);
+    }
     wifi_cfg.sta.pmf_cfg.capable = true;
     wifi_cfg.sta.pmf_cfg.required = false;
     wifi_cfg.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
     wifi_cfg.sta.threshold.authmode = WIFI_AUTH_OPEN;
-    (void)esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    /* Stop the previous association/attempt before changing its configuration. */
+    err = esp_wifi_disconnect();
+    if (err != ESP_OK) goto failed;
+    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    if (err != ESP_OK) goto failed;
+    err = esp_wifi_connect();
+    if (err == ESP_OK) return;
 
-    esp_err_t err = esp_wifi_connect();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(err));
-        s_wifi_state = BOARD_WIFI_FAILED;
-        s_wifi_results_dirty = true;
-    }
+failed:
+    ESP_LOGE(TAG, "Wi-Fi connection request failed: %s", esp_err_to_name(err));
+    s_wifi_state = BOARD_WIFI_FAILED;
+    s_wifi_results_dirty = true;
 }
 
 void board_ui_wifi_reconnect_saved(void)
 {
-    board_ui_wifi_ensure_started();
-    wifi_config_t cfg = {0};
-    if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char *)cfg.sta.ssid) > 0) {
-        cfg.sta.pmf_cfg.capable = true;
-        cfg.sta.pmf_cfg.required = false;
-        cfg.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
-        cfg.sta.threshold.authmode = WIFI_AUTH_OPEN;
-        (void)esp_wifi_set_config(WIFI_IF_STA, &cfg);
-        s_wifi_enabled = true;
-        s_wifi_state = BOARD_WIFI_CONNECTING;
-        s_wifi_last_disconnect_reason = 0;
-        strncpy(s_connecting_ssid, (char *)cfg.sta.ssid, sizeof(s_connecting_ssid) - 1);
+    if (board_ui_wifi_ensure_started() != ESP_OK) {
+        s_wifi_state = BOARD_WIFI_FAILED;
         s_wifi_results_dirty = true;
-        (void)esp_wifi_connect();
+        return;
+    }
+    wifi_config_t cfg = {0};
+    if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && cfg.sta.ssid[0] != 0) {
+        char ssid[33] = {0};
+        memcpy(ssid, cfg.sta.ssid, sizeof(cfg.sta.ssid));
+        board_ui_wifi_connect(ssid, NULL);
     }
 }
 
@@ -476,7 +492,10 @@ bool board_ui_wifi_is_saved(const char *ssid)
     if (!ssid) return false;
     wifi_config_t cfg = {0};
     if (esp_wifi_get_config(WIFI_IF_STA, &cfg) != ESP_OK) return false;
-    if (strlen((char *)cfg.sta.ssid) == 0 || strcmp(ssid, (char *)cfg.sta.ssid) != 0) return false;
+    size_t ssid_len = strnlen(ssid, sizeof(cfg.sta.ssid) + 1);
+    if (ssid_len == 0 || ssid_len > sizeof(cfg.sta.ssid) ||
+        strnlen((const char *)cfg.sta.ssid, sizeof(cfg.sta.ssid)) != ssid_len ||
+        memcmp(ssid, cfg.sta.ssid, ssid_len) != 0) return false;
 
     /* Check if AP is known to be open */
     bool ap_is_open = false;
@@ -492,7 +511,7 @@ bool board_ui_wifi_is_saved(const char *ssid)
         return true;
     }
     /* For secured networks, it is only validly saved if password length >= 8 */
-    return strlen((char *)cfg.sta.password) >= 8;
+    return strnlen((const char *)cfg.sta.password, sizeof(cfg.sta.password)) >= 8;
 }
 
 void board_ui_wifi_set_enabled(bool enabled)

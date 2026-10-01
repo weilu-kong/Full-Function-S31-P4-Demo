@@ -14,6 +14,9 @@ static const char *TAG = "ui_weather";
 
 static lv_obj_t *s_scr_weather = NULL;
 static lv_obj_t *s_img_bg = NULL;
+static bool s_active_weather;
+static lv_obj_t *s_btn_refresh;
+static lv_obj_t *s_lbl_refresh;
 
 /* Top Status Bar Handles */
 static lv_obj_t *s_lbl_weather_clock = NULL;
@@ -49,6 +52,9 @@ static void refresh_click_event_cb(lv_event_t *e)
     (void)e;
     ESP_LOGI(TAG, "Manual weather refresh requested");
     weather_service_trigger_refresh();
+    weather_info_t info;
+    weather_service_get_info(&info);
+    ui_weather_screen_update(&info);
 }
 
 lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
@@ -64,7 +70,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     s_img_bg = lv_image_create(s_scr_weather);
     lv_obj_set_size(s_img_bg, 800, 480);
     lv_obj_set_pos(s_img_bg, 0, 0);
-    lv_image_set_src(s_img_bg, &ui_img_weather_sunny);
+    lv_obj_add_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     /* 2a. Full-Screen Transparent Lottie Snowfall Overlay */
@@ -145,6 +151,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
 
     /* Right: Styled Manual Refresh Button */
     lv_obj_t *btn_refresh = lv_button_create(top_bar);
+    s_btn_refresh = btn_refresh;
     lv_obj_add_style(btn_refresh, &ui_style_btn_home, 0);
     lv_obj_set_size(btn_refresh, 76, 30);
     lv_obj_set_pos(btn_refresh, 580, 4);
@@ -152,6 +159,7 @@ lv_obj_t *ui_weather_screen_create(ui_home_btn_cb_t home_cb)
     lv_obj_add_event_cb(btn_refresh, refresh_click_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
+    s_lbl_refresh = lbl_refresh;
     lv_label_set_text(lbl_refresh, "更新");
     lv_obj_set_style_text_font(lbl_refresh, UI_FONT_SMALL, 0);
     lv_obj_center(lbl_refresh);
@@ -261,10 +269,15 @@ void ui_weather_screen_update(const weather_info_t *info)
     bool is_rain = (info->condition == WEATHER_COND_RAINY || info->condition == WEATHER_COND_THUNDER);
     bool is_snow = (info->condition == WEATHER_COND_SNOWY);
 
-    if (s_img_bg) {
-        if (ui_weather_background_load(info->condition, info->is_day) == ESP_OK) {
+    if (s_active_weather && s_img_bg) {
+        if (ui_weather_background_load(info->condition, info->is_day) == ESP_OK &&
+            ui_img_weather_sunny.data) {
             lv_image_set_src(s_img_bg, &ui_img_weather_sunny);
+            lv_obj_remove_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
             lv_obj_invalidate(s_img_bg);
+        } else {
+            lv_image_set_src(s_img_bg, NULL);
+            lv_obj_add_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
         }
     }
 
@@ -272,7 +285,7 @@ void ui_weather_screen_update(const weather_info_t *info)
     if (is_rain) {
         if (s_lottie_rain) {
             lv_obj_remove_flag(s_lottie_rain, LV_OBJ_FLAG_HIDDEN);
-            lv_lottie_play(s_lottie_rain);
+            if (s_active_weather) lv_lottie_play(s_lottie_rain);
         }
         if (s_lottie_snow) {
             lv_obj_add_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN);
@@ -281,7 +294,7 @@ void ui_weather_screen_update(const weather_info_t *info)
     } else if (is_snow) {
         if (s_lottie_snow) {
             lv_obj_remove_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN);
-            lv_lottie_play(s_lottie_snow);
+            if (s_active_weather) lv_lottie_play(s_lottie_snow);
         }
         if (s_lottie_rain) {
             lv_obj_add_flag(s_lottie_rain, LV_OBJ_FLAG_HIDDEN);
@@ -329,22 +342,27 @@ void ui_weather_screen_update(const weather_info_t *info)
         lv_label_set_text(s_lbl_cond, cond_name);
     }
 
-    /* 5. Live vs Demo Status Badge */
+    /* Keep the retained reading separate from the latest request status. */
     if (s_lbl_badge) {
-        if (info->is_live) {
-            lv_label_set_text(s_lbl_badge, "● LIVE");
-            lv_obj_set_style_text_color(s_lbl_badge, UI_COLOR_CYAN_ACCENT, 0);
-        } else {
-            lv_label_set_text(s_lbl_badge, "○ DEMO");
-            lv_obj_set_style_text_color(s_lbl_badge, UI_COLOR_GOLD_ACCENT, 0);
-        }
+        const char *status = info->refreshing ? "更新中…" :
+                             info->refresh_failed ? "更新失敗" :
+                             info->is_live ? "● LIVE" :
+                             info->has_last_success ? "○ STALE" : "○ DEMO";
+        lv_label_set_text(s_lbl_badge, status);
+        lv_obj_set_style_text_color(s_lbl_badge,
+                                   info->is_live ? UI_COLOR_CYAN_ACCENT : UI_COLOR_GOLD_ACCENT, 0);
     }
+    if (s_btn_refresh) {
+        if (info->refreshing) lv_obj_add_state(s_btn_refresh, LV_STATE_DISABLED);
+        else lv_obj_remove_state(s_btn_refresh, LV_STATE_DISABLED);
+    }
+    if (s_lbl_refresh) lv_label_set_text(s_lbl_refresh, info->refreshing ? "更新中" : "更新");
 
-    /* 6. Update Time */
     if (s_lbl_time) {
-        char buf[48];
-        snprintf(buf, sizeof(buf), "更新 %s",
-                 (info->update_time[0] != '\0') ? info->update_time : "14:30");
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s %s",
+                 info->has_last_success ? "最終成功" : "サンプル",
+                 info->update_time[0] ? info->update_time : "--:--");
         lv_label_set_text(s_lbl_time, buf);
     }
 
@@ -356,7 +374,11 @@ void ui_weather_screen_update(const weather_info_t *info)
 
 void ui_weather_set_active(bool active)
 {
+    s_active_weather = active;
     if (active) {
+        weather_info_t info;
+        weather_service_get_info(&info);
+        ui_weather_screen_update(&info);
         if (s_lottie_snow && !lv_obj_has_flag(s_lottie_snow, LV_OBJ_FLAG_HIDDEN)) {
             lv_lottie_play(s_lottie_snow);
         }
@@ -364,6 +386,11 @@ void ui_weather_set_active(bool active)
             lv_lottie_play(s_lottie_rain);
         }
     } else {
+        if (s_img_bg) {
+            lv_image_set_src(s_img_bg, NULL);
+            lv_obj_add_flag(s_img_bg, LV_OBJ_FLAG_HIDDEN);
+        }
+        ui_weather_background_free();
         if (s_lottie_snow) {
             lv_lottie_pause(s_lottie_snow);
         }

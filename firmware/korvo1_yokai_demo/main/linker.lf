@@ -1,0 +1,6 @@
+# Called directly by the IRAM FreeRTOS interrupt assembly while Flash cache is suspended.
+[mapping:vision_coproc_isr]
+archive: libfreertos.a
+entries:
+    port:pxPortGetCoprocArea (noflash_text)
+    port:pxPortUpdateCoprocOwner (noflash_text)

@@ -1,8 +1,17 @@
 dependencies:
-  espressif/esp-gsp:
-    version: ==1.2.0
+  lvgl/lvgl: "^9.2.0"
+  espressif/esp_lvgl_adapter: "*"
+  espressif/esp_lv_lottie_player: "*"
+  espressif/thorvg: "*"
+  espressif/esp_new_jpeg: "*"
   espressif/esp32_s31_korvo_1_noglib:
     version: ==1.0.1
   espressif/esp-sr:
     version: ==2.5.3
+  espressif/esp_asrc:
+    version: ==1.1.0
+  espressif/esp_audio_effects:
+    version: "^1.4.0"
+  espressif/human_face_detect: "*"
+  espressif/human_face_recognition: "==0.3.2"
   idf: '>=6.0'

@@ -82,8 +82,8 @@ static int find_free_preview_buffer(void)
 #define VISION_PEOPLE_META_MAGIC   0x59464D44 /* "YFMD" */
 #define VISION_PEOPLE_META_VERSION 1
 #ifdef HOST_TEST
-#define VISION_PEOPLE_META_PATH    "/private/tmp/vision_face_people.meta"
-#define VISION_PEOPLE_ALT_PATH     "/private/tmp/vision_face_people.bak"
+#define VISION_PEOPLE_META_PATH    "/tmp/vision_face_people.meta"
+#define VISION_PEOPLE_ALT_PATH     "/tmp/vision_face_people.bak"
 #else
 #define VISION_PEOPLE_META_PATH    "/storage/face_people.meta"
 #define VISION_PEOPLE_ALT_PATH     "/storage/face_people.bak"

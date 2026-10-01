@@ -37,7 +37,7 @@
 
 ## 实板与集成记录
 
-代码已推送到 `codex/vision-ai`；[集成 PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2) 已创建，未合并。CI 作业级 env 的 runner 上下文已按 GitHub 规则改为 github.workspace；远端实际构建暴露 PPA 适配器引用弃用 LVGL 头文件，现有严格补丁流程已修正该引用，新 CI 待确认。
+代码已推送到 `codex/vision-ai`；[集成 PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2) 已创建，未合并。CI 作业级 env 的 runner 上下文已按 GitHub 规则改为 github.workspace；远端实际构建暴露 PPA 适配器引用弃用 LVGL 头文件，现有严格补丁流程已修正该引用，新 CI 已完成实际固件构建，随后暴露 host 测试中的 macOS 专用 `/private/tmp` 路径；现已改为跨平台 `/tmp`，本地主机回归再通过，最终远端检查待确认。
 
 诊断固件已成功烧录、校验。但板上 HTTPS 请求在 `weather_worker` 触发 Stack protection fault：原 4096 字节任务栈耗尽。解码现场落在 ESP SHA/HMAC 与 TLS PRF 调用，尚未获得有效 Vision CPU 区间；不能宣称诊断版稳定或完成 CPU 余量测量。现已将天气任务栈改为 8192 字节，额外占用 4096 字节内部 RAM，本地构建/主机检查通过，**尚须实板复测**。设备恢复本轮前 `72d41b0` 稳定应用，保留 NVS、模型和用户存储；串口采集已停止。
 

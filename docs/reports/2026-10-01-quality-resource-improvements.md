@@ -64,3 +64,19 @@ Food 内置名称键盘是拉丁输入；服务接受有效 UTF-8，但没有增
 `/tmp/yokai-quality-production-board.log` 有限 90 秒记录：HTTPS 请求成功，`WEATHER_HEALTH http_ok=1 stack_min_bytes=4044`；17 份堆/服务快照，最后 `int_free=69239`、历史最低 `int_min=31108`、最大内部块 `31744`；PSRAM `5964744`、历史最低 `5948444`、最大连续块 `5898240` 字节。此段为 Home（vstate=0），没有 panic、栈保护或显示超时，不能代替 Vision 或混合负载结果。
 
 生产镜像加入天气高水位日志后为 10,573,568 字节，应用分区余 1,485,056 字节。此前 Clang 专用 Food UI 检查选项改为 GCC/Clang 通用选项；本机统一检查再次通过。最终 CPU 采集、生产配置恢复及远端 CI 结果仍待更新。
+
+### 冷启动 Vision 再现的崩溃与修复候选
+
+用户冷启动恢复 Home/触摸后打开识别，`/tmp/yokai-quality-diag-vision-cold.log` 第 830 行捕获 Core 1 `Load access fault`（MEPC `0x404b2e80`、MTVAL `0`）。用匹配的 `/tmp/yokai-quality-diag/korvo1_yokai_demo.elf` 解码，故障为 RGB565 SIMD resize helper 的 `lh a5,0(a5)`；源指针本身有效，但保存源指针的栈参数地址为 `0x2e00377c`，属于 RTC RAM。前面的 SIMD broadcast 从该地址读取后计算出空地址。这支持 RTC 栈与 SIMD 访问不兼容的原因候选，仍须板上重测证实。
+
+Vision 启动与天气 TLS 重叠时内部空闲 37,895 字节，包含 RTC 区域；模型构造后最低 7,384 字节。天气请求成功且余栈 4,008 字节，此次不是天气栈保护故障。现将推理任务的原 12 KiB 栈改用原生 `xTaskCreateWithCaps(INTERNAL|8BIT|DMA)`，排除 RTC 回退；分配不足沿已有错误路径提示。退出事件后任务挂起，由 owner 使用配对 `vTaskDeleteWithCaps` 回收，避免自删除另建清理任务。主机检查和生产构建通过；硬件验证待完成。
+
+该生产镜像为 10,574,336 字节，应用分区余 1,484,288 字节，SHA256 `e46a53455f72fdf933a661688e035924eb1bc145ac7ca05abeb798f51511d5bf`。之前的 `b456681` [远端 CI](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36822533159) 已全部成功，但不包含这次推理栈改动。
+
+### 推理栈修复后的生产实测（当前设备版本）
+
+镜像全量写入后校验通过，恢复生产配置（运行时 CPU 统计关闭）。`/tmp/yokai-quality-vision-stack-board.log` 有限 120 秒采集已结束，无 panic、watchdog 或显示超时。用户确认第一次启动显示失败，返回桌面再进入可以打开；日志对应第一次与 HTTPS 并发时 DMA 栈分配失败并安全停止 capture，TLS 完成后再次启动成功。
+
+第二次启动推理栈地址 `0x2f04421c`、`dma=1`，首次人脸检测 153 ms，最新已完成 578 次推理。稳定区间摄像头约 15.58 fps、预览消费约 14.84 fps；内部 RAM 历史最低 30,580 字节，PSRAM 历史最低 1,013,420 字节、最大块 999,424 字节，推理最小余栈 7,920 字节。不能使用本配置的 LVGL CPU 100% 推断 CPU 余量。
+
+这段验证支持排除 RTC 推理栈能解决此次故障，尚不是长时间或混合负载验收。启动与天气 TLS 的资源竞争仍会产生一次可恢复的启动失败，后续完善启动调度；本轮保留该保护，未通过减栈、增加图像缓冲或让写 SPIFFS 的推理任务使用 PSRAM 栈来绕过限制。当前设备保持该生产固件，串口采集已停止。

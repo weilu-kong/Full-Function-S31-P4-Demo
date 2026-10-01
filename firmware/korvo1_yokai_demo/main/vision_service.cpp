@@ -23,10 +23,12 @@
 #else
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
 #include "freertos/event_groups.h"
 #include "esp_heap_caps.h"
+#include "esp_memory_utils.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #ifdef VISION_FRAME_INTEGRITY_DIAGNOSTICS
@@ -715,7 +717,8 @@ static bool calc_face_pose_yaw(const dl::detect::result_t &f, float *out_yaw)
 static void vision_inference_task(void *arg)
 {
     (void)arg;
-    ESP_LOGI(TAG, "Vision inference task running (Priority 4)");
+    ESP_LOGI(TAG, "Vision inference task running (Priority 4, stack=%p dma=%d)",
+             &arg, esp_ptr_dma_capable(&arg));
     uint32_t last_recog_time = 0;
     bool logged_first_inference = false;
 
@@ -1251,7 +1254,8 @@ static void vision_inference_task(void *arg)
 
     ESP_LOGI(TAG, "Vision inference task exiting");
     xEventGroupSetBits(s_lifecycle_events, VISION_EVT_INFER_EXITED);
-    vTaskDelete(NULL);
+    /* The owner frees the WithCaps stack after the exit acknowledgement. */
+    vTaskSuspend(NULL);
 }
 #else
 static vision_result_t s_host_result_slot;
@@ -1515,13 +1519,15 @@ extern "C" esp_err_t vision_service_start(void)
     }
 
     s_infer_running = true;
-    BaseType_t infer_ret = xTaskCreate(
+    BaseType_t infer_ret = xTaskCreateWithCaps(
         vision_inference_task,
         "vis_infer",
         12288, /* 12KB stack for model inference */
         NULL,
         4, /* Priority 4: below capture 5, below LVGL 6 */
-        &s_infer_task_handle
+        &s_infer_task_handle,
+        /* SIMD preprocessing reads stack parameters; RTC RAM cannot serve those loads. */
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT | MALLOC_CAP_DMA
     );
     if (infer_ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create inference task");
@@ -1584,6 +1590,7 @@ extern "C" void vision_service_stop(void)
             s_state = VISION_STATE_ERROR;
             return;
         }
+        vTaskDeleteWithCaps(s_infer_task_handle);
     }
     s_capture_task_handle = NULL;
     s_infer_task_handle = NULL;

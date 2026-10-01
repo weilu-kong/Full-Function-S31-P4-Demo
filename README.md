@@ -39,7 +39,11 @@ The project has moved beyond a static UI prototype and now runs the main service
 
 ### Latest verified state — 2026-10-01
 
-The production startup-scheduling build is flashed on the reference board. Local firmware build, unified host checks, Flash budget check and flash readback verification passed. A finite 180-second Home capture completed with successful HTTPS and no panic, watchdog or display stall; first-entry/re-entry Vision acceptance is awaiting device feedback. The preceding `9c3eeed` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36833626158) passed, including the inference-stack fix; remote CI for the new scheduling changes is pending.
+The production build with startup scheduling and the CJK font correction is flashed on the reference board with verified readback. Local firmware build, unified host checks and Flash budget check pass. The scheduling commit `6617277` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36849783299) passed; the user confirmed complete text and normal camera output with the font correction. Its remote CI remains pending.
+
+After the user reported normal operation, a finite five-minute capture recorded 2,906 face inferences without panic, watchdog or display stall. The stable interval measured about 15.60 camera fps and 15.59 preview fps, with minimum free PSRAM 1,013,340 bytes and internal heap 30,660 bytes. This confirms sustained operation in that capture; deliberately overlapping early entry with HTTPS, repeated entry/exit and mixed loads remain separate acceptance checks.
+
+The cropped CJK fonts lacked `応` in the disabled object-recognition label and several other newly used characters. All four sizes now include 11 additional glyphs; the 1,117 existing glyph metrics/bitmaps in each size are unchanged. A host gate checks actual generated character maps against static firmware text. The generator is pinned to `lv_font_conv@1.5.3`. A further five-minute capture of the flashed font correction recorded 3,146 inferences without panic, watchdog or display stall; minimum free internal heap was 30,604 bytes and PSRAM 1,012,812 bytes.
 
 Two faults were captured and addressed: the Weather HTTPS worker exhausted its former 4 KiB stack, and Vision SIMD preprocessing failed when the inference stack was allocated in RTC RAM. Weather now uses an 8 KiB stack; Vision keeps its 12 KiB stack in DMA-capable internal SRAM, with owner-managed cleanup. Production HTTPS succeeded with 4,044 bytes of stack remaining.
 
@@ -149,7 +153,7 @@ The latest production measurements for firmware `96f3aca` are:
 
 These numbers come from the limited production capture above and do not bound every workload. Weather background release removes a persistent 768,000-byte (750 KiB) PSRAM allocation. Camera + detector + MobileFaceNet still consume most PSRAM; earlier firmware had only about 233 KiB remaining at its measured peak. Internal heap totals include RTC RAM and do not prove a DMA-capable SRAM block is available for the inference stack. Concurrent TLS creates additional transient pressure.
 
-The current startup-scheduling image is 10,574,736 bytes with 1,483,888 bytes free in the application partition. Scheduling adds 12 bytes of static state including alignment and no task, queue, image buffer or stack enlargement. New Vision runtime measurements remain pending.
+The current font-corrected image is 10,579,504 bytes with 1,479,120 bytes free in the application partition. Font regeneration adds 4,768 bytes over the scheduling image. Scheduling adds 12 bytes of static state including alignment and no task, queue, image buffer or stack enlargement. The five-minute scheduling capture above supplies newer Vision measurements; the table preserves the earlier comparable capture.
 
 Therefore new apps must avoid large new persistent PSRAM allocations. Prefer:
 

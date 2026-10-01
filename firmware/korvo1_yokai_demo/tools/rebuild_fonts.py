@@ -47,7 +47,7 @@ for size, font_name in font_sizes:
     out_file = f"main/ui/{font_name}.c"
     print(f"Generating {out_file} (size {size}px)...")
     cmd = [
-        "npx", "-y", "lv_font_conv",
+        "npx", "-y", "lv_font_conv@1.5.3",
         "--font", "assets/fonts/NotoSansCJKjp-Regular.otf",
         "-r", "0x20-0x7F",
         "--symbols", all_symbols,

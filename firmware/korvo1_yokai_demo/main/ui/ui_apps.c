@@ -1056,7 +1056,7 @@ void ui_vision_screen_update(void)
                         if (s_lbl_enroll_step) lv_obj_set_style_text_color(s_lbl_enroll_step, UI_COLOR_RED_ACCENT, 0);
                         if (s_lbl_enroll_feedback) {
                             char fb_buf[48];
-                            snprintf(fb_buf, sizeof(fb_buf), "✕ E%d もう一度", res.enroll_error_code);
+                            snprintf(fb_buf, sizeof(fb_buf), "× E%d もう一度", res.enroll_error_code);
                             lv_label_set_text(s_lbl_enroll_feedback, fb_buf);
                             lv_obj_set_style_text_color(s_lbl_enroll_feedback, UI_COLOR_RED_ACCENT, 0);
                         }

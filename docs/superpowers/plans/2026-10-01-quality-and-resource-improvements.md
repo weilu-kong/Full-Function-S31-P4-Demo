@@ -32,8 +32,10 @@ User approval: the user explicitly requested implementation in the preceding aud
 
 ## 4. Integration and release
 
-- [ ] Independently review combined diff and fix findings; run unified host checks, full firmware build and appropriate board checks after final changes.
+- [x] Independently review combined diff and fix findings; run unified host checks, full firmware build and appropriate board checks after final changes.
 - [ ] Update handoff/report with verified vs unmeasured results, resource deltas, deployment hash and remaining mixed-load/manual checks.
 - [ ] Commit cohesive verified changes, push current branch, create/attach integration PR to main with final scope and test evidence. Prefer reviewable PR over merging unrelated old branches or moving default branch without a concrete verified result.
 
 No step is marked complete from source inspection alone. Resource savings and runtime CPU remain measurements to obtain, not promised outcomes.
+
+2026-10-01 checkpoint: bfbe0b1 quality changes and c7ed078 CI context fix pushed; PR #2 attached. Diagnostic board run exposed weather TLS stack overflow; rollback to original stable app. 8192-byte weather stack and public-header patch built/host checked, board revalidation and CI pending. See implementation report for paths.

@@ -443,7 +443,7 @@ esp_err_t weather_service_init(void)
     (void)esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                               on_got_ip_event, NULL, NULL);
 
-    BaseType_t res = xTaskCreate(weather_worker_task, "weather_worker", 4096, NULL, 4, &s_worker_task_handle);
+    BaseType_t res = xTaskCreate(weather_worker_task, "weather_worker", 8192, NULL, 4, &s_worker_task_handle);
     if (res != pdPASS) {
         vSemaphoreDelete(s_weather_mutex);
         s_weather_mutex = NULL;

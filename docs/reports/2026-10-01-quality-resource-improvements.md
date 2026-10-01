@@ -37,10 +37,23 @@
 
 ## 实板与集成记录
 
-本轮最终板上日志、CPU 测量、固件校验值与 GitHub CI 结果待下方补充。主机错误注入与编译不能替代按键视觉、蓝牙听感和实际混合负载验证。
+代码已推送到 `codex/vision-ai`；[集成 PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2) 已创建，未合并。CI 作业级 env 的 runner 上下文已按 GitHub 规则改为 github.workspace；远端实际构建暴露 PPA 适配器引用弃用 LVGL 头文件，现有严格补丁流程已修正该引用，新 CI 待确认。
+
+诊断固件已成功烧录、校验。但板上 HTTPS 请求在 `weather_worker` 触发 Stack protection fault：原 4096 字节任务栈耗尽。解码现场落在 ESP SHA/HMAC 与 TLS PRF 调用，尚未获得有效 Vision CPU 区间；不能宣称诊断版稳定或完成 CPU 余量测量。现已将天气任务栈改为 8192 字节，额外占用 4096 字节内部 RAM，本地构建/主机检查通过，**尚须实板复测**。设备恢复本轮前 `72d41b0` 稳定应用，保留 NVS、模型和用户存储；串口采集已停止。
+
+当前本地产物 SHA256（改良版，非设备回滚版）：`9aa48c8b36a94080bf52ae2efee9a531cf0ee7cc59aa688b3cb6206b1e08a651`。重新编译时 Git 版本元数据可能改变校验值，应以交付产物实际哈希为准。主机错误注入与编译不能替代按键视觉、蓝牙听感和实际混合负载验证。
 
 CPU 诊断使用现有 health 任务，每 5 秒读取原生 `uxTaskGetSystemState`。任务 CPU 百分比以双核总时间为分母；每核 idle/busy 单独显示。第一份快照、新任务/重置计数、超过 40 任务容量明确报告 unknown；不继续使用原 LVGL sysmon 的无效 100% 来推断余量。参考 [ESP-IDF FreeRTOS 文档](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s31/api-reference/system/freertos_idf.html) 与 [Heap 调试文档](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s31/api-reference/system/heap_debug.html)。
 
 ## 保留的界限
 
 Food 内置名称键盘是拉丁输入；服务接受有效 UTF-8，但没有增加大型输入法。未校时不计算过期状态。新增大型物体模型仍延期；16 MiB Flash 中放入两份约 10 MiB 应用加现有模型/存储不成立，普通 A/B OTA 需另行调整分区、资产/模型或硬件。后续扩展必须重新测量峰值内部 RAM、PSRAM 最大连续块与 CPU 混合负载。
+
+
+## 接续入口
+
+工作目录 `.worktrees/vision-ai`；生产构建 `/tmp/yokai-audio-idf61`，配置 `/tmp/yokai-vision-profile.sdkconfig`；诊断构建 `/tmp/yokai-quality-diag`，配置 `/tmp/yokai-quality-diag.sdkconfig`。原稳定固件备份 `/tmp/yokai-quality-baseline`。
+
+崩溃日志 `/tmp/yokai-quality-diag-board.log`；补充采集 `/tmp/yokai-quality-diag-vision.log`；回滚日志 `/tmp/yokai-quality-rollback.log`；本机回归 `/tmp/yokai-quality-host.log`；构建 `/tmp/yokai-quality-build.log`。所有采集均有限时，不留下常驻监控。
+
+下一步先完成 8 KiB 天气栈的 HTTPS 实板复测并记录最小剩余栈/内部堆，验证无崩溃后再测 Vision、A2DP/Voice 混合负载与 Food 触控、持久化。确认远端 CI 通过后才考虑 main 整合。不能将本轮主机检查通过等同于设备稳定验收。

@@ -11,6 +11,18 @@ VISION_PPA = (Path(__file__).parent / "patches/lvgl_vision_ppa.c").read_text()
 
 PATCHES = (
     (
+        "managed_components/espressif__esp_lvgl_adapter/src/display/bridge/v9/lvgl_ppa_accel_v9.c",
+        '#include "src/draw/lv_draw.h"\n#include "src/draw/lv_draw_buf.h"',
+        '/* Public draw declarations are included by lvgl.h. */',
+        1,
+    ),
+    (
+        "managed_components/espressif__esp_lvgl_adapter/src/display/bridge/v9/lvgl_ppa_accel_v9.c",
+        '#include "stdlib/lv_mem.h"\n#include "misc/lv_color.h"',
+        '/* Public memory/color declarations are included by lvgl.h. */',
+        1,
+    ),
+    (
         "managed_components/espressif__esp-dl/vision/recognition/dl_recognition_database.cpp",
         "    int i = 1;\n    for (auto it = m_feats.begin(); it != m_feats.end(); it++, i++) {\n"
         "        sim = cal_similarity(it->feat, (float *)feat->data);\n"

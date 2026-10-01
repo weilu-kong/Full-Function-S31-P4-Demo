@@ -35,6 +35,9 @@ static int s_voice_saved_volume = 80;
 static lv_obj_t *s_voice_toast = NULL;
 static lv_obj_t *s_voice_toast_label = NULL;
 static lv_timer_t *s_voice_toast_timer = NULL;
+static bool s_vision_start_pending = false;
+static uint32_t s_vision_start_requested_at;
+static uint32_t s_vision_start_attempt_at;
 
 static void voice_toast_timer_cb(lv_timer_t *timer)
 {
@@ -49,6 +52,42 @@ static void show_voice_toast(const char *text)
     lv_obj_remove_flag(s_voice_toast, LV_OBJ_FLAG_HIDDEN);
     lv_timer_reset(s_voice_toast_timer);
     lv_timer_resume(s_voice_toast_timer);
+}
+
+static void vision_start_request(void)
+{
+    s_vision_start_pending = true;
+    s_vision_start_requested_at = lv_tick_get();
+    s_vision_start_attempt_at = s_vision_start_requested_at - 500;
+}
+
+static void vision_start_tick(void)
+{
+    if (!s_vision_start_pending) return;
+    if (lv_tick_elaps(s_vision_start_requested_at) >= 30000) {
+        s_vision_start_pending = false;
+        ui_vision_show_start_error();
+        show_voice_toast("カメラを開始できません");
+        return;
+    }
+
+    weather_info_t weather;
+    weather_service_get_info(&weather);
+    if (weather.refreshing || lv_tick_elaps(s_vision_start_attempt_at) < 500) return;
+
+    s_vision_start_attempt_at = lv_tick_get();
+    esp_err_t err = vision_service_start();
+    if (err == ESP_ERR_NO_MEM) {
+        /* Clean the failed attempt before retrying; allocation is authoritative
+         * if another HTTPS request races the weather snapshot. */
+        vision_service_stop();
+        return;
+    }
+    s_vision_start_pending = false;
+    if (err != ESP_OK) {
+        ui_vision_show_start_error();
+        show_voice_toast("カメラを開始できません");
+    }
 }
 
 static void on_app_launch(ui_app_id_t app)
@@ -325,9 +364,7 @@ static void trans_expand_completed_cb(lv_anim_t *a)
         if (s_pending_target != UI_SCREEN_FOOD) ui_food_set_active(false);
         if (s_pending_target == UI_SCREEN_VISION) {
             ui_app_background_free();
-            if (vision_service_start() != ESP_OK) {
-                show_voice_toast("カメラを開始できません");
-            }
+            vision_start_request();
         }
     }
     if (card) {
@@ -363,6 +400,7 @@ void ui_switch_screen(ui_screen_t target)
         ui_weather_set_active(false);
     }
     if (prev == UI_SCREEN_VISION && target != UI_SCREEN_VISION) {
+        s_vision_start_pending = false;
         vision_service_stop();
         ui_vision_set_active(false);
     }
@@ -485,6 +523,7 @@ void ui_tick_periodic(void)
     /* 7. Update Vision Screen */
     if (s_current_screen == UI_SCREEN_VISION) {
         board_ui_health_set_stage(UI_HEALTH_STAGE_VISION);
+        vision_start_tick();
         ui_vision_screen_update();
         board_ui_health_set_stage(UI_HEALTH_STAGE_UI_PERIODIC);
     }

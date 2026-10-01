@@ -1515,7 +1515,7 @@ extern "C" esp_err_t vision_service_start(void)
         s_capture_running = false;
         s_state = VISION_STATE_ERROR;
         xSemaphoreGive(s_lock);
-        return ESP_FAIL;
+        return ESP_ERR_NO_MEM;
     }
 
     s_infer_running = true;
@@ -1542,7 +1542,7 @@ extern "C" esp_err_t vision_service_start(void)
         vision_camera_stop();
         s_state = VISION_STATE_ERROR;
         xSemaphoreGive(s_lock);
-        return ESP_FAIL;
+        return (bits & VISION_EVT_CAPTURE_EXITED) ? ESP_ERR_NO_MEM : ESP_ERR_TIMEOUT;
     }
 #endif
 
@@ -1756,7 +1756,7 @@ extern "C" esp_err_t vision_service_begin_enrollment(const char *utf8_name)
     }
 
 #ifndef HOST_TEST
-    if (!s_cmd_queue) {
+    if (!s_cmd_queue || s_state != VISION_STATE_RUNNING) {
         return ESP_ERR_INVALID_STATE;
     }
     vision_cmd_t cmd = {};
@@ -1782,7 +1782,7 @@ extern "C" esp_err_t vision_service_begin_enrollment(const char *utf8_name)
 extern "C" esp_err_t vision_service_cancel_enrollment(void)
 {
 #ifndef HOST_TEST
-    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    if (!s_cmd_queue || s_state != VISION_STATE_RUNNING) return ESP_ERR_INVALID_STATE;
     vision_cmd_t cmd = {};
     cmd.type = VISION_CMD_CANCEL_ENROLL;
     if (xQueueSend(s_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
@@ -1828,7 +1828,7 @@ extern "C" esp_err_t vision_service_reregister_person(uint8_t person_slot, const
     }
 
 #ifndef HOST_TEST
-    if (!s_cmd_queue) return ESP_ERR_INVALID_STATE;
+    if (!s_cmd_queue || s_state != VISION_STATE_RUNNING) return ESP_ERR_INVALID_STATE;
     vision_cmd_t cmd = {};
     cmd.type = VISION_CMD_REREGISTER_PERSON;
     cmd.slot = person_slot;

@@ -16,6 +16,7 @@ void ui_voice_screen_update(const voice_result_t *result, int volume,
                             bool service_ready, const char *error_text);
 
 void ui_vision_set_active(bool active);
+void ui_vision_show_start_error(void);
 void ui_vision_screen_update(void);
 
 /** Periodic hook for clock and timer updates */

@@ -339,6 +339,10 @@ static void enroll_open_btn_cb(lv_event_t *e)
 
 static void enroll_submit_action(void)
 {
+    if (vision_service_get_state() != VISION_STATE_RUNNING) {
+        if (s_lbl_enroll_modal_err) lv_label_set_text(s_lbl_enroll_modal_err, "カメラの準備ができていません");
+        return;
+    }
     if (!s_ta_enroll_name) return;
     const char *text = lv_textarea_get_text(s_ta_enroll_name);
     if (!text || text[0] == '\0') {
@@ -881,7 +885,7 @@ void ui_vision_set_active(bool active)
         s_manage_sequence_seen = 0;
         if (s_lbl_manage_status) lv_label_set_text(s_lbl_manage_status, "");
         if (s_lbl_vision_status) {
-            lv_label_set_text(s_lbl_vision_status, "常時顔認識中");
+            lv_label_set_text(s_lbl_vision_status, "カメラ準備中…");
             lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_CYAN_ACCENT, 0);
         }
         if (s_lbl_vision_target) {
@@ -910,6 +914,18 @@ void ui_vision_set_active(bool active)
     }
 }
 
+void ui_vision_show_start_error(void)
+{
+    ui_vision_set_active(false);
+    if (s_lbl_vision_status) {
+        lv_label_set_text(s_lbl_vision_status, "カメラを開始できません");
+        lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_RED_ACCENT, 0);
+    }
+    if (s_lbl_vision_target) lv_label_set_text(s_lbl_vision_target, "ホームに戻って再試行してください");
+    if (s_lbl_vision_perf) lv_label_set_text(s_lbl_vision_perf, "");
+    if (s_lbl_manage_status) lv_label_set_text(s_lbl_manage_status, "処理を確認できません。再試行してください");
+}
+
 void ui_vision_screen_update(void)
 {
     if (!s_vision_active) {
@@ -917,19 +933,7 @@ void ui_vision_screen_update(void)
     }
 
     if (vision_service_get_state() == VISION_STATE_ERROR) {
-        s_manage_pending = false;
-        if (s_lbl_vision_status) {
-            lv_label_set_text(s_lbl_vision_status, "カメラを開始できません");
-            lv_obj_set_style_text_color(s_lbl_vision_status, UI_COLOR_RED_ACCENT, 0);
-        }
-        if (s_lbl_vision_target) lv_label_set_text(s_lbl_vision_target, "ホームに戻って再試行してください");
-        if (s_lbl_vision_perf) lv_label_set_text(s_lbl_vision_perf, "");
-        if (s_lbl_manage_status) lv_label_set_text(s_lbl_manage_status, "処理を確認できません。再試行してください");
-        if (s_vf_img) lv_obj_add_flag(s_vf_img, LV_OBJ_FLAG_HIDDEN);
-        for (int i = 0; i < VISION_MAX_DETECTIONS; ++i) {
-            if (s_face_boxes[i]) lv_obj_add_flag(s_face_boxes[i], LV_OBJ_FLAG_HIDDEN);
-            if (s_face_labels[i]) lv_obj_add_flag(s_face_labels[i], LV_OBJ_FLAG_HIDDEN);
-        }
+        ui_vision_show_start_error();
         return;
     }
 

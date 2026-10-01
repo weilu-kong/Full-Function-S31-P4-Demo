@@ -39,13 +39,13 @@ The project has moved beyond a static UI prototype and now runs the main service
 
 ### Latest verified state — 2026-10-01
 
-Firmware commit [`96f3aca`](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/commit/96f3aca) is flashed on the reference board using the production configuration. Local firmware build, unified host checks, Flash budget check and flash readback verification passed. The preceding `b456681` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36822533159) passed; the CI runs for the inference-stack fix were still in progress at this update.
+The production startup-scheduling build is flashed on the reference board. Local firmware build, unified host checks, Flash budget check and flash readback verification passed. A finite 180-second Home capture completed with successful HTTPS and no panic, watchdog or display stall; first-entry/re-entry Vision acceptance is awaiting device feedback. The preceding `9c3eeed` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36833626158) passed, including the inference-stack fix; remote CI for the new scheduling changes is pending.
 
 Two faults were captured and addressed: the Weather HTTPS worker exhausted its former 4 KiB stack, and Vision SIMD preprocessing failed when the inference stack was allocated in RTC RAM. Weather now uses an 8 KiB stack; Vision keeps its 12 KiB stack in DMA-capable internal SRAM, with owner-managed cleanup. Production HTTPS succeeded with 4,044 bytes of stack remaining.
 
-The latest finite 120-second production capture recorded 578 face inferences, approximately 15.58 camera fps and 14.84 displayed preview fps during the stable interval, with no panic, watchdog or display stall. The user confirmed Vision opened after returning Home and retrying. This is a limited verification, not long-duration or mixed audio/voice/Vision acceptance.
+Before the scheduling change, firmware [`96f3aca`](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/commit/96f3aca) completed a finite 120-second production capture with 578 face inferences, approximately 15.58 camera fps and 14.84 displayed preview fps during the stable interval, and no panic, watchdog or display stall. The user confirmed Vision opened after returning Home and retrying. This remains limited verification, not long-duration or mixed audio/voice/Vision acceptance.
 
-**Known startup limitation:** opening Vision while Weather HTTPS is active can fail because regular SRAM is temporarily insufficient for the required inference stack. The failure stops capture safely instead of falling back to RTC RAM. Return Home, allow the weather request to finish, then reopen Vision. Eliminating this startup contention remains pending.
+**Startup scheduling:** Vision now displays camera preparation while Weather HTTPS is active and starts automatically after the request finishes, using the existing UI tick. Transient memory failures are cleaned up and retried at most every 500 ms within a 30-second total deadline; leaving the page cancels the pending start. Real errors or timeout remain visible. Enrollment input is retained and commands rejected until Vision is running. Host fault checks pass; verification of this behavior during early-boot HTTPS and repeated hardware entry is pending.
 
 See the [quality and resource report](docs/reports/2026-10-01-quality-resource-improvements.md) for the crash evidence, fixes, measurements and remaining checks.
 
@@ -148,6 +148,8 @@ The latest production measurements for firmware `96f3aca` are:
 | Application partition reserve | 1,484,288 |
 
 These numbers come from the limited production capture above and do not bound every workload. Weather background release removes a persistent 768,000-byte (750 KiB) PSRAM allocation. Camera + detector + MobileFaceNet still consume most PSRAM; earlier firmware had only about 233 KiB remaining at its measured peak. Internal heap totals include RTC RAM and do not prove a DMA-capable SRAM block is available for the inference stack. Concurrent TLS creates additional transient pressure.
+
+The current startup-scheduling image is 10,574,736 bytes with 1,483,888 bytes free in the application partition. Scheduling adds 12 bytes of static state including alignment and no task, queue, image buffer or stack enlargement. New Vision runtime measurements remain pending.
 
 Therefore new apps must avoid large new persistent PSRAM allocations. Prefer:
 
@@ -267,7 +269,7 @@ Current constraints and remaining validation:
 
 1. **PSRAM peak headroom is tight after camera + detector + MFN are resident.** New full-screen persistent buffers are not acceptable.
 2. **Camera MMAP buffers are intentionally retained after STREAMOFF.** Previous deinit/restart experiments recovered memory but made later full-resolution camera allocation unreliable.
-3. **Vision startup can fail during concurrent Weather HTTPS.** The inference stack requires regular DMA-capable internal SRAM; returning Home and retrying after HTTPS completes currently recovers. Detector/recognizer objects are deleted after inference exits on a successful stop; camera MMAP buffers remain retained.
+3. **Vision requires DMA-capable internal SRAM.** Startup now waits for Weather HTTPS and retries transient memory failure within a bounded deadline; this scheduling still needs hardware acceptance. Detector/recognizer objects are deleted after inference exits on a successful stop; camera MMAP buffers remain retained.
 4. **Managed components currently require local source patches.** Dependency upgrades must be treated as a controlled migration.
 5. **Object detection is paused.** Do not add another model until the memory budget is re-measured and a separate acceptance gate is defined.
 6. **Vision CPU and mixed-load headroom are not yet verified.** Production runtime statistics are disabled; the LVGL sysmon `CPU 100%` value is not a valid capacity measurement. Use bounded diagnostic captures, then restore production.
@@ -328,7 +330,7 @@ Generated concept art is a **visual reference only**. Text, controls, touch geom
 
 Fireworks, Clock / Timer, and Calculator have passed the September 24 hardware regression. Remaining scoped work:
 
-- Resolve first-entry Vision / Weather HTTPS SRAM contention without increasing persistent image memory.
+- Verify automatic first-entry startup during Weather HTTPS; code and host fault checks are complete.
 - Verify repeated Vision entry/exit and long-duration operation on the inference-stack fix.
 - Complete Food touch/persistence acceptance and mixed A2DP / Voice / Vision checks.
 - Measure Vision and mixed-load CPU usage with a bounded diagnostic configuration, then restore production.

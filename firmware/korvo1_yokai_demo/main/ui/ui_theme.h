@@ -47,6 +47,9 @@ extern "C" {
 #define UI_COLOR_KEY_WHITE      lv_color_hex(0x232B3B) /* 白鍵 / Lacquer Slate */
 #define UI_COLOR_KEY_BLACK      lv_color_hex(0x11151E) /* 黒鍵 / Dark Ebony */
 
+lv_obj_t *ui_screen_create(void);
+lv_obj_t *ui_content_create(lv_obj_t *parent);
+
 /* Global UI Styles */
 extern lv_style_t ui_style_glass_card;
 extern lv_style_t ui_style_glass_card_pressed;

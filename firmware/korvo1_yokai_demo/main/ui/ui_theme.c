@@ -72,3 +72,29 @@ void ui_add_click_sfx(lv_obj_t *control)
 {
     lv_obj_add_event_cb(control, click_sfx_cb, LV_EVENT_CLICKED, NULL);
 }
+
+/* Retain the existing 800x480 layout inside a larger native display. */
+lv_obj_t *ui_content_create(lv_obj_t *parent)
+{
+    lv_display_t *display = lv_display_get_default();
+    if (lv_display_get_horizontal_resolution(display) == 800 &&
+        lv_display_get_vertical_resolution(display) == 480) return parent;
+    lv_obj_t *content = lv_obj_create(parent);
+    lv_obj_remove_style_all(content);
+    lv_obj_set_size(content, 800, 480);
+    lv_obj_center(content);
+    lv_obj_remove_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(content, LV_OBJ_FLAG_CLICKABLE);
+    return content;
+}
+
+lv_obj_t *ui_screen_create(void)
+{
+    lv_obj_t *screen = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(screen, UI_COLOR_BG_DARK, 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(screen, 0, 0);
+    lv_obj_set_style_border_width(screen, 0, 0);
+    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    return ui_content_create(screen);
+}

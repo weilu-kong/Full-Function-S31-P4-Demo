@@ -83,11 +83,13 @@ int voice_service_apply_volume(voice_command_t command, int current, int *saved_
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/esp32_s31_korvo_1.h"
+#include "bsp/esp-bsp.h"
 #include "esp_afe_config.h"
 #include "esp_afe_sr_iface.h"
 #include "esp_afe_sr_models.h"
 #include "esp_asrc.h"
+#include "board_profile.h"
+#include "synth_service.h"
 #include "esp_codec_dev.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -107,7 +109,7 @@ int voice_service_apply_volume(voice_command_t command, int current, int *saved_
 #define VOICE_AEC_DELAY_FRAMES (VOICE_CODEC_RATE * 40 / 1000)
 
 static const char *TAG = "voice_service";
-static float s_mic_select[2] = {1.0f, 0.0f};
+static float s_mic_select[YOKAI_MIC_CHANNELS] = {1.0f};
 static esp_codec_dev_handle_t s_mic_dev;
 static esp_asrc_handle_t s_mic_asrc;
 static esp_asrc_handle_t s_ref_asrc;
@@ -155,18 +157,24 @@ static bool fail_start(const char *message)
 
 static bool open_microphone(void)
 {
+#if CONFIG_IDF_TARGET_ESP32P4
+    s_mic_dev = synth_service_audio_codec();
+#else
     s_mic_dev = bsp_audio_codec_microphone_init();
+#endif
     if (s_mic_dev == NULL) {
         return false;
     }
+#if !CONFIG_IDF_TARGET_ESP32P4
     esp_codec_dev_sample_info_t fs = {
         .sample_rate = VOICE_CODEC_RATE,
-        .channel = 2,
+        .channel = YOKAI_MIC_CHANNELS,
         .bits_per_sample = 16,
     };
     if (esp_codec_dev_open(s_mic_dev, &fs) != ESP_CODEC_DEV_OK) {
         return false;
     }
+#endif
     esp_codec_dev_set_in_gain(s_mic_dev, 34.0f);
     return true;
 }
@@ -174,18 +182,18 @@ static bool open_microphone(void)
 static bool open_asrc(void)
 {
     esp_asrc_cfg_t mic_cfg = {
-        .src_info = {.sample_rate = VOICE_CODEC_RATE, .channel = 2, .bits_per_sample = 16},
+        .src_info = {.sample_rate = VOICE_CODEC_RATE, .channel = YOKAI_MIC_CHANNELS, .bits_per_sample = 16},
         .dest_info = {.sample_rate = VOICE_SR_RATE, .channel = 1, .bits_per_sample = 16},
         .weight = s_mic_select,
-        .weight_len = 2,
-        .perf_type = ESP_ASRC_PERF_TYPE_HW_ONLY,
+        .weight_len = YOKAI_MIC_CHANNELS,
+        .perf_type = YOKAI_VOICE_ASRC,
         .complexity = 1,
         .timeout_ms = 100,
     };
     esp_asrc_cfg_t ref_cfg = {
         .src_info = {.sample_rate = VOICE_CODEC_RATE, .channel = 1, .bits_per_sample = 16},
         .dest_info = {.sample_rate = VOICE_SR_RATE, .channel = 1, .bits_per_sample = 16},
-        .perf_type = ESP_ASRC_PERF_TYPE_HW_ONLY,
+        .perf_type = YOKAI_VOICE_ASRC,
         .complexity = 1,
         .timeout_ms = 100,
     };
@@ -569,7 +577,7 @@ static bool allocate_feed_buffers(void)
     if (esp_asrc_get_buffer_alignment(&align) != ESP_ASRC_ERR_OK) {
         return false;
     }
-    s_feed.mic_44k = esp_asrc_align_alloc(VOICE_IO_FRAMES * 4, align.inbuf_addr_align,
+    s_feed.mic_44k = esp_asrc_align_alloc(VOICE_IO_FRAMES * YOKAI_MIC_CHANNELS * sizeof(int16_t), align.inbuf_addr_align,
                                           align.inbuf_size_align, &allocated);
     s_feed.ref_stereo_44k = esp_asrc_align_alloc(VOICE_IO_FRAMES * 4, align.inbuf_addr_align,
                                                  align.inbuf_size_align, &allocated);
@@ -680,7 +688,7 @@ static void voice_feed_task(void *arg)
     unsigned consecutive_failures = 0;
     for (;;) {
         if (esp_codec_dev_read(s_mic_dev, s_feed.mic_44k,
-                               VOICE_IO_FRAMES * 4) != ESP_CODEC_DEV_OK) {
+                               VOICE_IO_FRAMES * YOKAI_MIC_CHANNELS * sizeof(int16_t)) != ESP_CODEC_DEV_OK) {
             if (++consecutive_failures >= 100) {
                 fail_runtime("Microphone capture stopped");
                 break;
@@ -828,7 +836,9 @@ static void voice_service_cleanup_start_failure(void)
     }
 
     if (s_mic_dev != NULL) {
+#if !CONFIG_IDF_TARGET_ESP32P4
         esp_codec_dev_close(s_mic_dev);
+#endif
         s_mic_dev = NULL;
     }
 

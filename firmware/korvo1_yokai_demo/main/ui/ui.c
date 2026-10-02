@@ -29,6 +29,7 @@ static ui_screen_t s_current_screen = UI_SCREEN_HOME;
 static ui_screen_t s_return_screen = UI_SCREEN_HOME;
 static bool s_reopen_drawer_on_return = false;
 static lv_obj_t *s_screen_objs[UI_SCREEN_MAX] = {0};
+static lv_obj_t *s_overlay;
 static lv_obj_t *s_drawer = NULL;
 static app_state_t *s_app_state = NULL;
 static int s_voice_saved_volume = 80;
@@ -261,7 +262,8 @@ void ui_init(lv_display_t *disp, app_state_t *state)
     s_screen_objs[UI_SCREEN_FOOD] = ui_food_screen_create(on_return_home);
 
     /* Create Quick Settings Drawer on the persistent Top Layer */
-    lv_obj_t *top_layer = lv_layer_top();
+    lv_obj_t *top_layer = ui_content_create(lv_layer_top());
+    s_overlay = top_layer;
     lv_obj_set_style_pad_all(top_layer, 0, 0);
     lv_obj_set_style_border_width(top_layer, 0, 0);
     lv_obj_remove_flag(top_layer, LV_OBJ_FLAG_SCROLLABLE);
@@ -290,7 +292,7 @@ void ui_init(lv_display_t *disp, app_state_t *state)
     /* Start at Home Desktop */
     s_current_screen = UI_SCREEN_HOME;
     voice_service_set_mode(VOICE_MODE_GLOBAL_WAKE);
-    lv_screen_load(s_screen_objs[UI_SCREEN_HOME]);
+    lv_screen_load(lv_obj_get_screen(s_screen_objs[UI_SCREEN_HOME]));
     ESP_LOGI(TAG, "Yokai UI initialized with 8 Apps + Wi-Fi & BT screens active");
 }
 
@@ -360,7 +362,7 @@ static void trans_expand_completed_cb(lv_anim_t *a)
             ui_food_set_active(true);
             app_health_log_heap("enter food");
         }
-        lv_screen_load(s_screen_objs[s_pending_target]);
+        lv_screen_load(lv_obj_get_screen(s_screen_objs[s_pending_target]));
         if (s_pending_target != UI_SCREEN_FOOD) ui_food_set_active(false);
         if (s_pending_target == UI_SCREEN_VISION) {
             ui_app_background_free();
@@ -423,7 +425,7 @@ void ui_switch_screen(ui_screen_t target)
      * seamlessly occluding the outgoing view and revealing the incoming dark screen
      * without any abrupt 1-frame blackout.
      */
-    lv_obj_t *top = lv_layer_top();
+    lv_obj_t *top = s_overlay;
     s_trans_active = true;
     s_trans_card = lv_obj_create(top);
     lv_obj_remove_flag(s_trans_card, LV_OBJ_FLAG_SCROLLABLE);

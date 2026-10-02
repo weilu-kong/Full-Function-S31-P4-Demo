@@ -2,7 +2,7 @@
 #include "ui/ui.h"
 #include "ui/ui_drawer.h"
 #include "esp_lv_adapter.h"
-#include "bsp/esp32_s31_korvo_1.h"
+#include "bsp/esp-bsp.h"
 #include "bsp/display.h"
 #include "bsp/touch.h"
 #include "esp_lcd_panel_ops.h"
@@ -98,6 +98,8 @@ static void ui_lv_timer_cb(lv_timer_t *timer)
         lv_indev_state_t st = lv_indev_get_state(s_touch_indev);
         lv_point_t p;
         lv_indev_get_point(s_touch_indev, &p);
+        p.x -= (BSP_LCD_H_RES - 800) / 2;
+        p.y -= (BSP_LCD_V_RES - 480) / 2;
 
         if (st == LV_INDEV_STATE_PRESSED) {
             if (!s_pull_tracking) {
@@ -534,10 +536,17 @@ esp_err_t board_ui_start(app_state_t *state)
     esp_lcd_panel_handle_t panel = NULL;
     esp_lcd_panel_io_handle_t io = NULL;
     bsp_display_config_t display_config = {0};
+#if CONFIG_IDF_TARGET_ESP32P4
+    display_config.dsi_bus.phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT;
+    display_config.dsi_bus.lane_bit_rate_mbps = BSP_LCD_MIPI_DSI_LANE_BITRATE_MBPS;
+#endif
     ESP_RETURN_ON_ERROR(bsp_display_new(&display_config, &panel, &io), TAG,
                         "create Korvo-1 RGB panel");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG,
-                        "turn on Korvo-1 RGB panel");
+                        "turn on LCD panel");
+#if CONFIG_IDF_TARGET_ESP32P4
+    ESP_RETURN_ON_ERROR(bsp_display_backlight_on(), TAG, "turn on LCD backlight");
+#endif
 
     /* 2. Initialize Korvo-1 GT1151 Touch Hardware via BSP */
     esp_lcd_touch_handle_t touch = NULL;
@@ -556,17 +565,21 @@ esp_err_t board_ui_start(app_state_t *state)
     ESP_RETURN_ON_ERROR(esp_lv_adapter_init(&adapter_cfg), TAG, "init esp_lvgl_adapter");
 
     /* 4. Keep two full framebuffers, redraw only changed regions. */
+    #if CONFIG_IDF_TARGET_ESP32P4
+    esp_lv_adapter_display_config_t disp_cfg = ESP_LV_ADAPTER_DISPLAY_MIPI_DEFAULT_CONFIG(
+#else
     esp_lv_adapter_display_config_t disp_cfg = ESP_LV_ADAPTER_DISPLAY_RGB_DEFAULT_CONFIG(
+#endif
         panel,
         io,
-        800,
-        480,
+        BSP_LCD_H_RES,
+        BSP_LCD_V_RES,
         ESP_LV_ADAPTER_ROTATE_0
     );
     disp_cfg.tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_DOUBLE_DIRECT;
-    disp_cfg.profile.buffer_height = 480;
+    disp_cfg.profile.buffer_height = BSP_LCD_V_RES;
     disp_cfg.profile.use_psram = true;
-    ESP_LOGI(TAG, "[MEMCFG] lcd=DOUBLE_DIRECT lcd_fb=2 camera_mmap=2 preview_buf=3 preview=320x240 camera=1280x720-UYVY");
+    ESP_LOGI(TAG, "[MEMCFG] lcd=DOUBLE_DIRECT lcd_fb=2 lcd=%dx%d camera_mmap=2 preview_buf=3 preview=320x240", BSP_LCD_H_RES, BSP_LCD_V_RES);
     s_disp = esp_lv_adapter_register_display(&disp_cfg);
     if (s_disp == NULL) {
         ESP_LOGE(TAG, "failed to register RGB display with esp_lvgl_adapter");

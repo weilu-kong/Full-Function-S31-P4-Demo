@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+if(IDF_TARGET STREQUAL "esp32p4")
+    set(DEPENDENCIES_LOCK "${CMAKE_CURRENT_LIST_DIR}/dependencies.esp32p4.lock")
+    idf_build_set_property(DEPENDENCIES_LOCK "${DEPENDENCIES_LOCK}")
+endif()
 project(korvo1_yokai_demo)
 
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -10,6 +14,7 @@ execute_process(
     COMMAND ${PYTHON} ${CMAKE_CURRENT_LIST_DIR}/tools/apply_managed_component_patches.py
             --project-root ${CMAKE_CURRENT_LIST_DIR}
             --build-root ${CMAKE_BINARY_DIR}
+            --target ${IDF_TARGET}
     RESULT_VARIABLE managed_patch_result
 )
 if(NOT managed_patch_result EQUAL 0)

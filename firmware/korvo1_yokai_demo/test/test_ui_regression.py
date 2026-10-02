@@ -5,7 +5,7 @@ import re
 
 root = Path(__file__).resolve().parents[1]
 board = (root / "main/board_ui.c").read_text()
-defaults = (root / "sdkconfig.defaults").read_text()
+defaults = (root / "sdkconfig.defaults").read_text() + (root / "sdkconfig.defaults.esp32s31").read_text()
 ui = (root / "main/ui/ui.c").read_text()
 wifi = (root / "main/ui/ui_wifi.c").read_text()
 weather = (root / "main/ui/ui_weather.c").read_text()

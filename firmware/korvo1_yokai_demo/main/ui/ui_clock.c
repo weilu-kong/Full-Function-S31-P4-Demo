@@ -190,7 +190,7 @@ lv_obj_t *ui_clock_screen_create(ui_home_btn_cb_t home_cb)
     clock_service_init();
     clock_timer_set_duration(0, 5, 0);
 
-    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_obj_t *scr = ui_screen_create();
     lv_obj_set_size(scr, 800, 480);
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x060C14), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);

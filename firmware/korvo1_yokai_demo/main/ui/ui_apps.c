@@ -63,7 +63,7 @@ static void voice_reset_timer_cb(lv_timer_t *t)
 
 lv_obj_t *ui_voice_screen_create(ui_home_btn_cb_t home_cb)
 {
-    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_obj_t *scr = ui_screen_create();
     lv_obj_set_size(scr, 800, 480);
     lv_obj_set_style_bg_color(scr, UI_COLOR_BG_DARK, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
@@ -536,7 +536,7 @@ static void clear_all_btn_cb(lv_event_t *e)
 
 lv_obj_t *ui_vision_screen_create(ui_home_btn_cb_t home_cb)
 {
-    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_obj_t *scr = ui_screen_create();
     lv_obj_set_size(scr, 800, 480);
     lv_obj_set_style_bg_color(scr, UI_COLOR_BG_DARK, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);

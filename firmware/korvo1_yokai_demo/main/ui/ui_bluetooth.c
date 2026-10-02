@@ -58,7 +58,7 @@ lv_obj_t *ui_bluetooth_screen_create(ui_bt_home_cb_t home_cb)
 {
     s_home_cb = home_cb;
 
-    s_scr_bt = lv_obj_create(NULL);
+    s_scr_bt = ui_screen_create();
     lv_obj_set_style_bg_color(s_scr_bt, UI_COLOR_BG_DARK, 0);
     lv_obj_set_style_bg_opa(s_scr_bt, LV_OPA_COVER, 0);
 
@@ -97,6 +97,14 @@ lv_obj_t *ui_bluetooth_screen_create(ui_bt_home_cb_t home_cb)
     lv_label_set_text(lbl_home, "ホーム");
     lv_obj_set_style_text_font(lbl_home, UI_FONT_REGULAR, 0);
     lv_obj_center(lbl_home);
+
+    if (!synth_service_bt_supported()) {
+        lv_obj_t *notice = lv_label_create(s_scr_bt);
+        lv_label_set_text(notice, "A2DP unavailable: ESP32-P4X + ESP32-C6\nClassic Bluetooth is not supported by this board.");
+        lv_obj_set_style_text_font(notice, UI_FONT_REGULAR, 0);
+        lv_obj_center(notice);
+        return s_scr_bt;
+    }
 
     /* Screen Title */
     lv_obj_t *lbl_title = lv_label_create(top_bar);

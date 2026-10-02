@@ -1,4 +1,4 @@
-name: Yokai host checks and S31 firmware
+name: Yokai host checks and firmware
 on:
   push:
     branches: [main, 'codex/**']
@@ -13,6 +13,10 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [esp32s31, esp32p4]
     env:
       IDF_TOOLS_PATH: ${{ github.workspace }}/.ci/idf-tools
     steps:
@@ -25,20 +29,20 @@ jobs:
           path: .ci/esp-idf
           submodules: recursive
       - name: Install SDK tools
-        run: .ci/esp-idf/install.sh esp32s31
+        run: .ci/esp-idf/install.sh ${{ matrix.target }}
       - name: Build, host checks, and Flash budget
         shell: bash
         run: |
           source .ci/esp-idf/export.sh
           python -m pip install meson==1.12.1
           cd firmware/korvo1_yokai_demo
-          idf.py --preview -DIDF_TARGET=esp32s31 build
+          idf.py --preview -DIDF_TARGET=${{ matrix.target }} build
           python3 test/run_host_checks.py
           python3 tools/check_firmware_size.py build
       - name: Save reviewable firmware and build configuration
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: korvo1-s31-idf-master-${{ github.sha }}
+          name: yokai-${{ matrix.target }}-idf-master-${{ github.sha }}
           if-no-files-found: error
           path: |
             firmware/korvo1_yokai_demo/build/korvo1_yokai_demo.bin

@@ -181,7 +181,7 @@ lv_obj_t *ui_synth_screen_create(ui_synth_home_cb_t home_cb)
 {
     s_home_cb = home_cb;
 
-    s_scr_synth = lv_obj_create(NULL);
+    s_scr_synth = ui_screen_create();
     lv_obj_set_size(s_scr_synth, 800, 480);
     lv_obj_set_style_bg_color(s_scr_synth, UI_COLOR_BG_DARK, 0);
     lv_obj_remove_flag(s_scr_synth, LV_OBJ_FLAG_SCROLLABLE);

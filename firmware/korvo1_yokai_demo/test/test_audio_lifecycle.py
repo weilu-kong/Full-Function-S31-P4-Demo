@@ -39,6 +39,7 @@ common = r'''
 voice = (ROOT / 'main/voice_service.c').read_text()
 voice_stub = r'''
 #define VOICE_IO_FRAMES 1
+#define YOKAI_MIC_CHANNELS 2
 #define VOICE_REF_RING_FRAMES 8
 #define VOICE_AEC_DELAY_FRAMES 2
 #define MALLOC_CAP_SPIRAM 0

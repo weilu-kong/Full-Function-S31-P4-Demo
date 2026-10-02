@@ -124,6 +124,9 @@ void synth_service_get_fx(synth_fx_params_t *params);
  *
  * Exposes device as "Yokai-Groovebox" for phone / tablet pairing.
  */
+/* Shared IN/OUT codec on mono ES8311 boards; synth owns its lifetime. */
+void *synth_service_audio_codec(void);
+bool synth_service_bt_supported(void);
 esp_err_t synth_service_bt_a2dp_init(void);
 
 /**

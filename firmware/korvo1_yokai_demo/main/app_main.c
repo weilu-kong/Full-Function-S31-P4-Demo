@@ -15,7 +15,7 @@ static const char *TAG = "yokai_demo";
 #include "driver/ledc.h"
 #include "esp_heap_caps.h"
 #include "esp_lv_adapter.h"
-#include "bsp/esp32_s31_korvo_1.h"
+#include "bsp/esp-bsp.h"
 
 #include "storage_service.h"
 #include "app_health.h"

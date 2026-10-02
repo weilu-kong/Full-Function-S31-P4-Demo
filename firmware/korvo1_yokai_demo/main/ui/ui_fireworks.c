@@ -82,6 +82,10 @@ static void touch_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     lv_point_t p;
     lv_indev_get_point(indev, &p);
+    lv_area_t origin;
+    lv_obj_get_coords(s_art, &origin);
+    p.x -= origin.x1;
+    p.y -= origin.y1;
 
     if (code == LV_EVENT_PRESSED) {
         s_press_pt = p;
@@ -107,6 +111,8 @@ static void touch_cb(lv_event_t *e)
 
 static void draw_particles(lv_layer_t *layer)
 {
+    lv_area_t origin;
+    lv_obj_get_coords(s_art, &origin);
     size_t count = 0;
     const fw_particle_t *p = fireworks_engine_particles(&count);
     for (size_t i = 0; i < count; ++i) {
@@ -125,17 +131,17 @@ static void draw_particles(lv_layer_t *layer)
             ld.width = 2;
             ld.round_start = 0;
             ld.round_end = 0;
-            ld.p1.x = (int32_t)p[i].prev_x;
-            ld.p1.y = (int32_t)p[i].prev_y;
-            ld.p2.x = (int32_t)p[i].x;
-            ld.p2.y = (int32_t)p[i].y;
+            ld.p1.x = origin.x1 + (int32_t)p[i].prev_x;
+            ld.p1.y = origin.y1 + (int32_t)p[i].prev_y;
+            ld.p2.x = origin.x1 + (int32_t)p[i].x;
+            ld.p2.y = origin.y1 + (int32_t)p[i].y;
             lv_draw_line(layer, &ld);
 
             /* Sparkling bright head spark */
             int32_t r = p[i].size;
             lv_area_t a = {
-                (int32_t)p[i].x - r, (int32_t)p[i].y - r,
-                (int32_t)p[i].x + r, (int32_t)p[i].y + r
+                origin.x1 + (int32_t)p[i].x - r, origin.y1 + (int32_t)p[i].y - r,
+                origin.x1 + (int32_t)p[i].x + r, origin.y1 + (int32_t)p[i].y + r
             };
             lv_draw_rect_dsc_t rd;
             lv_draw_rect_dsc_init(&rd);
@@ -154,8 +160,8 @@ static void draw_particles(lv_layer_t *layer)
             cd.bg_opa = opa;
             cd.radius = 1;
             lv_area_t ca = {
-                (int32_t)p[i].x - r, (int32_t)p[i].y - r,
-                (int32_t)p[i].x + r, (int32_t)p[i].y + r
+                origin.x1 + (int32_t)p[i].x - r, origin.y1 + (int32_t)p[i].y - r,
+                origin.x1 + (int32_t)p[i].x + r, origin.y1 + (int32_t)p[i].y + r
             };
             lv_draw_rect(layer, &cd, &ca);
 
@@ -168,10 +174,10 @@ static void draw_particles(lv_layer_t *layer)
             ld.width = 2;
             ld.round_start = 0;
             ld.round_end = 0;
-            ld.p1.x = (int32_t)p[i].x;
-            ld.p1.y = (int32_t)p[i].y;
-            ld.p2.x = (int32_t)(p[i].prev_x - p[i].vx * 0.04f);
-            ld.p2.y = (int32_t)(p[i].prev_y - p[i].vy * 0.04f);
+            ld.p1.x = origin.x1 + (int32_t)p[i].x;
+            ld.p1.y = origin.y1 + (int32_t)p[i].y;
+            ld.p2.x = origin.x1 + (int32_t)(p[i].prev_x - p[i].vx * 0.04f);
+            ld.p2.y = origin.y1 + (int32_t)(p[i].prev_y - p[i].vy * 0.04f);
             lv_draw_line(layer, &ld);
 
             /* Shimmer tip */
@@ -181,8 +187,8 @@ static void draw_particles(lv_layer_t *layer)
             rd.bg_opa = (lv_opa_t)(opa * 0.7f);
             rd.radius = 0;
             lv_area_t ra = {
-                (int32_t)p[i].x - 1, (int32_t)p[i].y - 1,
-                (int32_t)p[i].x + 1, (int32_t)p[i].y + 1
+                origin.x1 + (int32_t)p[i].x - 1, origin.y1 + (int32_t)p[i].y - 1,
+                origin.x1 + (int32_t)p[i].x + 1, origin.y1 + (int32_t)p[i].y + 1
             };
             lv_draw_rect(layer, &rd, &ra);
         }
@@ -198,10 +204,10 @@ static void draw_particles(lv_layer_t *layer)
         d.width = 2;
         d.round_start = 0;
         d.round_end = 0;
-        d.p1.x = (int32_t)r[i].x;
-        d.p1.y = (int32_t)r[i].y;
-        d.p2.x = (int32_t)r[i].x;
-        d.p2.y = (int32_t)r[i].y + 18;
+        d.p1.x = origin.x1 + (int32_t)r[i].x;
+        d.p1.y = origin.y1 + (int32_t)r[i].y;
+        d.p2.x = origin.x1 + (int32_t)r[i].x;
+        d.p2.y = origin.y1 + (int32_t)r[i].y + 18;
         lv_draw_line(layer, &d);
     }
 }
@@ -217,7 +223,7 @@ lv_obj_t *ui_fireworks_screen_create(ui_home_btn_cb_t home_cb_fn)
     s_home_cb = home_cb_fn;
     fireworks_engine_init();
 
-    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_obj_t *scr = ui_screen_create();
     lv_obj_set_size(scr, 800, 480);
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x020610), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);

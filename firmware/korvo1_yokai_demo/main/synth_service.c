@@ -19,16 +19,20 @@
 #include "freertos/queue.h"
 #include "esp_timer.h"
 #include "esp_asrc.h"
+#include "board_profile.h"
 #include "esp_log.h"
-#include "bsp/esp32_s31_korvo_1.h"
+#include "esp_check.h"
+#include "bsp/esp-bsp.h"
 #include "esp_codec_dev.h"
 
-/* Bluetooth Classic & A2DP Sink headers */
+/* The P4X companion C6 provides BLE, not Classic Bluetooth. */
+#if YOKAI_HAS_A2DP
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
+#endif
 
 /* ESP-Audio-Effects modules */
 #include "esp_ae_eq.h"
@@ -66,10 +70,12 @@ static synth_wave_t s_current_wave = SYNTH_WAVE_SIN;
 static synth_mode_t s_current_mode = SYNTH_MODE_KEY;
 static bool s_active = false;
 static bool s_inited = false;
+#if YOKAI_HAS_A2DP
 static bool s_bt_inited = false;
+#endif
 static volatile bool s_bt_connected = false;
 static volatile bool s_bt_streaming = false;
-static volatile bool s_bt_enabled = true;
+static volatile bool s_bt_enabled = YOKAI_HAS_A2DP;
 typedef enum { AUDIO_NOTE_ON, AUDIO_NOTE_OFF, AUDIO_SFX } audio_command_type_t;
 typedef struct {
     audio_command_type_t type;
@@ -95,7 +101,7 @@ static size_t s_bt_input_bytes;
 static uint32_t s_bt_output_frames;
 static int16_t s_bt_input[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS];
 static int16_t s_bt_output[BT_RESAMPLED_FRAMES * SYNTH_CHANNELS];
-static esp_bd_addr_t s_remote_bda = {0};
+static uint8_t s_remote_bda[6] = {0};
 static float s_bt_volume = 1.0f;
 static int s_master_volume = 80;
 
@@ -122,8 +128,11 @@ static int16_t s_chunk_buf[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS] __attribute__((
 
 static uint32_t bt_fifo_fill(void);
 static void synth_audio_task(void *arg);
+
+#if YOKAI_HAS_A2DP
 static void bt_a2dp_data_cb(const uint8_t *data, uint32_t len);
 static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+#endif
 
 esp_err_t synth_service_init(void)
 {
@@ -141,10 +150,11 @@ esp_err_t synth_service_init(void)
     if (s_audio_commands == NULL) return ESP_ERR_NO_MEM;
     memset(s_voices, 0, sizeof(s_voices));
 
-    /* 1. Initialize speaker codec device from BSP at 44.1 kHz */
+    /* 1. Initialize speaker codec device from the selected BSP at 44.1 kHz */
     i2s_std_config_t i2s_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SYNTH_SAMPLE_RATE),
-        .slot_cfg = I2S_STD_PHILIP_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = I2S_STD_PHILIP_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                     YOKAI_MIC_CHANNELS == 1 ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = BSP_I2S_MCLK,
             .bclk = BSP_I2S_SCLK,
@@ -158,14 +168,14 @@ esp_err_t synth_service_init(void)
             },
         },
     };
-    (void)bsp_i2c_init();
-    (void)bsp_audio_init(&i2s_cfg);
+    ESP_RETURN_ON_ERROR(bsp_i2c_init(), TAG, "initialize audio I2C");
+    ESP_RETURN_ON_ERROR(bsp_audio_init(&i2s_cfg), TAG, "initialize audio I2S");
 
     s_speaker_dev = bsp_audio_codec_speaker_init();
     if (s_speaker_dev != NULL) {
         esp_codec_dev_sample_info_t fs = {
             .bits_per_sample = SYNTH_BITS_PER_SAMPLE,
-            .channel = SYNTH_CHANNELS,
+            .channel = YOKAI_MIC_CHANNELS,
             .sample_rate = SYNTH_SAMPLE_RATE,
         };
         esp_err_t ret = esp_codec_dev_open(s_speaker_dev, &fs);
@@ -252,6 +262,7 @@ esp_err_t synth_service_init(void)
     return ESP_OK;
 }
 
+#if YOKAI_HAS_A2DP
 static void bt_a2dp_data_cb(const uint8_t *data, uint32_t len)
 {
     if (!s_bt_enabled || s_bt_ringbuf == NULL || data == NULL || len == 0) return;
@@ -357,8 +368,21 @@ static void bt_a2dp_event_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
     }
 }
 
+#endif
+
+void *synth_service_audio_codec(void)
+{
+    return s_speaker_dev;
+}
+
+bool synth_service_bt_supported(void)
+{
+    return YOKAI_HAS_A2DP;
+}
+
 esp_err_t synth_service_bt_a2dp_init(void)
 {
+#if !CONFIG_IDF_TARGET_ESP32P4
     if (s_bt_inited) {
         return ESP_OK;
     }
@@ -408,6 +432,9 @@ esp_err_t synth_service_bt_a2dp_init(void)
     s_bt_inited = true;
     ESP_LOGI(TAG, "Bluetooth A2DP Sink initialized (device name: Yokai-Groovebox)");
     return ESP_OK;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
 }
 
 bool synth_service_is_bt_connected(void)
@@ -450,6 +477,7 @@ bool synth_service_is_bt_enabled(void)
 
 void synth_service_set_bt_enabled(bool enabled)
 {
+#if !CONFIG_IDF_TARGET_ESP32P4
     esp_bd_addr_t remote;
     portENTER_CRITICAL(&s_bt_lock);
     s_bt_enabled = enabled;
@@ -470,6 +498,10 @@ void synth_service_set_bt_enabled(bool enabled)
         if (disconnect) esp_a2d_sink_disconnect(remote);
         bt_update_scan_mode();
     }
+#else
+    (void)enabled;
+    s_bt_enabled = false;
+#endif
 }
 
 bool synth_service_get_bt_device_info(char *dev_name, size_t max_len, char *bda_str, size_t bda_max_len)
@@ -490,9 +522,11 @@ bool synth_service_get_bt_device_info(char *dev_name, size_t max_len, char *bda_
 
 void synth_service_bt_disconnect(void)
 {
+#if !CONFIG_IDF_TARGET_ESP32P4
     if (s_bt_connected) {
         esp_a2d_sink_disconnect(s_remote_bda);
     }
+#endif
 }
 
 static void queue_audio_command(const audio_command_t *command)
@@ -1018,7 +1052,13 @@ static void synth_audio_task(void *arg)
         int64_t begin = esp_timer_get_time();
         if (s_speaker_dev) {
             voice_service_feed_playback(s_chunk_buf, SYNTH_CHUNK_SAMPLES);
-            write_result = esp_codec_dev_write(s_speaker_dev, s_chunk_buf, sizeof(s_chunk_buf));
+            /* Reuse the consumed mix buffer for ES8311 mono output. AEC receives stereo above. */
+            if (YOKAI_MIC_CHANNELS == 1) {
+                for (int i = 0; i < SYNTH_CHUNK_SAMPLES; ++i)
+                    s_chunk_buf[i] = ((int32_t)s_chunk_buf[i * 2] + s_chunk_buf[i * 2 + 1]) / 2;
+            }
+            write_result = esp_codec_dev_write(s_speaker_dev, s_chunk_buf,
+                                 SYNTH_CHUNK_SAMPLES * YOKAI_MIC_CHANNELS * sizeof(int16_t));
         } else {
             vTaskDelay(pdMS_TO_TICKS(6));
         }

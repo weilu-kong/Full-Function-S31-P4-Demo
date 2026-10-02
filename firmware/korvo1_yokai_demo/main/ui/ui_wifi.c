@@ -191,7 +191,7 @@ lv_obj_t *ui_wifi_screen_create(ui_wifi_back_cb_t on_back_cb)
 {
     s_back_cb = on_back_cb;
 
-    s_screen = lv_obj_create(NULL);
+    s_screen = ui_screen_create();
     lv_obj_set_size(s_screen, 800, 480);
     lv_obj_set_style_bg_color(s_screen, UI_COLOR_BG_DARK, 0);
     lv_obj_remove_flag(s_screen, LV_OBJ_FLAG_SCROLLABLE);

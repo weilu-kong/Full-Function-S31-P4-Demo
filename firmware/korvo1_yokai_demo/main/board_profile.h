@@ -1,0 +1,12 @@
+#pragma once
+#include "sdkconfig.h"
+
+#if CONFIG_IDF_TARGET_ESP32P4
+#define YOKAI_MIC_CHANNELS 1
+#define YOKAI_VOICE_ASRC ESP_ASRC_PERF_TYPE_SW_SPEED
+#define YOKAI_HAS_A2DP 0
+#else
+#define YOKAI_MIC_CHANNELS 2
+#define YOKAI_VOICE_ASRC ESP_ASRC_PERF_TYPE_HW_ONLY
+#define YOKAI_HAS_A2DP 1
+#endif

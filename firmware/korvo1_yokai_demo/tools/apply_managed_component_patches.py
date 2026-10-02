@@ -223,14 +223,39 @@ PATCHES = (
 )
 
 
+P4_PATCHES = (
+    (
+        "managed_components/espressif__esp32_p4_function_ev_board_noglib/esp32_p4_function_ev_board.c",
+        ".codec_mode = ESP_CODEC_DEV_TYPE_OUT,",
+        ".codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH, /* One shared ES8311 ADC/DAC instance. */",
+        1,
+    ),
+    # ponytail: this board registers one SC2336 JSON; pass a CMake list for future multi-sensor profiles.
+    (
+        "managed_components/espressif__esp_ipa/tools/config/esp_ipa_config.py",
+        '        files = input.split()\n',
+        '        files = input\n',
+        1,
+    ),
+    (
+        "managed_components/espressif__esp_ipa/tools/config/esp_ipa_config.py",
+        "        '--input', '-i',\n",
+        "        '--input', '-i', nargs='+',\n",
+        1,
+    ),
+)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--build-root", type=Path)
+    parser.add_argument("--target", default="esp32s31", choices=("esp32s31", "esp32p4"))
     args = parser.parse_args()
 
-    for relative, before, after, expected_count in PATCHES:
+    patches = PATCHES + (P4_PATCHES if args.target == "esp32p4" else ())
+    for relative, before, after, expected_count in patches:
         path = args.project_root / relative
         if not path.is_file():
             raise SystemExit(f"missing managed component source: {path}")

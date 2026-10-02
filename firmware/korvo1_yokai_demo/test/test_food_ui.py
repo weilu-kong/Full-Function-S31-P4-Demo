@@ -49,6 +49,7 @@ static lv_obj_t *lv_obj_create(lv_obj_t *p) {
     lv_obj_t *o = calloc(1, sizeof(*o)); assert(o); allocations++;
     if (p) { o->next = p->child; p->child = o; } return o;
 }
+#define ui_screen_create() lv_obj_create(NULL)
 #define lv_label_create lv_obj_create
 #define lv_button_create lv_obj_create
 #define lv_textarea_create lv_obj_create

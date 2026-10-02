@@ -27,9 +27,9 @@ with tempfile.TemporaryDirectory() as tmp:
                     "-I", tmp, str(root / "test/test_synth_math.c"), "-lm", "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 
-    declarations = "\n".join(re.findall(r"^#define (?:SYNTH_|BT_).*", source, re.M)) + "\n"
+    declarations = "#define YOKAI_HAS_A2DP 1\n" + "\n".join(re.findall(r"^#define (?:SYNTH_|BT_).*", source, re.M)) + "\n"
     start = source.index("static esp_asrc_handle_t s_bt_asrc;")
-    end = source.index("static esp_bd_addr_t", start)
+    end = source.index("static uint8_t s_remote_bda", start)
     declarations += source[start:end]
     declarations += re.search(r"^static volatile bool s_bt_enabled.*", source, re.M)[0] + "\n"
     declarations += "static int16_t s_bt_buf[SYNTH_CHUNK_SAMPLES * SYNTH_CHANNELS];\n"

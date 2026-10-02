@@ -24,7 +24,7 @@
 #include "esp_heap_caps.h"
 #include "esp_video_device.h"
 #include "esp_video_ioctl.h"
-#include "bsp/esp32_s31_korvo_1.h"
+#include "bsp/esp-bsp.h"
 #include "linux/videodev2.h"
 #endif
 
@@ -113,9 +113,9 @@ esp_err_t vision_camera_init(void)
     }
 
     /* 2. Open V4L2 video device */
-    s_cam_fd = open(ESP_VIDEO_DVP_DEVICE_NAME, O_RDWR);
+    s_cam_fd = open(BSP_CAMERA_DEVICE, O_RDWR);
     if (s_cam_fd < 0) {
-        ESP_LOGE(TAG, "Failed to open video dev %s", ESP_VIDEO_DVP_DEVICE_NAME);
+        ESP_LOGE(TAG, "Failed to open video dev %s", BSP_CAMERA_DEVICE);
         return ESP_FAIL;
     }
 
@@ -129,12 +129,27 @@ esp_err_t vision_camera_init(void)
         return ESP_FAIL;
     }
 
+#if CONFIG_IDF_TARGET_ESP32P4
+    /* CSI sensors supply RAW Bayer; ISP converts into the existing RGB565 path. */
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB565;
+    if (ioctl(s_cam_fd, VIDIOC_S_FMT, &fmt) != 0 ||
+        ioctl(s_cam_fd, VIDIOC_G_FMT, &fmt) != 0) {
+        ESP_LOGE(TAG, "CSI RGB565 format negotiation failed");
+        camera_cleanup_partial_init();
+        return ESP_FAIL;
+    }
+#endif
+
     s_cam_width = fmt.fmt.pix.width;
     s_cam_height = fmt.fmt.pix.height;
     if (fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_RGB565 || fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_RGB565X) {
         s_cam_pixfmt = VISION_PIXFMT_RGB565;
-    } else {
+    } else if (fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_UYVY) {
         s_cam_pixfmt = VISION_PIXFMT_YUV422;
+    } else {
+        ESP_LOGE(TAG, "Unsupported camera fourcc=0x%08lx", (unsigned long)fmt.fmt.pix.pixelformat);
+        camera_cleanup_partial_init();
+        return ESP_ERR_NOT_SUPPORTED;
     }
     ESP_LOGI(TAG, "Negotiated V4L2 format: %lux%lu, fourcc=0x%08lx (pixfmt=%d)",
              (unsigned long)s_cam_width, (unsigned long)s_cam_height,

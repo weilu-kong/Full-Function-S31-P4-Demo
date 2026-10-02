@@ -102,7 +102,7 @@ lv_obj_t *ui_home_screen_create(ui_app_launch_cb_t app_cb, ui_quick_settings_tog
     s_launch_cb = app_cb;
     s_drawer_cb = drawer_cb;
 
-    s_scr_home = lv_obj_create(NULL);
+    s_scr_home = ui_screen_create();
     lv_obj_set_style_bg_color(s_scr_home, lv_color_hex(0x141D33), 0);
     lv_obj_set_style_bg_opa(s_scr_home, LV_OPA_COVER, 0);
 

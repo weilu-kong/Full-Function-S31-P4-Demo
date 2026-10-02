@@ -174,7 +174,7 @@ static void refresh_list(void)
 lv_obj_t *ui_food_screen_create(ui_home_btn_cb_t home_callback)
 {
     s_home_cb = home_callback;
-    s_screen = lv_obj_create(NULL);
+    s_screen = ui_screen_create();
     lv_obj_set_size(s_screen, 800, 480);
     lv_obj_set_style_bg_color(s_screen, UI_COLOR_BG_DARK, 0);
     lv_obj_set_scrollable(s_screen, false);

@@ -1,14 +1,14 @@
-# Yokai OS — ESP32-S31 Full-Function HMI Demo
+# Yokai OS — ESP32-S31 / ESP32-P4X HMI Demo
 
-An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9, ESP-SR, ESP-DL, Wi-Fi, Bluetooth audio, camera/Vision AI, and a Japanese `Yokai OS` visual theme.
+An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, with an **ESP32-P4X-Function-EV-Board** build profile, built with ESP-IDF, LVGL 9, ESP-SR, ESP-DL, Wi-Fi, camera/Vision AI, and a Japanese `Yokai OS` visual theme. Classic Bluetooth audio is supported on S31.
 
-> **Active development branch:** `codex/s31-idf-master`
+> **Active development branch:** `codex/idf-master-p4x` (S31 migration retained separately in `codex/s31-idf-master`)
 >
 > **Base:** [PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2), not yet merged into `main`
 >
-> **Status updated:** 2026-10-02 (JST)
+> **Status updated:** 2026-10-03 (JST)
 >
-> **Target board:** ESP32-S31-Korvo-1  
+> **Reference board:** ESP32-S31-Korvo-1; P4X profile described below
 > **UI language:** Japanese  
 > **ESP-IDF:** master / 6.2 development, pinned SDK commit `4d59230ddff16327812782151ef0afef202dc6d7` (preview target)
 > **Flash / PSRAM:** 16 MB / 16 MB Octal  
@@ -21,7 +21,7 @@ An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9
 
 ## ESP-IDF master migration — 2026-10-02
 
-This branch first migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; master hardware acceptance is pending. The hardware measurements and acceptance below describe the earlier ESP-IDF 6.1 firmware. P4X adaptation starts after the S31 migration checks pass.
+This branch first migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; the repaired image passed finite Home/Vision hardware retesting with operator confirmation. The hardware measurements and acceptance below describe the earlier ESP-IDF 6.1 firmware. P4X support follows that accepted baseline in this branch.
 
 **Initial hardware acceptance failed:** entering Vision exhausted PSRAM and crashed. The first migration omitted local-only managed-component settings for the DVP backup buffer and Flash-resident model parameters. These are now reproducible patches, with a failed-model guard and regression checks. The repaired firmware is flashed. A five-minute Home capture and a subsequent 600-second capture showed no observed faults; the latter included one Vision detection/recognition session and a clean stop. The operator confirmed normal behavior. Repeated entry, warm reset and long mixed-load acceptance remain separate checks.
 
@@ -31,9 +31,28 @@ The migration retains all managed-component versions. Fresh configurations expli
 
 The repaired master image is 10,493,680 bytes, leaving 1,564,944 bytes in the application partition. Relative to the earlier production image, it is 85,824 bytes smaller but linked DIRAM use increases by 3,496 bytes. These are build measurements, not runtime heap/CPU results. See the [S31 migration report](docs/reports/2026-10-02-s31-idf-master.md) for evidence and pending hardware checks.
 
+## ESP32-P4X official display/camera profile — 2026-10-03
+
+The P4X profile targets chip revision **v3.1+**, the official **1024×600 EK79007/GT911 display** and **SC2336 CSI camera**. It uses BSP 5.2.3, 16 MB Flash at 80 MHz without auto-suspend, CPU 400 MHz and PSRAM 200 MHz. Keep the LCD reset/backlight wires on GPIO27/GPIO26 as described in the [official board guide](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4x-function-ev-board/user_guide.html).
+
+The existing 800×480 interface is centered within the native display, including the drawer, transitions, touch coordinates and Fireworks drawing. Two native framebuffers are used; no extra full-screen composition buffer is added. CSI/ISP negotiates RGB565 into the existing preview/inference pipeline. ES8311 uses one shared mono input/output codec with software ASRC; the stereo mix still supplies the AEC reference before mono output conversion.
+
+Wi-Fi uses ESP-Hosted **3.0.9** and Wi-Fi Remote **1.6.5** with the C6 over SDIO (CLK18, CMD19, D0–D3 14–17, reset54). The C6 provides BLE; **Classic A2DP is unavailable** and the Bluetooth page explains this. BLE application features are outside this port. The current profile registers one SC2336 IPA configuration; additional sensor configurations require changing the native CMake argument list.
+
+Use separate checkouts for simultaneous S31/P4 work because Component Manager replaces target-specific `managed_components`. Each target has a lock file (`dependencies.lock` for S31, `dependencies.esp32p4.lock` for P4) and separate generated configuration. After exporting the pinned SDK and Meson 1.12.1, run from `firmware/korvo1_yokai_demo`:
+
+```bash
+idf.py --preview -B build-p4x-master -DSDKCONFIG=build-p4x-master/sdkconfig -DIDF_TARGET=esp32p4 build
+python3 test/run_host_checks.py
+python3 tools/check_firmware_size.py build-p4x-master
+idf.py --preview -B build-p4x-master -p PORT flash monitor
+```
+
+P4 and S31 native builds, host checks and the Flash gate pass locally. P4 image: **9,720,800 bytes**, app reserve **2,337,824 bytes**. P4/C6 hardware acceptance is pending; the connected S31 retains the tested migration image. The matching official C6 coprocessor example also builds locally, with MCU/RPC-v2/SDIO/Wi-Fi enabled. Confirm the C6 firmware handshake before diagnosing remote Wi-Fi; use its separate programming connector if a matching image is required. See the [P4X validation report](docs/reports/2026-10-03-p4x-board.md) for exact image hashes, configuration and hardware checks.
+
 ## Project status
 
-The project has moved beyond a static UI prototype and now runs the main services on real hardware.
+The project has moved beyond a static UI prototype and now runs the main services on real S31 hardware. The table below describes S31; P4X hardware acceptance is pending.
 
 | App / subsystem | Status | Current implementation |
 | --- | --- | --- |

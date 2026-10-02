@@ -17,11 +17,11 @@ jobs:
       IDF_TOOLS_PATH: ${{ github.workspace }}/.ci/idf-tools
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check out validated ESP-IDF 6.1
+      - name: Check out pinned ESP-IDF master (6.2)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: espressif/esp-idf
-          ref: fff9895c82d744c7237be8847347bdd1b07c6643
+          ref: 4d59230ddff16327812782151ef0afef202dc6d7
           path: .ci/esp-idf
           submodules: recursive
       - name: Install SDK tools
@@ -30,6 +30,7 @@ jobs:
         shell: bash
         run: |
           source .ci/esp-idf/export.sh
+          python -m pip install meson==1.12.1
           cd firmware/korvo1_yokai_demo
           idf.py --preview -DIDF_TARGET=esp32s31 build
           python3 test/run_host_checks.py
@@ -37,7 +38,7 @@ jobs:
       - name: Save reviewable firmware and build configuration
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: korvo1-s31-idf61-${{ github.sha }}
+          name: korvo1-s31-idf-master-${{ github.sha }}
           if-no-files-found: error
           path: |
             firmware/korvo1_yokai_demo/build/korvo1_yokai_demo.bin

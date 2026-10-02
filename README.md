@@ -2,14 +2,15 @@
 
 An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9, ESP-SR, ESP-DL, Wi-Fi, Bluetooth audio, camera/Vision AI, and a Japanese `Yokai OS` visual theme.
 
-> **Active development branch:** `codex/vision-ai`  
-> **Integration:** [PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2), not yet merged into `main`
+> **Active development branch:** `codex/s31-idf-master`
 >
-> **Status updated:** 2026-10-01 (JST)
+> **Base:** [PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2), not yet merged into `main`
+>
+> **Status updated:** 2026-10-02 (JST)
 >
 > **Target board:** ESP32-S31-Korvo-1  
 > **UI language:** Japanese  
-> **ESP-IDF:** 6.1, pinned SDK commit `fff9895c82d744c7237be8847347bdd1b07c6643` (preview target)
+> **ESP-IDF:** master / 6.2 development, pinned SDK commit `4d59230ddff16327812782151ef0afef202dc6d7` (preview target)
 > **Flash / PSRAM:** 16 MB / 16 MB Octal  
 > **LCD:** 800×480 RGB  
 > **Camera:** SC101IOT, DVP, 1280×720 UYVY
@@ -17,6 +18,16 @@ An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9
 ![Yokai OS home concept](design/yokai-v1/images/01-home.png)
 
 ---
+
+## ESP-IDF master migration — 2026-10-02
+
+This branch first migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; master hardware acceptance is pending. The hardware measurements and acceptance below describe the earlier ESP-IDF 6.1 firmware. P4X adaptation starts after the S31 migration checks pass.
+
+Build the master firmware with a separate generated configuration and build directory as shown below. Keep `CONFIG_FREERTOS_PLACE_TASK_STACKS_IN_EXT_RAM` disabled until every affected Flash/NVS call and SIMD stack is checked. The existing diagnostics overlay measures per-task CPU/stack and compatible memory headroom; a successful build alone does not establish a runtime resource improvement.
+
+The migration retains all managed-component versions. Fresh configurations explicitly preserve the production LVGL RGB565 rendering, color rounding, assertions, logging and performance telemetry; these settings previously existed only in the generated configuration. CI and local builds use Meson 1.12.1 to avoid the 1.12.0 cross-compiler argument duplication.
+
+The master image is 10,493,408 bytes, leaving 1,565,216 bytes in the application partition. Relative to the earlier production image, it is 86,096 bytes smaller but linked DIRAM use increases by 3,496 bytes. These are build measurements, not runtime heap/CPU results. See the [S31 migration report](docs/reports/2026-10-02-s31-idf-master.md) for evidence and pending hardware checks.
 
 ## Project status
 
@@ -39,7 +50,7 @@ The project has moved beyond a static UI prototype and now runs the main service
 
 ### Latest verified state — 2026-10-01
 
-The production build with startup scheduling and the CJK font correction is flashed on the reference board with verified readback. Local firmware build, unified host checks and Flash budget check pass. The scheduling commit `6617277` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36849783299) passed; the user confirmed complete text and normal camera output with the font correction. Its remote CI remains pending.
+The production build with startup scheduling and the CJK font correction is flashed on the reference board with verified readback. Local firmware build, unified host checks and Flash budget check pass. The scheduling commit `6617277` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36849783299) passed; the user confirmed complete text and normal camera output with the font correction. Its [remote CI](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36873221042) passed.
 
 After the user reported normal operation, a finite five-minute capture recorded 2,906 face inferences without panic, watchdog or display stall. The stable interval measured about 15.60 camera fps and 15.59 preview fps, with minimum free PSRAM 1,013,340 bytes and internal heap 30,660 bytes. This confirms sustained operation in that capture; deliberately overlapping early entry with HTTPS, repeated entry/exit and mixed loads remain separate acceptance checks.
 
@@ -190,14 +201,15 @@ firmware/korvo1_yokai_demo
 Activate the ESP-IDF environment used by the project:
 
 ```bash
-source "$IDF_PATH/export.sh" # use the pinned ESP-IDF 6.1 checkout
+source "$IDF_PATH/export.sh" # use the pinned ESP-IDF master checkout
+python -m pip install meson==1.12.1 # fixes duplicated cross-compiler arguments in 1.12.0
 cd "firmware/korvo1_yokai_demo"
 ```
 
 Configure/build:
 
 ```bash
-idf.py --preview -DIDF_TARGET=esp32s31 build
+idf.py --preview -B build-s31-master -DSDKCONFIG=build-s31-master/sdkconfig -DIDF_TARGET=esp32s31 build
 ```
 
 The project applies required managed-component patches from:
@@ -218,13 +230,13 @@ The project hardware workflow uses:
 - flashing baud rate: **920160**
 
 ```bash
-idf.py --preview -p /dev/cu.usbserial-1120 -b 920160 flash
+idf.py --preview -B build-s31-master -p /dev/cu.usbserial-1120 -b 920160 flash
 ```
 
 Monitor:
 
 ```bash
-idf.py --preview -p /dev/cu.usbserial-1120 monitor
+idf.py --preview -B build-s31-master -p /dev/cu.usbserial-1120 monitor
 ```
 
 For regression work, keep the flash baud rate at **920160** unless there is a hardware/transport reason to change it.
@@ -251,7 +263,9 @@ Before accepting changes to display/Vision code, also run:
 
 ```bash
 python3 tools/apply_managed_component_patches.py --project-root . --check
-idf.py --preview build
+idf.py --preview -B build-s31-master -DSDKCONFIG=build-s31-master/sdkconfig -DIDF_TARGET=esp32s31 build
+python3 test/run_host_checks.py
+python3 tools/check_firmware_size.py build-s31-master
 ```
 
 Hardware acceptance should additionally verify:
@@ -371,7 +385,7 @@ The unified host entry point exercises engines, lifecycle races, SDK error paths
 
 ```bash
 python3 test/run_host_checks.py
-python3 tools/check_firmware_size.py build
+python3 tools/check_firmware_size.py build-s31-master
 ```
 
 Run these commands from the firmware directory after activating ESP-IDF and resolving managed components. Keep `dependencies.lock` in version control; this quality update retains the previously validated component versions. The Flash gate requires at least **1 MiB free in the application partition** and checks that the speech-model image fits. GitHub Actions builds the pinned SDK and runs the same checks.

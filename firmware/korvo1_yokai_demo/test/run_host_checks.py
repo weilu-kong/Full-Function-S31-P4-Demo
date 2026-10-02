@@ -10,7 +10,7 @@ project = Path(__file__).resolve().parents[1]
 test = project / "test"
 main = project / "main"
 if not os.environ.get("IDF_PATH"):
-    raise SystemExit("Set IDF_PATH to ESP-IDF 6.1 (camera checks use its actual driver source)")
+    raise SystemExit("Set IDF_PATH to the pinned ESP-IDF master (camera checks use its actual driver source)")
 cjson = Path(os.environ.get("CJSON_SOURCE", project / "managed_components/espressif__cjson/cJSON/cJSON.c"))
 if not cjson.is_file():
     raise SystemExit("Run idf.py --preview reconfigure to resolve locked components, or set CJSON_SOURCE")

@@ -28,6 +28,7 @@ with tempfile.TemporaryDirectory() as tmp:
 #define IRAM_ATTR
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define ALIGN_UP_BY(n,a) (((n)+(a)-1)&~((a)-1))
+#define ESP_ALIGN_UP(n,a) ALIGN_UP_BY(n,a)
 #define ESP_CACHE_MSYNC_FLAG_DIR_M2C 0
 #define ESP_OK 0
 #define ESP_ERR_NOT_FOUND 1

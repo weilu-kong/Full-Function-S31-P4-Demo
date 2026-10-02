@@ -11,6 +11,37 @@ VISION_PPA = (Path(__file__).parent / "patches/lvgl_vision_ppa.c").read_text()
 
 PATCHES = (
     (
+        "managed_components/espressif__esp_video/src/device/esp_video_dvp_device.c",
+        "        .pic_format_jpeg = CAPTURE_VIDEO_GET_FORMAT_PIXEL_FORMAT(video) == V4L2_PIX_FMT_JPEG,\n",
+        "        .pic_format_jpeg = CAPTURE_VIDEO_GET_FORMAT_PIXEL_FORMAT(video) == V4L2_PIX_FMT_JPEG,\n"
+        "        .bk_buffer_dis = true, /* Recycle application buffers with prepare_camera_driver.py. */\n",
+        1,
+    ),
+    (
+        "managed_components/espressif__human_face_detect/human_face_detect.cpp",
+        "static_cast<fbs::model_location_type_t>(CONFIG_HUMAN_FACE_DETECT_MODEL_LOCATION));",
+        "static_cast<fbs::model_location_type_t>(CONFIG_HUMAN_FACE_DETECT_MODEL_LOCATION), 0, dl::MEMORY_MANAGER_GREEDY, nullptr, false);",
+        3,
+    ),
+    (
+        "managed_components/espressif__human_face_detect/human_face_detect.cpp",
+        "new dl::Model(sd_path.c_str(), fbs::MODEL_LOCATION_IN_SDCARD);",
+        "new dl::Model(sd_path.c_str(), fbs::MODEL_LOCATION_IN_SDCARD, 0, dl::MEMORY_MANAGER_GREEDY, nullptr, false);",
+        3,
+    ),
+    (
+        "managed_components/espressif__human_face_recognition/human_face_recognition.cpp",
+        "static_cast<fbs::model_location_type_t>(CONFIG_HUMAN_FACE_FEAT_MODEL_LOCATION));",
+        "static_cast<fbs::model_location_type_t>(CONFIG_HUMAN_FACE_FEAT_MODEL_LOCATION), 0, dl::MEMORY_MANAGER_GREEDY, nullptr, false);",
+        1,
+    ),
+    (
+        "managed_components/espressif__human_face_recognition/human_face_recognition.cpp",
+        "new dl::Model(sd_path.c_str(), fbs::MODEL_LOCATION_IN_SDCARD);",
+        "new dl::Model(sd_path.c_str(), fbs::MODEL_LOCATION_IN_SDCARD, 0, dl::MEMORY_MANAGER_GREEDY, nullptr, false);",
+        1,
+    ),
+    (
         "managed_components/espressif__esp_lvgl_adapter/src/display/bridge/v9/lvgl_ppa_accel_v9.c",
         '#include "src/draw/lv_draw.h"\n#include "src/draw/lv_draw_buf.h"',
         '/* Public draw declarations are included by lvgl.h. */',

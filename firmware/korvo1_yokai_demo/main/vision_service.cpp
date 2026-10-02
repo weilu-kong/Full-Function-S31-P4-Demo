@@ -714,6 +714,18 @@ static bool calc_face_pose_yaw(const dl::detect::result_t &f, float *out_yaw)
     return calc_face_pose_yaw_from_keypoints(f.keypoint, out_yaw);
 }
 
+static bool model_tensors_ready(dl::Model *model)
+{
+    if (!model) return false;
+    for (auto *tensors : {&model->get_inputs(), &model->get_outputs()}) {
+        if (tensors->empty()) return false;
+        for (const auto &entry : *tensors) {
+            if (!entry.second || !entry.second->data) return false;
+        }
+    }
+    return true;
+}
+
 static void vision_inference_task(void *arg)
 {
     (void)arg;
@@ -830,6 +842,14 @@ static void vision_inference_task(void *arg)
                 ESP_LOGI(TAG, "Instantiating HumanFaceDetect model...");
                 s_face_detect = new HumanFaceDetect();
                 vision_memory_checkpoint("M6 after HumanFaceDetect ctor");
+                if (!model_tensors_ready(s_face_detect->get_raw_model(0)) ||
+                    !model_tensors_ready(s_face_detect->get_raw_model(1))) {
+                    ESP_LOGE(TAG, "Face detector model allocation failed; stopping Vision");
+                    /* Capture remains owner-managed until stop; health must not inspect a freed TCB. */
+                    s_infer_running = false;
+                    s_state = VISION_STATE_ERROR;
+                    break;
+                }
             }
             if (!s_face_recognizer && (s_people_file.person_count > 0 || s_enroll_txn.active)) {
                 ESP_LOGI(TAG, "Instantiating HumanFaceRecognizer model (MFN_S8_V1)...");

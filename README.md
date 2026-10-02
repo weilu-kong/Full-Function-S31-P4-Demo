@@ -23,6 +23,8 @@ An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9
 
 This branch first migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; master hardware acceptance is pending. The hardware measurements and acceptance below describe the earlier ESP-IDF 6.1 firmware. P4X adaptation starts after the S31 migration checks pass.
 
+**Initial hardware acceptance failed:** entering Vision exhausted PSRAM and crashed. The first migration omitted local-only managed-component settings for the DVP backup buffer and Flash-resident model parameters. These are now reproducible patches, with a failed-model guard and regression checks; the repaired firmware still requires hardware retesting.
+
 Build the master firmware with a separate generated configuration and build directory as shown below. Keep `CONFIG_FREERTOS_PLACE_TASK_STACKS_IN_EXT_RAM` disabled until every affected Flash/NVS call and SIMD stack is checked. The existing diagnostics overlay measures per-task CPU/stack and compatible memory headroom; a successful build alone does not establish a runtime resource improvement.
 
 The migration retains all managed-component versions. Fresh configurations explicitly preserve the production LVGL RGB565 rendering, color rounding, assertions, logging and performance telemetry; these settings previously existed only in the generated configuration. CI and local builds use Meson 1.12.1 to avoid the 1.12.0 cross-compiler argument duplication.

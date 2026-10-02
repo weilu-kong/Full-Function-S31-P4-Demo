@@ -21,7 +21,7 @@ An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9
 
 ## ESP-IDF master migration — 2026-10-02
 
-This branch first migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; master hardware acceptance is pending. The hardware measurements and acceptance below describe the earlier ESP-IDF 6.1 firmware. P4X adaptation starts after the S31 migration checks pass.
+This branch first migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; the repaired image passed finite Home/Vision hardware retesting with operator confirmation. The hardware measurements and acceptance below describe the earlier ESP-IDF 6.1 firmware. P4X adaptation starts after the S31 migration checks pass.
 
 **Initial hardware acceptance failed:** entering Vision exhausted PSRAM and crashed. The first migration omitted local-only managed-component settings for the DVP backup buffer and Flash-resident model parameters. These are now reproducible patches, with a failed-model guard and regression checks. The repaired firmware is flashed. A five-minute Home capture and a subsequent 600-second capture showed no observed faults; the latter included one Vision detection/recognition session and a clean stop. The operator confirmed normal behavior. Repeated entry, warm reset and long mixed-load acceptance remain separate checks.
 

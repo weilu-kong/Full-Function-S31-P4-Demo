@@ -6,7 +6,7 @@ An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9
 >
 > **Base:** [PR #2](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/pull/2), not yet merged into `main`
 >
-> **Status updated:** 2026-10-02 (JST)
+> **Status updated:** 2026-10-03 (JST)
 >
 > **Target board:** ESP32-S31-Korvo-1  
 > **UI language:** Japanese  
@@ -19,9 +19,18 @@ An 800×480 touch HMI demo for **ESP32-S31-Korvo-1**, built with ESP-IDF, LVGL 9
 
 ---
 
+## Branch status — 2026-10-03
+
+| Branch | Scope | Verified | Remaining |
+| --- | --- | --- | --- |
+| [codex/s31-idf-master](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/tree/codex/s31-idf-master) | S31 migration from IDF v6.1 to pinned master; Vision memory fix | Native build, host checks and Flash gate; repaired image flashed; five-minute Home capture and one Vision detection/recognition session with operator confirmation | Repeated Vision entry, warm reset, enrollment and long mixed loads |
+| [codex/idf-master-p4x](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/tree/codex/idf-master-p4x) | Official P4X 1024×600 display/SC2336 camera, ES8311 and C6 Hosted | P4 and S31 compatibility builds, host checks and Flash gate; matching C6 example build | P4/C6 flashing and all P4 hardware acceptance; S31 compatibility image is not flashed |
+
+The connected S31 retains the repaired migration image (`ad50e631…`). Both branches use the same pinned SDK and keep separate build/configuration directories. Local build results are recorded in the reports; check the branch-specific [S31 Actions](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions?query=branch%3Acodex%2Fs31-idf-master) and [P4X Actions](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions?query=branch%3Acodex%2Fidf-master-p4x) for remote CI results. Earlier PR #2 CI does not verify these new branches.
+
 ## ESP-IDF master migration — 2026-10-02
 
-This branch first migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; the repaired image passed finite Home/Vision hardware retesting with operator confirmation. The hardware measurements and acceptance below describe the earlier ESP-IDF 6.1 firmware. P4X adaptation starts after the S31 migration checks pass.
+This branch migrates **ESP32-S31-Korvo-1** to the pinned master commit above. Local compilation, unified host checks and the Flash gate pass; the repaired image passed finite Home/Vision hardware retesting with operator confirmation. P4X adaptation is implemented separately in `codex/idf-master-p4x` and awaits hardware acceptance. Historical hardware measurements below describe the earlier ESP-IDF 6.1 firmware.
 
 **Initial hardware acceptance failed:** entering Vision exhausted PSRAM and crashed. The first migration omitted local-only managed-component settings for the DVP backup buffer and Flash-resident model parameters. These are now reproducible patches, with a failed-model guard and regression checks. The repaired firmware is flashed. A five-minute Home capture and a subsequent 600-second capture showed no observed faults; the latter included one Vision detection/recognition session and a clean stop. The operator confirmed normal behavior. Repeated entry, warm reset and long mixed-load acceptance remain separate checks.
 
@@ -50,9 +59,9 @@ The project has moved beyond a static UI prototype and now runs the main service
 | Calculator | ✅ Production (Style A) | Dark lacquer & gold procedural bezel, AC/C, +/-, %, 4 basic operations, decimal handling, chained evaluation, operator replacement, repeated equals, divide-by-zero protection, max 8-record rolling history |
 | Food freshness | ✅ Bounded implementation | Up to 32 records; add/edit/delete; validated expiry date; CRC-protected two-slot persistence; touch acceptance pending |
 
-### Latest verified state — 2026-10-01
+### Earlier IDF v6.1 hardware baseline — 2026-10-01
 
-The production build with startup scheduling and the CJK font correction is flashed on the reference board with verified readback. Local firmware build, unified host checks and Flash budget check pass. The scheduling commit `6617277` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36849783299) passed; the user confirmed complete text and normal camera output with the font correction. Its [remote CI](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36873221042) passed.
+The earlier IDF v6.1 production build with startup scheduling and the CJK font correction was flashed with verified readback; it has since been replaced on the S31 by the repaired master image described above. Its local firmware build, unified host checks and Flash budget check passed. The scheduling commit `6617277` [GitHub Actions run](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36849783299) passed; the user confirmed complete text and normal camera output with the font correction. Its [remote CI](https://github.com/weilu-kong/Full-Function-S31-P4-Demo/actions/runs/36873221042) passed.
 
 After the user reported normal operation, a finite five-minute capture recorded 2,906 face inferences without panic, watchdog or display stall. The stable interval measured about 15.60 camera fps and 15.59 preview fps, with minimum free PSRAM 1,013,340 bytes and internal heap 30,660 bytes. This confirms sustained operation in that capture; deliberately overlapping early entry with HTTPS, repeated entry/exit and mixed loads remain separate acceptance checks.
 
